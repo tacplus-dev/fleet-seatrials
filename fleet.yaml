@@ -1,0 +1,24 @@
+# Sea trials: the proof fleet. It exists to show one thing — doppelganger runs
+# as an ordinary tacplus service on a fleet built from the registry, reached
+# through the gateway, answering through llmproxy — on a small cluster that is
+# created and destroyed as needed (Jody, 2026-10-23). Everything here is the
+# smallest set the fleet build's closure allows; a service is listed only
+# because something in the fleet needs it.
+#
+# A second proof rides along once it exists: a trivial tenant-owned service
+# deployed into two tenant namespaces, to show the gateway routes each tenant's
+# call to that tenant's instance.
+registries:
+  - https://github.com/tacplus-dev/registry.git
+tacplus: "2.2"
+services:
+  - name: kernel
+    repo: https://github.com/tacplus-dev/kernel.git
+  - name: opa
+    repo: https://github.com/tacplus-dev/opa.git
+  - name: gateway
+    repo: https://github.com/tacplus-dev/gateway.git
+  - name: llmproxy
+    repo: https://github.com/tacplus-dev/llmproxy.git
+  - name: doppelganger
+    repo: https://github.com/tacplus-dev/doppelganger.git
