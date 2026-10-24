@@ -65,15 +65,15 @@ services:
     - name: llmproxy
       id: 75
       repo: https://github.com/tacplus-dev/llmproxy.git
-      commit: 9589987b77332175285192540322a95baf4bf08f
+      commit: 34fa79ccc83958bc439b21da276a948ffbca9ae4
       contract: https://github.com/tacplus-dev/llmproxy.git
-      contract_commit: 9589987b77332175285192540322a95baf4bf08f
+      contract_commit: 34fa79ccc83958bc439b21da276a948ffbca9ae4
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 256a44fcb0ffcb0a3ce577f380d77321cb1266f4
+      commit: 4faf7c02d86b6db165e3c7843f647148513090d6
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 256a44fcb0ffcb0a3ce577f380d77321cb1266f4
+      contract_commit: 4faf7c02d86b6db165e3c7843f647148513090d6
       depends:
         - llmproxy
         - eventbus
