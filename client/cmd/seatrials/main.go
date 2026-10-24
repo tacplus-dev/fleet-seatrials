@@ -563,11 +563,13 @@ func ask(args []string) error {
 			return err
 		}
 	}
+	// Printed before the answer so the session can be continued whether or
+	// not this turn's answer comes back.
+	fmt.Fprintln(os.Stderr, "session:", sessionID)
 	resp, err := c.GenerateAnswer(ctx, &doppelganger_pb.GenerateAnswerRequest{SessionId: sessionID, Question: q})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "session:", sessionID)
 	return printProto(resp)
 }
 
