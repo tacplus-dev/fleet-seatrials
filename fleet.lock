@@ -65,15 +65,15 @@ services:
     - name: llmproxy
       id: 75
       repo: https://github.com/tacplus-dev/llmproxy.git
-      commit: 24a3af2bb9dde0f5aa68ae2b94e99ba9baa8b369
+      commit: 8f342f7ef5508b474294b90caf268bd4e58d0f78
       contract: https://github.com/tacplus-dev/llmproxy.git
-      contract_commit: 24a3af2bb9dde0f5aa68ae2b94e99ba9baa8b369
+      contract_commit: 8f342f7ef5508b474294b90caf268bd4e58d0f78
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 9f4d93cbf2e0f2e23ca748c3b49b14cba3c3401e
+      commit: bfe5bfeae6fd7f00b3108bcf854eee51299ebe13
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 9f4d93cbf2e0f2e23ca748c3b49b14cba3c3401e
+      contract_commit: bfe5bfeae6fd7f00b3108bcf854eee51299ebe13
       depends:
         - llmproxy
     - name: tenantecho

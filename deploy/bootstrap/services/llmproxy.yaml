@@ -7,3 +7,11 @@ anthropic_federation_rule_id: ""
 anthropic_organization_id: ""
 anthropic_service_account_id: ""
 anthropic_workspace_id: ""
+# The aliases this proxy serves. The provider model behind an alias is config:
+# change it here and apply; callers keep asking for the alias. Prices are
+# micro-USD per token (here $3 / $15 per million).
+models:
+    - alias: claude-sonnet
+      provider_model: claude-sonnet-4-5
+      input_micro_usd_per_token: 3
+      output_micro_usd_per_token: 15

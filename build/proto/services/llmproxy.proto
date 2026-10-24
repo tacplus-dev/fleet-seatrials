@@ -152,6 +152,9 @@ message Config {
   // turn, from these tenants too, goes to the real model. Dev and pilot list
   // `harness`, `harness-b`; production lists none.
   repeated string scripted_model_tenants = 18 [(spec.assert_max_size) = 16, (spec.assert_element_max_size) = 128];
+
+  // --- Models (see ModelRoute): the aliases this proxy serves. Empty serves none. ---
+  repeated ModelRoute models = 19 [(spec.assert_max_size) = 64];
 }
 
 // LlmProxyState is this service's state root, stored in kernel's cluster. Empty today
@@ -328,6 +331,20 @@ message ListModelsRequest {}
 // returning bare strings).
 message ModelAlias {
   string name = 1;
+}
+
+// ModelRoute is one alias this proxy serves and what it is on the provider.
+// Config, not code (Jody, 2026-10-24): the provider model behind an alias
+// changes with a config push, never a rebuild, and callers keep asking for
+// the alias. Prices ride along because a price belongs to the provider model.
+message ModelRoute {
+  // alias is what callers put in model_alias.
+  string alias = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+  // provider_model is the provider's own model id, e.g. an Anthropic model name.
+  string provider_model = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 256];
+  // Micro-USD per token, metered into the caller's bucket.
+  int64 input_micro_usd_per_token = 3 [(spec.assert_ge) = 0];
+  int64 output_micro_usd_per_token = 4 [(spec.assert_ge) = 0];
 }
 
 message ListModelsResponse {
