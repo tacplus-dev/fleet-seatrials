@@ -303,6 +303,7 @@ func login(args []string) error {
 	}
 	proof := token.NewImmutableToken(&token_pb.Token{})
 	proof.SetKid(cf.PairID).SetIssuer("seatrials").SetSubject(cf.PairID).SetAudience("kernel").
+		SetNamespace(cf.Tenant). // the pair's owner; kernel sets the minted token's namespace from the pair itself
 		SetIssuedAt(now).SetExpiration(now + 30).SetJTI(hex.EncodeToString(jti))
 	if err := proof.Sign(ik); err != nil {
 		return fmt.Errorf("signing proof: %w", err)
