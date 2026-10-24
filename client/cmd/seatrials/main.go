@@ -60,7 +60,7 @@ import (
 )
 
 var (
-	gateway = envOr("SEATRIALS_GATEWAY", "schematic.146.148.80.132.nip.io:443")
+	gateway = envOr("SEATRIALS_GATEWAY", "seatrials.tacplus.dev:443")
 	caFile  = envOr("SEATRIALS_CA", "")
 )
 

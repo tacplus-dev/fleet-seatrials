@@ -39,7 +39,7 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
 ```
 cluster/create.sh && deploy/init.sh && images/build.sh tacplus && images/build.sh all
 deploy/secrets.sh && deploy/apply.sh
-cd client && go build -o seatrials ./cmd/seatrials && export SEATRIALS_CA=../deploy/bootstrap/ca.pem
+cd client && go build -o seatrials ./cmd/seatrials   # public TLS: no SEATRIALS_CA needed
 ./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again
 ./seatrials keygen --tenant /tenants/alpha alpha; ./seatrials keygen --tenant /tenants/beta beta
 ./seatrials login --as root

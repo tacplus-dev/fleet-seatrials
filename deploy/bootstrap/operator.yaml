@@ -1,9 +1,14 @@
 # The sea-trials deployment: one of everything, two tenants, the two proofs as
-# app services. TLS is the operator CA's cert chain (no DNS: nip.io on the
-# reserved gateway IP); the local client trusts ca.pem.
+# app services. The public name is under tacplus.dev (an A record at the
+# registrar pointing at the reserved gateway IP) and TLS is Let's Encrypt, so
+# the fleet is a real OIDC issuer: Anthropic's federation fetches its discovery
+# document over public TLS. The operator CA (crypto.yaml) still signs the
+# cluster's internal PKI.
 dev: true
-fqdn: schematic.146.148.80.132.nip.io
+fqdn: seatrials.tacplus.dev
 external_ip: 146.148.80.132
+tls:
+    letsencrypt: true
 port: 443
 optional_services:
     oauth: true
