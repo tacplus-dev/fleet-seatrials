@@ -34,13 +34,14 @@ steps:
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "bin/${_SERVICE}" "${_MAIN}"
             ;;
           rust)
+            # gateway embeds dist/ (its web app) at compile time and its image
+            # bundles webapp-dist/, web-dist/ and clients/: this fleet ships the
+            # API surface, not Seabeam's web app, so those are empty here.
+            mkdir -p dist webapp-dist web-dist clients
             cargo build --release
-            # The Dockerfiles that bundle a web app or clients get empty dirs here:
-            # this fleet ships the API surface, not Seabeam's web app.
-            mkdir -p webapp-dist web-dist clients
             ;;
           java)
-            mvn -q -B -o package -DskipTests || mvn -q -B package -DskipTests
+            mvn -q -B package -DskipTests
             cp /usr/local/bin/launcher launcher-linux-amd64
             ;;
           *) echo "unknown language ${_LANG}"; exit 1 ;;
