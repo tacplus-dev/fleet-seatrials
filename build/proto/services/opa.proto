@@ -1,0 +1,91 @@
+// Copyright (c) 2026 Seabeam LLC. All rights reserved.
+
+// Package opa provides protobuf definitions for the OPA service.
+//
+// OPA is the centralized OPA policy evaluation service. It executes
+// typed OPA policy evaluations accessible to any service via S2S gRPC.
+// Policy definitions live in shared protos (proto/opa/) and are importable
+// by any service. tacplus generates typed RPCs on opa and typed client
+// wrappers on importing services' SMs.
+
+syntax = "proto3";
+
+package opa;
+
+import "sys/spec.proto";
+import "sys/opalib.proto";
+
+option (spec.service) = {};
+option (spec.int_const) = {name: "DEFAULT_PORT", value: 8443};
+
+// ============================================================================
+// Config
+// ============================================================================
+
+message Config {
+  option (spec.grpc_config) = {service_name: "opa"};
+
+  // entitlements_policy is the OPA bundle for entitlement evaluation.
+  // Loaded from services/opa/ by schematic, delivered to opa via config push.
+  opalib.OpaPolicy entitlements_policy = 1;
+
+  // proxy_policy is the OPA bundle for proxy request policy evaluation.
+  // The policy receives caller claims and opaque routing metadata, returns
+  // an allow/deny decision plus the resolved destination URL.
+  opalib.OpaPolicy proxy_policy = 3;
+
+  // tenant_entitlements_policies holds one entitlements policy per project
+  // namespace (full path, e.g. "/tenants/drpepper"). Kernel reconciles each
+  // tenant_config's OpaTenantConfig into this list; EvalEntitlement dispatches
+  // on the caller's namespace, falling back to entitlements_policy (cluster
+  // root) when absent. (repeated-entry, not map<> — map<> round-trips badly
+  // through tacplus codegen; matches the repeated-entry convention elsewhere.)
+  repeated NamespaceEntitlementsPolicy tenant_entitlements_policies = 4 [(spec.assert_max_size) = 4096];
+}
+
+// NamespaceEntitlementsPolicy binds a project namespace to its entitlements
+// policy bundle — a repeated (map-like) entry used in opa Config/OpaState.
+message NamespaceEntitlementsPolicy {
+  string namespace = 1 [(spec.indexed) = true, (spec.assert_required) = true, (spec.assert_min_size) = 1];
+  opalib.OpaPolicy policy = 2;
+}
+
+// ============================================================================
+// State
+// ============================================================================
+
+// OpaState stores the OPA policy bundles (.rego files).
+// Policies are loaded at startup and re-evaluated on state updates.
+message OpaState {
+  option (spec.service_state) = {label: ["kernel"], auto_tls: TLS_KEY_TYPE_ED25519};
+
+  // entitlements_policy is the OPA bundle for entitlement evaluation.
+  opalib.OpaPolicy entitlements_policy = 1;
+
+  // proxy_policy is the OPA bundle for proxy request policy evaluation.
+  opalib.OpaPolicy proxy_policy = 3;
+
+  // tenant_entitlements_policies holds one entitlements policy per project
+  // namespace (full path). Kernel reconciles tenant_configs into this list;
+  // delivered to opa, which dispatches EvalEntitlement on the caller namespace.
+  repeated NamespaceEntitlementsPolicy tenant_entitlements_policies = 4 [(spec.assert_max_size) = 4096];
+}
+
+// ============================================================================
+// Multi-Tenancy: Per-Tenant OPA Configuration
+// ============================================================================
+
+// OpaTenantConfig is the per-tenant OPA policy configuration slice.
+// Tacplus auto-generates TenantConfig with this as the opa field.
+// (OPA lives at the TENANT level — one policy per tenant, evaluated at login;
+// it converts IDP claims (groups) into per-project entitlements + authorized
+// projects + default project.)
+message OpaTenantConfig {
+  option (spec.config_slice) = {scope: CONFIG_SLICE_SCOPE_TENANT, service_name: "opa"};
+
+  // entitlements_policy is the OPA bundle for entitlement evaluation.
+  opalib.OpaPolicy entitlements_policy = 1;
+
+  // proxy_policy is the OPA bundle for proxy request policy evaluation.
+  opalib.OpaPolicy proxy_policy = 2;
+}

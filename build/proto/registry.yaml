@@ -1,0 +1,60 @@
+# Managed by tacplus — do not edit IDs manually.
+registries:
+    - https://github.com/tacplus-dev/registry.git
+services:
+    - name: doppelganger
+      id: 101
+      contract: https://github.com/tacplus-dev/doppelganger.git
+      visibility: public
+    - name: eventbus
+      id: 18
+      contract: https://github.com/tacplus-dev/eventbus.git
+      visibility: private
+    - name: gateway
+      id: 7
+      contract: https://github.com/tacplus-dev/gateway.git
+      visibility: private
+    - name: kernel
+      id: 8
+      tenant_slice_field: 1
+      contract: https://github.com/tacplus-dev/kernel.git
+      visibility: private
+    - name: kmaker
+      id: 49
+      contract: https://github.com/tacplus-dev/kmaker.git
+      visibility: private
+    - name: letsencrypt
+      id: 9
+      contract: https://github.com/tacplus-dev/letsencrypt.git
+      visibility: private
+    - name: llmproxy
+      id: 75
+      contract: https://github.com/tacplus-dev/llmproxy.git
+      visibility: private
+    - name: oauth
+      id: 21
+      tenant_slice_field: 3
+      contract: https://github.com/tacplus-dev/oauth.git
+      visibility: private
+    - name: opa
+      id: 29
+      tenant_slice_field: 2
+      contract: https://github.com/tacplus-dev/opa.git
+      visibility: private
+    - name: stratum
+      id: 34
+      contract: https://github.com/tacplus-dev/stratum.git
+      visibility: private
+    - name: tenantecho
+      id: 103
+      contract: https://github.com/tacplus-dev/tenantecho.git
+      visibility: public
+vservices:
+    - name: proxypolicy
+      field_id: 45
+      contract: https://github.com/tacplus-dev/kernel.git
+      visibility: private
+    - name: query
+      field_id: 71
+      contract: https://github.com/tacplus-dev/stratum.git
+      visibility: private

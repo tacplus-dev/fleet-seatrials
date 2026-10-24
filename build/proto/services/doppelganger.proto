@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package doppelganger;
+
+import "sys/spec.proto";
+
+option (spec.service) = {name: "doppelganger"};
+
+// ---------------------------------------------------------------------------
+// Doppelganger: a fleet service that answers questions on Jody's behalf from
+// the jody context repo. Its only role is to answer. Callers open a session,
+// give context (who they are, who the answer is for, what it is for), and ask.
+// Pushback is just the next GenerateAnswer in the same session: it re-answers
+// with whatever the caller added; it does not repeat itself.
+//
+// Client-facing (C2S) through the gateway: the caller is an authenticated user
+// of the fleet (RPC_FLAG_AUTH_ANY_USER on every RPC — this is a personal
+// service, the fleet's users are its users). The model is reached through
+// llmproxy over S2S; doppelganger holds no model credential.
+// ---------------------------------------------------------------------------
+
+// The model call goes through llmproxy; the fleet build admits doppelganger as
+// one of its callers because this line exists.
+option (spec.grpc_s2s_client) = {service: "llmproxy.LlmProxy"};
+
+message Config {
+  option (spec.grpc_config) = {service_name: "doppelganger"};
+
+  // repo_dir is the checkout of the jody context repo the answers rest on.
+  // The deployment puts it there (a volume or an init step); this service
+  // only reads it, on every answer.
+  string repo_dir = 1 [(spec.assert_required) = true];
+  // state_dir holds session state (context and turns), one file per session.
+  string state_dir = 2 [(spec.assert_required) = true];
+  // model_alias is the llmproxy alias answers are generated with.
+  string model_alias = 3 [(spec.assert_required) = true];
+}
+
+message CreateSessionRequest {
+  // Optional context given at creation. More can be added with UpdateSession.
+  repeated string context = 1 [(spec.assert_max_size) = 100];
+}
+
+message CreateSessionResponse {
+  string session_id = 1 [(spec.assert_required) = true];
+}
+
+message UpdateSessionRequest {
+  string          session_id = 1 [(spec.assert_required) = true];
+  // Context to append. Existing context is kept.
+  repeated string context    = 2 [(spec.assert_max_size) = 100];
+}
+
+message UpdateSessionResponse {}
+
+message GenerateAnswerRequest {
+  string session_id = 1 [(spec.assert_required) = true];
+  string question   = 2 [(spec.assert_required) = true];
+}
+
+enum AnswerKind {
+  ANSWER_KIND_UNSPECIFIED      = 0;
+  ANSWER_KIND_ANSWER           = 1;  // act on it
+  ANSWER_KIND_NEEDS_CONTEXT    = 2;  // tell us more (see missing), then ask again
+  ANSWER_KIND_BLOCKED_ON_HUMAN = 3;  // only Jody can answer; treat as a blocker, keep working
+}
+
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+  PROVENANCE_QUOTED      = 1;  // quotes something Jody said
+  PROVENANCE_DERIVED     = 2;  // derived from a stated principle; not said by Jody
+}
+
+message GenerateAnswerResponse {
+  AnswerKind      kind              = 1 [(spec.assert_enum_defined) = true];
+  string          answer            = 2;
+  // Why. Gives the caller something to push back on.
+  string          reasoning         = 3;
+  // What would change this answer.
+  string          would_change_mind = 4;
+  Provenance      provenance        = 5;
+  // Sources in the jody repo the answer rests on (file paths, quotes).
+  repeated string sources           = 6 [(spec.assert_max_size) = 100];
+  // For NEEDS_CONTEXT: what the caller must tell us.
+  repeated string missing           = 7 [(spec.assert_max_size) = 100];
+}
+
+service Doppelganger {
+  option (spec.service_c2s) = {};
+
+  // Opens a question session. Give context up front: who you are, who the
+  // answer is for, and what it is for. Returns the session_id every later
+  // call needs.
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+  // Adds context to an open session, for example what NEEDS_CONTEXT asked
+  // for. Nothing is answered here; ask again afterwards.
+  rpc UpdateSession(UpdateSessionRequest) returns (UpdateSessionResponse) {
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+  // Answers one question in a session as Jody would, from the jody context
+  // repo, with reasoning, provenance and sources. Asking again in the same
+  // session with more context is how to push back; it does not repeat itself.
+  rpc GenerateAnswer(GenerateAnswerRequest) returns (GenerateAnswerResponse) {
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+}

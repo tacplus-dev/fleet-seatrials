@@ -1,0 +1,99 @@
+// Copyright (c) 2026 Seabeam LLC. All rights reserved.
+//
+// Kmaker is the cluster bootstrap certificate authority for kernel.
+// Kernel instances authenticate with Kubernetes projected service account
+// tokens and receive kernel TLS/signing certificates before the kernel service
+// itself is available to mint ordinary Schematic service certificates.
+
+syntax = "proto3";
+
+package kmaker;
+
+import "sys/spec.proto";
+import "sys/host.proto";
+import "sys/logger.proto";
+import "sys/x509.proto";
+
+option (spec.service) = {name: "kmaker"};
+option (spec.int_const) = {name: "DEFAULT_PORT", value: 8443};
+
+// Config is rendered by operator and mounted into kmaker at startup.
+message Config {
+  option (spec.grpc_config) = {service_name: "kmaker"};
+
+  // cluster_name is the logical Schematic cluster this kmaker signs for.
+  string cluster_name = 1 [(spec.assert_required) = true];
+
+  // listener is the gRPC bind address for kmaker.
+  host.Host listener = 2 [(spec.assert_required) = true, (spec.default_host) = {host: "0.0.0.0", port: 8443}];
+
+  // logger configures kmaker process logging.
+  logger.LoggerConfig logger = 3;
+
+  // cluster_ca holds trust anchors that kernel nodes should trust.
+  repeated x509.X509Cert cluster_ca = 4 [(spec.assert_max_size) = 16];
+
+  // signing_ca is the cluster signing CA used to issue kernel certificates.
+  // The private key is present in the mounted kmaker config and must be backed
+  // by a Kubernetes Secret owned by operator.
+  x509.X509CertChain signing_ca = 5 [(spec.assert_required) = true];
+
+  // spiffe_prefix is the SPIFFE trust domain for kernel SPIFFE URI SANs: the
+  // URI authority, so it must not contain '/'. Certificates minted here
+  // receive spiffe://<spiffe_prefix>/kernel. Operator supplies this from
+  // operator.Config.spiffe_prefix.
+  string spiffe_prefix = 6 [(spec.default_string) = "local.dev"];
+
+  // token_audience is the required Kubernetes TokenReview audience.
+  string token_audience = 7 [(spec.default_string) = "kmaker"];
+
+  // kernel_service_accounts are Kubernetes service accounts allowed to request
+  // kernel certificates. Empty means namespace=schematic, name=kernel.
+  repeated KernelServiceAccount kernel_service_accounts = 8 [(spec.assert_max_size) = 32];
+
+  // kernel_cert_lifetime_seconds caps issued kernel certificate lifetimes.
+  int64 kernel_cert_lifetime_seconds = 9 [
+    (spec.default_int) = 86400,
+    (spec.assert_duration) = DURATION_TYPE_POSITIVE
+  ];
+
+  // tls is the optional serving certificate for kmaker's own gRPC listener.
+  // When unset, kmaker starts without transport TLS for local/dev only.
+  x509.X509CertChain tls = 10;
+
+  // health_probe_port is the plaintext gRPC port for k8s health probes.
+  // Kmaker's hand-written bootstrap bypasses the generated ServiceManager,
+  // so this field must be on Kmaker.Config (not only on Grpcconfig.Config).
+  // Default matches the platform-wide health probe port.
+  int32 health_probe_port = 11 [(spec.default_int) = 8444];
+}
+
+message KernelServiceAccount {
+  string namespace = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+  string name = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+}
+
+message MintKernelCertRequest {
+  // k8s_token is a projected Kubernetes service account token for a kernel pod.
+  string k8s_token = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 65536];
+
+  // cert_request carries the kernel instance public key and requested SANs.
+  // kmaker validates and enriches the request before signing.
+  x509.X509CertRequest cert_request = 2 [(spec.assert_required) = true];
+
+  // Optional workload metadata supplied by the kernel bootstrapper. This is
+  // advisory until kmaker grows Pod lookup validation from TokenReview extras.
+  string pod_name = 3 [(spec.assert_max_size) = 253];
+  string pod_uid = 4 [(spec.assert_max_size) = 128];
+  string instance_id = 5 [(spec.assert_max_size) = 256];
+}
+
+service Kmaker {
+  option (spec.service_s2s) = {};
+
+  // MintKernelCert issues a kernel certificate after validating the Kubernetes
+  // projected service account token with the Kubernetes TokenReview API.
+  rpc MintKernelCert(MintKernelCertRequest) returns (x509.X509CertChain) {
+    option (spec.rpc) = {principal: RPC_PRINCIPAL_SERVICE, flags: [RPC_FLAG_SELF_AUTHENTICATES]};
+  }
+}

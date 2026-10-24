@@ -1,0 +1,379 @@
+// llmproxy — the one place the platform holds a real LLM API credential.
+//
+// Design record: loopers/scotty/backend/decisions/llm-proxy-design-proposal-2026-09-14.md
+// and loopers/scotty/backend/decisions/llm-gateway-mcp-session-auth-2026-09-14.md, both
+// settled with Jody 2026-09-14/15.
+//
+// THE PROBLEM THIS SOLVES: every service implementing an LLM/MCP persona loop (today
+// `scotty`; more later, one per tenant) used to hold its own copy of the Anthropic API
+// key, fanned out by operator into each service's own config
+// (`llm_credential_services`). Jody, 2026-09-14: "Llmsettings is a mistake... because we
+// have multiple services that will need the key we don't want to have it replicated. We
+// want a single service where we can do things like lawful intercept, etc." This service
+// is that single place. No other service ever holds the real credential again.
+//
+// SERVICE CLASS: a SHARED PLATFORM service (9a, same class as `weather`), identity
+// /system/services/llmproxy, ONE instance for the whole fleet — NOT tenant-owned. A
+// tenant-owned deployment would mean N copies of the one secret, exactly the
+// replication problem this service exists to remove.
+//
+// WHY THIS REPO AND NOT schematic/platform/services/: `platform/proto/services/
+// operator.proto` reserves OptionalServices fields 1-5 with the comment "1-5 held the
+// application proxy services (anthropic, openai, gitlab, github) and the MCP server.
+// Those moved out of the platform: schematic is the base an application is built ON,
+// not the application." There was already an Anthropic proxy in the platform once, and
+// it was deliberately moved out for exactly that reason. Today only Scotty-family
+// personas need this, so it lives here, not in schematic/platform/services/.
+//
+// SCOPE OF THIS FILE, PHASE 1 ONLY: the completion-proxy leg (a caller sends a
+// completion request, this service calls Anthropic with the one real credential, and
+// relays the response back) — tool calls stay dispatched LOCALLY by the calling
+// service via its own generated MCP surface (`ScottyMcpSurface`/`agent.rs`), exactly as
+// today. This is deliberately the smaller, self-contained piece: no new kernel RPCs, no
+// new internet-facing surface. The remote-MCP session-auth design (Anthropic calling
+// back into us mid-conversation) is a distinct, later phase — see
+// llm-gateway-mcp-session-auth-2026-09-14.md for that design, already settled but NOT
+// implemented by this file.
+//
+// TWO RPCs ONLY, service-token auth, no delegated/user-token path yet (Option A/B from
+// the design proposal is still open — this phase only needs the service-only leg,
+// which is auth-uncontroversial either way: the CALLING SERVICE's own identity is what
+// authorizes it, per Config.llm_credential's removal from every other service's own
+// config and the entitlement narrowing this service's own Config.tenant_tokens_per_day
+// /principal_tokens_per_day knobs describe below).
+//
+// PHASE 2, A29 — THE REVERSE MCP PROXY (decisions/backlog-scotty-slices-2026-09-30.md
+// §1, contract A29). The scope paragraph above is Phase 1 and still describes
+// GenerateCompletionAsService, which stays until retired (BQ5). A29 adds the session
+// path: a dog's dispatcher asks for ONE turn of ONE thread (GenerateSessionTurn),
+// this service runs the tool loop against Anthropic, and every tool_use goes back
+// down the caller's own BrokerToolCallback stream as an MCP tools/call frame, which
+// the dog executes through its generated MCP surface AS ITSELF. No transcript is
+// stored here; the only live state is one callback stream per caller SPIFFE
+// identity. The session id is never a field: it is "<caller SPIFFE ID>#<thread_id>",
+// formed here from the authenticated context. The 09-14 kernel RPCs
+// (Register/Mint/RevokeLlmToolSession) and the internet-facing callback endpoint
+// are NOT part of this design (BQ1).
+
+syntax = "proto3";
+
+package llmproxy;
+
+import "sys/spec.proto";
+import "sys/mcp.proto";
+
+option (spec.service) = {name: "llmproxy"};
+
+// BudgetBucket is which lane a turn is charged to. Declared here, locally, so
+// this service carries no product design: it was BudgetBucket, imported
+// from Scotty's crew proto, with these same values. Per issue #1 the lanes
+// themselves do not belong in llmproxy at all and will move to tacplus-
+// generated code in the owning service; until then the proxy keeps the enum
+// (same wire values) and nothing else of the crew model.
+enum BudgetBucket {
+  BUDGET_BUCKET_UNSPECIFIED = 0;
+  BUDGET_BUCKET_DAY_JOB = 1;
+  BUDGET_BUCKET_ABOVE_AND_BEYOND = 2;
+  BUDGET_BUCKET_RESERVE = 3;
+  BUDGET_BUCKET_PERSONAL = 4;
+}
+
+// Config is delivered by kernel at startup and on every change.
+message Config {
+  option (spec.grpc_config) = {service_name: "llmproxy"};
+
+  // llm_credential is the ONE real Anthropic API key on the whole fleet, fanned out
+  // by operator into ONLY this service's generated bootstrap config (operator's
+  // llm_credential_services must name "llmproxy" and nothing else — see
+  // platform/proto/services/operator.proto's Config.llm_credential and
+  // .llm_credential_services). Field name and type must match what operator's
+  // bootstrap.go writes, or the service fails to unmarshal its own generated config.
+  //
+  // ConfigHasKeyMaterial must be true for this service in operator's helm generator
+  // (pkg/helm/generator.go), the same treatment kernel/kmaker/gateway already get, so
+  // this renders as a Kubernetes Secret, never a ConfigMap.
+  string llm_credential = 1;
+
+  // default_provider_base_url lets the Anthropic API host move (a proxy, a private
+  // endpoint) without a redeploy. Empty means the real api.anthropic.com.
+  string default_provider_base_url = 2;
+
+  // 3 tenant_tokens_per_day, 4 principal_tokens_per_day: never enforced, and
+  // replaced by the dollar budgets below (crew runtime §10: budgets are money per
+  // caller x bucket, not tokens per tenant/principal).
+  reserved 3, 4;
+  reserved "tenant_tokens_per_day", "principal_tokens_per_day";
+
+  // --- A29 session path (backlog §1.5) ---
+
+  // tool_call_timeout_ms bounds one tools/call frame on a caller's stream. On
+  // expiry the model gets a descriptive is_error tool_result (A25) and the dog's
+  // late answer is dropped and logged.
+  int64 tool_call_timeout_ms = 5 [(spec.default_int) = 30000, (spec.assert_ge) = 1];
+
+  // max_tool_rounds_ceiling is the hard upper bound on
+  // SessionTurnRequest.max_tool_rounds; a larger request value is clamped to it.
+  int32 max_tool_rounds_ceiling = 6 [(spec.default_int) = 25, (spec.assert_ge) = 1];
+
+  // callback_reopen_grace_ms is how long a turn waits for a dropped callback
+  // stream to be re-opened before it ends with STOP_REASON_CALLBACK_LOST.
+  int64 callback_reopen_grace_ms = 7 [(spec.default_int) = 5000, (spec.assert_ge) = 0];
+
+  // blocked_callers is the per-identity kill switch (BQ7): a caller whose SPIFFE
+  // ID starts with any entry gets PERMISSION_DENIED on every rpc, and its open
+  // callback stream is closed when this config is delivered.
+  repeated string blocked_callers = 8 [(spec.assert_max_size) = 256, (spec.assert_element_max_size) = 1024];
+
+  // --- D22 jwt-bearer exchange (backlog §4.3). Ids, not secrets. ---
+
+  string anthropic_federation_rule_id = 9 [(spec.assert_max_size) = 256];
+  string anthropic_organization_id = 10 [(spec.assert_max_size) = 256];
+  string anthropic_service_account_id = 11 [(spec.assert_max_size) = 256];
+  string anthropic_workspace_id = 12 [(spec.assert_max_size) = 256];
+  // oauth_token_path is the token endpoint's path on default_provider_base_url.
+  string oauth_token_path = 13 [(spec.default_string) = "/v1/oauth/token", (spec.assert_max_size) = 256];
+
+  // --- Budgets (crew runtime §10, A11, A24, D18), integer micro-USD per day ---
+  //
+  // RESOURCE LIMITS in config, same doctrine as before: the per caller x
+  // bucket ceiling this service enforces. The tenant's own budget is
+  // crew.CompanyStructure.budget_micro_usd, metered by the runtime
+  // (crew.MeteringRun), where over budget is an ask, not a stop.
+  int64 default_day_job_micro_usd = 14 [(spec.default_int) = 1000000, (spec.assert_ge) = 0];
+  int64 default_above_and_beyond_micro_usd = 15 [(spec.default_int) = 1000000, (spec.assert_ge) = 0];
+  int64 default_reserve_micro_usd = 16 [(spec.default_int) = 2000000, (spec.assert_ge) = 0];
+  int64 personal_micro_usd = 17 [(spec.default_int) = 500000, (spec.assert_ge) = 0];
+
+  // scripted_model_tenants lists the tenants whose callers get the
+  // `harness-scripted` stand-in (decisions/harness-scotty-scenarios-2026-10-02.md
+  // §1.3): when the caller's SPIFFE ID is in one of these tenants AND the newest
+  // user turn carries `[[script:<name>]]`, the reply follows the script
+  // services/llmproxy/scripts/<name>.yaml instead of a provider call. Any other
+  // turn, from these tenants too, goes to the real model. Dev and pilot list
+  // `harness`, `harness-b`; production lists none.
+  repeated string scripted_model_tenants = 18 [(spec.assert_max_size) = 16, (spec.assert_element_max_size) = 128];
+}
+
+// LlmProxyState is this service's state root, stored in kernel's cluster. Empty today
+// — no metering/usage state exists yet (a later phase, see the design doc's "Rate
+// limiting / metering" section). Declared now, not left absent, because kernel expects
+// every service in the build to host one, per servicemanager's own generated wiring.
+message LlmProxyState {
+  option (spec.service_state) = {label: ["kernel"]};
+}
+
+// Role mirrors llm.rs::Role exactly (User | Assistant) — see the file comment there for
+// why this is Anthropic's own shape, not a scotty-specific wrapping.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_USER = 1;
+  ROLE_ASSISTANT = 2;
+}
+
+// ContentBlock mirrors llm.rs::ContentBlock's three shapes: the model's own text, a
+// tool_use it asked for (echoed back so Anthropic can match it to the result that
+// follows), and the tool_result the calling service sends back after dispatching it
+// LOCALLY (this service never dispatches a tool itself — see the file header).
+message ContentBlock {
+  oneof block {
+    string text = 1;
+    ToolUse tool_use = 2;
+    ToolResult tool_result = 3;
+  }
+}
+
+message ToolUse {
+  string id = 1;
+  string name = 2;
+  // input is a JSON object, carried as a string rather than google.protobuf.Struct:
+  // this proxy is deliberately provider-shape-agnostic about tool arguments (they are
+  // whatever the calling service's own MCP tool schema says), and re-parsing them here
+  // would be a second, potentially-drifting copy of a schema this service does not own.
+  string input_json = 3;
+}
+
+message ToolResult {
+  string tool_use_id = 1;
+  string content = 2;
+}
+
+message Message {
+  Role role = 1;
+  repeated ContentBlock content = 2 [(spec.assert_max_size) = 64];
+}
+
+// ToolSpec mirrors llm.rs::ToolSpec, in Anthropic's own tool-use shape.
+message ToolSpec {
+  string name = 1;
+  string description = 2;
+  string input_schema_json = 3;
+}
+
+message GenerateCompletionRequest {
+  // model_alias, not a raw provider model id: this service owns the alias-to-provider
+  // mapping (today one Anthropic model; later, possibly a locally-hosted model on
+  // specialized hardware — see the design proposal's "future" note), so a caller never
+  // needs to know or change which provider actually serves a given alias.
+  string model_alias = 1 [(spec.assert_required) = true];
+  string system = 2;
+  repeated Message messages = 3 [(spec.assert_required) = true, (spec.assert_max_size) = 256];
+  repeated ToolSpec tools = 4 [(spec.assert_max_size) = 128];
+  int32 max_tokens = 5 [(spec.default_int) = 4096];
+}
+
+message GenerateCompletionResponse {
+  oneof result {
+    string text = 1;
+    ToolUse tool_use = 2;
+  }
+  // usage is always populated: input/output token counts, needed the moment metering
+  // (Phase 3 of the design doc) lands, and cheap to carry now rather than widen the
+  // response message later.
+  Usage usage = 3;
+}
+
+message Usage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  // cost_micro_usd and bucket: what this call was charged and to which bucket
+  // (crew runtime §10). Set by GenerateSessionTurn; BUDGET_BUCKET_UNSPECIFIED
+  // on a GenerateCompletionAsService response.
+  int64 cost_micro_usd = 3;
+  BudgetBucket bucket = 4;
+  // cache_read_input_tokens: prompt tokens served from the provider's cache,
+  // not counted in input_tokens. Set by GenerateSessionTurn.
+  int64 cache_read_input_tokens = 5;
+}
+
+// ============================================================================
+// A29 session path (backlog §1.3)
+// ============================================================================
+
+// SessionTurnRequest asks for ONE turn of ONE thread's session. There is no
+// session_id field and there must never be one (backlog §1.8 item 2): llmproxy
+// forms it as "<caller SPIFFE ID>#<thread_id>" from the authenticated context,
+// so a caller in tenant X naming tenant Y's thread_id gets a different session.
+message SessionTurnRequest {
+  // thread_id is set by the dispatcher, never by the model (A29, §2.3).
+  string thread_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+  // parent_thread_id is set on a revived thread (§2.4); logged, not interpreted.
+  string parent_thread_id = 2 [(spec.assert_max_size) = 128];
+  // turn_id is opaque and dispatcher-minted. It is echoed as
+  // params._meta.turn in every tools/call frame of this turn (BQ3), so the dog
+  // can map a frame back to (thread, event_seq, step) without the thread id
+  // riding the MCP path.
+  string turn_id = 3 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+  // model_alias follows the existing alias doctrine (GenerateCompletionRequest).
+  string model_alias = 4 [(spec.assert_required) = true];
+  // bucket is charged for this turn (crew runtime §10).
+  BudgetBucket bucket = 5 [(spec.assert_enum_defined) = true];
+  // system: standing orders + voice + rules + framing (crew runtime §2.1 step 3).
+  string system = 6;
+  // messages is the thread's context as the dispatcher holds it (re-primed on
+  // revival). This service stores no transcript.
+  repeated Message messages = 7 [(spec.assert_required) = true, (spec.assert_max_size) = 256];
+  // tools is the dog's offered tool set (T2 intersection). Non-empty with no
+  // open BrokerToolCallback stream is FAILED_PRECONDITION, before any provider call.
+  repeated ToolSpec tools = 8 [(spec.assert_max_size) = 128];
+  // max_tool_rounds is the turn ceiling, clamped to Config.max_tool_rounds_ceiling.
+  int32 max_tool_rounds = 9 [(spec.assert_ge) = 0];
+  int32 max_tokens = 10 [(spec.default_int) = 4096];
+}
+
+enum StopReason {
+  STOP_REASON_UNSPECIFIED = 0;
+  STOP_REASON_END_TURN = 1;
+  STOP_REASON_MAX_TOOL_ROUNDS = 2;
+  STOP_REASON_BUDGET_EXHAUSTED = 3;
+  // The caller's callback stream dropped mid-turn and was not re-opened within
+  // Config.callback_reopen_grace_ms; the dispatcher replays from its last
+  // checkpoint (A1).
+  STOP_REASON_CALLBACK_LOST = 4;
+  STOP_REASON_PROVIDER_ERROR = 5;
+}
+
+message SessionTurnResponse {
+  // appended: the assistant, tool_use and tool_result messages this turn
+  // produced, in order. The dispatcher appends them to its context.
+  repeated Message appended = 1 [(spec.assert_max_size) = 256];
+  StopReason stop_reason = 2 [(spec.assert_enum_defined) = true];
+  Usage usage = 3;
+}
+
+message GetBudgetRequest {}
+
+message BucketBalance {
+  BudgetBucket bucket = 1 [(spec.assert_enum_defined) = true];
+  int64 limit_micro_usd = 2;
+  int64 spent_micro_usd = 3;
+}
+
+// GetBudgetResponse is the caller's own buckets today, keyed by its
+// authenticated identity (crew runtime §10). Backs the dogs' get_budget tool.
+message GetBudgetResponse {
+  repeated BucketBalance buckets = 1 [(spec.assert_max_size) = 4];
+  // resets_at_ms is the tenant-local midnight (A18).
+  int64 resets_at_ms = 2;
+}
+
+message ListModelsRequest {}
+
+// ModelAlias, not a bare string: method_collection's order_by needs a real field
+// to sort on (same reason jwk.Jwks wraps its keys in a message rather than
+// returning bare strings).
+message ModelAlias {
+  string name = 1;
+}
+
+message ListModelsResponse {
+  repeated ModelAlias model_aliases = 1 [(spec.assert_max_size) = 64];
+}
+
+service LlmProxy {
+  // S2S ONLY (same doctrine as weather.proto's Weather service, same reasoning:
+  // ValidateServiceSurfaces rejects a service mixing caller-surface kinds).
+  //
+  // The caller list is the fleet's, not this proto's: the fleet build admits
+  // exactly the services in the fleet that declare (spec.grpc_s2s_client) of
+  // llmproxy.LlmProxy (doppelganger in the proof fleet; Scotty's services in
+  // Seabeam's). A standalone build of this repo admits no callers. Not every
+  // service may spend the shared model credential, which is the point of this
+  // service existing; the fleet decides which ones, deliberately, by declaring
+  // the client.
+  option (spec.service_s2s) = {auth_services: ["doppelganger"]};
+
+  // GenerateCompletionAsService — no human in the loop (a system job, a rule firing, a
+  // background summarization — anything the calling service does on its own
+  // behalf, not a specific user's). The identity that matters is the CALLING
+  // SERVICE's own, not any user it might be acting for.
+  rpc GenerateCompletionAsService(GenerateCompletionRequest) returns (GenerateCompletionResponse);
+
+  // GenerateSessionTurn — one turn of one thread's session (A29). Unary (BQ4):
+  // the first visible response is the dog's own post_room call mid-turn.
+  rpc GenerateSessionTurn(SessionTurnRequest) returns (SessionTurnResponse);
+
+  // BrokerToolCallback — the caller's reverse MCP binding (A29, BQ1/BQ2; the
+  // design record's OpenToolCallback, renamed because "Open" is not in tacplus's
+  // closed verb registry and "Broker" is the verb of the synthesized
+  // Broker<Service>McpSession carriers this mirrors). The caller opens it; this service SENDS mcp.McpRequest frames (tools/call) and
+  // RECEIVES mcp.McpResponse frames. One stream per caller SPIFFE identity,
+  // shared by every thread of that caller; a re-open replaces the old stream
+  // (latest wins). Identity is the stream's authenticated caller, never anything
+  // in a frame.
+  rpc BrokerToolCallback(stream mcp.McpResponse) returns (stream mcp.McpRequest);
+
+  // GetBudget — the caller's own buckets today (crew runtime §10).
+  rpc GetBudget(GetBudgetRequest) returns (GetBudgetResponse);
+
+  // ListModels — which model_aliases this proxy currently serves. Any allowed
+  // caller may ask; this carries no policy of its own to protect. A short,
+  // fixed, in-process list, never a store, so SNAPSHOT with a small max_items
+  // fits — not PAGE, which is for something that can actually grow unbounded.
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse) {
+    option (spec.method_collection) = {
+      mode: COLLECTION_MODE_SNAPSHOT,
+      order_by: ["name"],
+      max_items: 16
+    };
+  }
+}

@@ -1,0 +1,51 @@
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package tenantecho;
+
+import "sys/spec.proto";
+
+// ---------------------------------------------------------------------------
+// tenantecho: the smallest tenant-owned service. One instance runs per tenant
+// namespace; the gateway must route each tenant's call to that tenant's
+// instance. Ping answers with the message, which instance served it (its own
+// service identity, tenants/<tenant>/services/tenantecho) and the caller's
+// tenant, so a misrouted call is visible in the response itself.
+// ---------------------------------------------------------------------------
+option (spec.service) = {name: "tenantecho", tenant_owned: true};
+
+message Config {
+  option (spec.grpc_config) = {service_name: "tenantecho"};
+
+  // greeting is returned with every ping; per-tenant config is the second thing
+  // this proves (each instance gets its own tenant's Config).
+  string greeting = 1;
+}
+
+message PingRequest {
+  string message = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 4096];
+}
+
+message PingResponse {
+  // message is the request's message, as received.
+  string message = 1;
+  // served_by is the answering instance's own service identity path, e.g.
+  // tenants/acme/services/tenantecho.
+  string served_by = 2;
+  // caller_namespace is the tenant namespace on the caller's token.
+  string caller_namespace = 3;
+  // greeting is this instance's configured greeting.
+  string greeting = 4;
+}
+
+service TenantEcho {
+  option (spec.service_c2s) = {};
+
+  // Pings a tenant instance: echoes the message back, naming the instance that answered and the
+  // caller's tenant. Use it to check that a call lands in your own tenant.
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+}

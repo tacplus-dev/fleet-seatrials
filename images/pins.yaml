@@ -1,0 +1,3 @@
+# The tacplus commit this fleet generates and builds with (branch registry-and-floor
+# until it is merged and released; then this becomes the released MAJOR.MINOR).
+tacplus_commit: 0369af88de25f97e1e6835650b65ab6ec95db639

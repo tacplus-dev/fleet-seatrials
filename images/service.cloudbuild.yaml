@@ -1,0 +1,64 @@
+# Builds one fleet service's image. The build source is a local checkout of the
+# service at the commit fleet.lock names, with the fleet's merged proto tree
+# copied in at .fleet/proto (images/build.sh does both). Steps: generate against
+# the fleet's protos with the fleet's tacplus image, build the binary for the
+# service's language, bake the service's own Dockerfile, push by lock commit and
+# as :local (what the operator's local-images mode references).
+substitutions:
+  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _SERVICE: unknown
+  _LANG: go
+  _MAIN: .            # go: the main package to build
+  _JAR: ""            # java: the jar the Dockerfile copies (server/target/<name>.jar)
+  _COMMIT: unknown
+  _FLEET_COMMIT: unknown
+  _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus:seatrials
+steps:
+  - id: generate
+    name: ${_TACPLUS_IMAGE}
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        tacplus version
+        tacplus build --src /workspace/.fleet/proto
+  - id: build
+    name: ${_TACPLUS_IMAGE}
+    entrypoint: bash
+    env: ["CARGO_HOME=/workspace/.cargo", "GOFLAGS=-mod=mod", "GOCACHE=/workspace/.gocache"]
+    args:
+      - -ceu
+      - |
+        case "${_LANG}" in
+          go)
+            mkdir -p bin
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "bin/${_SERVICE}" "${_MAIN}"
+            ;;
+          rust)
+            cargo build --release
+            # The Dockerfiles that bundle a web app or clients get empty dirs here:
+            # this fleet ships the API surface, not Seabeam's web app.
+            mkdir -p webapp-dist web-dist clients
+            ;;
+          java)
+            mvn -q -B -o package -DskipTests || mvn -q -B package -DskipTests
+            cp /usr/local/bin/launcher launcher-linux-amd64
+            ;;
+          *) echo "unknown language ${_LANG}"; exit 1 ;;
+        esac
+  - id: image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=VERSION=${_FLEET_COMMIT}
+      - --build-arg=VCS_REF=${_COMMIT}
+      - --build-arg=TARGETARCH=amd64
+      - --tag=${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
+      - --tag=${_REGISTRY}/schematic/${_SERVICE}:local
+      - .
+images:
+  - ${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
+  - ${_REGISTRY}/schematic/${_SERVICE}:local
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 3600s

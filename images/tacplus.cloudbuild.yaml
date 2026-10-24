@@ -1,0 +1,23 @@
+# Builds the tacplus image this fleet generates and builds with, from a local
+# checkout of tacplus at the pinned commit (images/build.sh clones it and submits
+# that directory as the build source; tacplus-dev repos are private, so Cloud
+# Build never clones anything itself).
+substitutions:
+  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _TACPLUS_COMMIT: unknown
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=images/tacplus.Dockerfile
+      - --build-arg=VERSION=v2.2.0-seatrials
+      - --build-arg=VCS_REF=${_TACPLUS_COMMIT}
+      - --tag=${_REGISTRY}/ci/tacplus:${_TACPLUS_COMMIT}
+      - --tag=${_REGISTRY}/ci/tacplus:seatrials
+      - .
+images:
+  - ${_REGISTRY}/ci/tacplus:${_TACPLUS_COMMIT}
+  - ${_REGISTRY}/ci/tacplus:seatrials
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s
