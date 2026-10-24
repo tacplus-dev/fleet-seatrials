@@ -44,7 +44,7 @@ steps:
             cargo build --release
             ;;
           java)
-            mvn -q -B package -DskipTests
+            mvn -q -B package -Dmaven.test.skip=true
             ;;
           *) echo "unknown language ${_LANG}"; exit 1 ;;
         esac
