@@ -35,9 +35,14 @@ build_tacplus() {
   gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
   rm -rf "$src"
-  # The build image the service steps run in: toolchains + this tacplus.
+  # The build image the service steps run in: toolchains + this tacplus + the
+  # Java launcher, built from its pinned source placed beside the Dockerfile.
+  local launcher_commit; launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
+  rm -rf "$here/images/launcher" && git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
+    && git -C "$here/images/launcher" checkout -q "$launcher_commit" && rm -rf "$here/images/launcher/.git"
   gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
+  rm -rf "$here/images/launcher"
 }
 
 # language and go main package, read from the service checkout itself.

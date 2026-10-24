@@ -5,3 +5,4 @@ charts/
 deploy/bootstrap/crypto.yaml
 deploy/bootstrap/ca.pem
 deploy/bootstrap/configs/
+images/launcher/
