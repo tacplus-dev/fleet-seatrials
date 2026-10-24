@@ -46,5 +46,7 @@ cd client && go build -o seatrials ./cmd/seatrials && export SEATRIALS_CA=../dep
 ./seatrials tenant create /tenants/alpha; ./seatrials tenant cred /tenants/alpha alpha   # same for beta
 ./seatrials login --as alpha; ./seatrials ping --as alpha hello      # served_by names tenants/alpha
 ./seatrials login --as beta;  ./seatrials ping --as beta hello       # served_by names tenants/beta
-./seatrials ask --as alpha "what matters?"                           # through doppelganger and llmproxy
+./seatrials context push --as alpha --tenant ~/workspace/jody        # the tenant's shared doppelganger context
+./seatrials context push --as alpha ~/my-notes                       # the caller's own context
+./seatrials ask --as alpha "what matters?"                           # alpha's doppelganger, through llmproxy
 ```
