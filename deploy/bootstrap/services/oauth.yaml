@@ -16,7 +16,7 @@ providers:
     client_id: YOUR_GOOGLE_CLIENT_ID
     client_secret: YOUR_GOOGLE_CLIENT_SECRET
     allowed_redirect_uri_prefixes:
-      - https://schematic.146.148.80.132.nip.io/
+      - https://seatrials.tacplus.dev/
     scopes:
       - openid
       - profile
