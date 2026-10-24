@@ -50,8 +50,8 @@ import (
 	tenantecho_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/services/tenantecho"
 	jwk_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/sys/jwk"
 	key_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/sys/key"
-	tokenrequest_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/sys/tokenrequest"
 	token_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/sys/token"
+	tokenrequest_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/sys/tokenrequest"
 )
 
 var (
@@ -113,8 +113,8 @@ func home() (string, error) {
 }
 
 type credFile struct {
-	Key     json.RawMessage `json:"key"`      // sys/key.Key as protojson (private)
-	Pair    json.RawMessage `json:"pair"`     // common/credentials.CredPair as protojson (public)
+	Key     json.RawMessage `json:"key"`  // sys/key.Key as protojson (private)
+	Pair    json.RawMessage `json:"pair"` // common/credentials.CredPair as protojson (public)
 	PairID  string          `json:"pair_id"`
 	Tenant  string          `json:"tenant"`
 	Created int64           `json:"created"`
