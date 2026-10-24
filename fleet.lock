@@ -37,9 +37,9 @@ services:
     - name: eventbus
       id: 18
       repo: https://github.com/tacplus-dev/eventbus.git
-      commit: 60a51570771b2ccd4be7dea369d6b5db5ba133e4
+      commit: 3ec6ccf4b54ee1f6ef2ab05c28504f2e23eacfe8
       contract: https://github.com/tacplus-dev/eventbus.git
-      contract_commit: 60a51570771b2ccd4be7dea369d6b5db5ba133e4
+      contract_commit: 3ec6ccf4b54ee1f6ef2ab05c28504f2e23eacfe8
       depends:
         - kernel
     - name: stratum
@@ -71,9 +71,9 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 0662ee6e27c4a091d96a9f616471705305cbb4d8
+      commit: 2059ae80c4b34852e3b643bbc6a44787adf086a6
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 0662ee6e27c4a091d96a9f616471705305cbb4d8
+      contract_commit: 2059ae80c4b34852e3b643bbc6a44787adf086a6
       depends:
         - llmproxy
     - name: tenantecho
