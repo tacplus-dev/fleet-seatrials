@@ -19,3 +19,32 @@ client of it), writes `fleet.lock`, and leaves `build/proto` as the merged tree 
 services are generated from.
 
 The cluster is created for a trial and destroyed after it; nothing here is long-lived.
+
+## Layout
+
+- `fleet.yaml`, `fleet.lock`, `build/proto` — the fleet: what runs, at which commits, and the merged proto tree.
+- `cluster/` — create and destroy the small GKE cluster.
+- `images/` — Cloud Build pipeline: `images/build.sh tacplus` (the fleet's tacplus and build images at
+  `images/pins.yaml`), `images/build.sh all` (every service at its locked commit, into Artifact Registry as
+  `schematic/<service>:<fleet commit>` and `:local`). Every image runs under the launcher.
+- `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
+  (CA and cluster PKI, once), `secrets.sh`, `apply.sh` (render and apply), `bootstrap/` (operator.yaml and
+  services/*.yaml are committed; crypto.yaml, ca.pem and configs/ are not).
+- `client/` — `seatrials`, the local client: a tacplus client project generated against build/proto. It
+  authenticates with a credential pair (keygen → the public half goes into the fleet config), gets a kernel
+  token through the gateway, administers tenants with the root pair, and runs the two proofs (`ping`, `ask`).
+
+## The proofs, end to end
+
+```
+cluster/create.sh && deploy/init.sh && images/build.sh tacplus && images/build.sh all
+deploy/secrets.sh && deploy/apply.sh
+cd client && go build -o seatrials ./cmd/seatrials && export SEATRIALS_CA=../deploy/bootstrap/ca.pem
+./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again
+./seatrials keygen --tenant /tenants/alpha alpha; ./seatrials keygen --tenant /tenants/beta beta
+./seatrials login --as root
+./seatrials tenant create /tenants/alpha; ./seatrials tenant cred /tenants/alpha alpha   # same for beta
+./seatrials login --as alpha; ./seatrials ping --as alpha hello      # served_by names tenants/alpha
+./seatrials login --as beta;  ./seatrials ping --as beta hello       # served_by names tenants/beta
+./seatrials ask --as alpha "what matters?"                           # through doppelganger and llmproxy
+```
