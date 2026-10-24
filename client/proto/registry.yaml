@@ -1,0 +1,8 @@
+# Managed by tacplus — do not edit IDs manually.
+registries:
+    - https://github.com/tacplus-dev/registry.git
+services:
+    - name: seatrials
+      id: 104
+      contract: https://github.com/tacplus-dev/fleet-seatrials.git
+      visibility: private

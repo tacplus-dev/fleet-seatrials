@@ -1,0 +1,11 @@
+# The sea-trials client: a local program that authenticates with a credential
+# pair, gets a token from kernel through the gateway, and calls the fleet's
+# client-facing services. Generated against the fleet's merged protos.
+kind: client
+language: go
+src: proto
+output-dir: tacplus
+output-name: tacplus
+header: |
+  Copyright (c) 2026 Jody Scott
+  SPDX-License-Identifier: Apache-2.0

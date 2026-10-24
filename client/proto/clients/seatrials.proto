@@ -1,0 +1,15 @@
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package seatrials;
+
+import "sys/spec.proto";
+
+// The sea-trials client calls these client-facing surfaces through the gateway.
+option (spec.service) = {name: "seatrials"};
+option (spec.grpc_c2s_client) = {service: "kernel.Mint"};
+option (spec.grpc_c2s_client) = {service: "kernel.TenantAdmin"};
+option (spec.grpc_c2s_client) = {service: "tenantecho.TenantEcho"};
+option (spec.grpc_c2s_client) = {service: "doppelganger.Doppelganger"};
