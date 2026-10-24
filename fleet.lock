@@ -2,7 +2,7 @@
 tacplus: "2.2"
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: b0527d877874225a91c3dede9c3a58dfc8870e3b
+      commit: 5740e5a870ea9dd07dac76f7bfaa401f0b5687f3
 services:
     - name: kernel
       id: 8
@@ -55,8 +55,14 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: bb2c078275da90758ff31309bb809e01abc62fa2
+      commit: d674111f06cf54477c315c5bfb7a8d0e12c70860
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: bb2c078275da90758ff31309bb809e01abc62fa2
+      contract_commit: d674111f06cf54477c315c5bfb7a8d0e12c70860
       depends:
         - llmproxy
+    - name: tenantecho
+      id: 103
+      repo: https://github.com/tacplus-dev/tenantecho.git
+      commit: 6c1307cee56ef54e3a240a26205d4d9e0a45297a
+      contract: https://github.com/tacplus-dev/tenantecho.git
+      contract_commit: 6c1307cee56ef54e3a240a26205d4d9e0a45297a

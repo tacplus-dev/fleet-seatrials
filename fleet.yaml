@@ -5,9 +5,9 @@
 # smallest set the fleet build's closure allows; a service is listed only
 # because something in the fleet needs it.
 #
-# A second proof rides along once it exists: a trivial tenant-owned service
-# deployed into two tenant namespaces, to show the gateway routes each tenant's
-# call to that tenant's instance.
+# The second proof: tenantecho, a trivial tenant-owned service deployed into two
+# tenant namespaces, to show the gateway routes each tenant's call to that
+# tenant's instance.
 registries:
   - https://github.com/tacplus-dev/registry.git
 tacplus: "2.2"
@@ -30,3 +30,5 @@ services:
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger
     repo: https://github.com/tacplus-dev/doppelganger.git
+  - name: tenantecho
+    repo: https://github.com/tacplus-dev/tenantecho.git
