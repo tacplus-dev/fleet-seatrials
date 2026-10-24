@@ -174,9 +174,12 @@ enum Role {
 // tool_use it asked for (echoed back so Anthropic can match it to the result that
 // follows), and the tool_result the calling service sends back after dispatching it
 // LOCALLY (this service never dispatches a tool itself — see the file header).
+// A prompt is model-sized: a caller puts whole documents in a text block
+// (doppelganger sends a tenant's entire context), so text is capped at 4 MiB,
+// not the 32 KiB default for an unbounded string.
 message ContentBlock {
   oneof block {
-    string text = 1;
+    string text = 1 [(spec.assert_max_size) = 4194304];
     ToolUse tool_use = 2;
     ToolResult tool_result = 3;
   }
@@ -215,7 +218,8 @@ message GenerateCompletionRequest {
   // specialized hardware — see the design proposal's "future" note), so a caller never
   // needs to know or change which provider actually serves a given alias.
   string model_alias = 1 [(spec.assert_required) = true];
-  string system = 2;
+  // system is model-sized too (see ContentBlock.text).
+  string system = 2 [(spec.assert_max_size) = 4194304];
   repeated Message messages = 3 [(spec.assert_required) = true, (spec.assert_max_size) = 256];
   repeated ToolSpec tools = 4 [(spec.assert_max_size) = 128];
   int32 max_tokens = 5 [(spec.default_int) = 4096];
@@ -223,7 +227,8 @@ message GenerateCompletionRequest {
 
 message GenerateCompletionResponse {
   oneof result {
-    string text = 1;
+    // The model's answer; sized like a prompt (see ContentBlock.text).
+    string text = 1 [(spec.assert_max_size) = 4194304];
     ToolUse tool_use = 2;
   }
   // usage is always populated: input/output token counts, needed the moment metering
