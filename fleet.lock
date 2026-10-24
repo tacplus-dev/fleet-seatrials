@@ -21,9 +21,9 @@ services:
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
-      commit: b09b6ba6d072c2006d443415854153cb61c45937
+      commit: 20b764efe46821fab7ede7dd210c4ec2d1a7f90e
       contract: https://github.com/tacplus-dev/gateway.git
-      contract_commit: b09b6ba6d072c2006d443415854153cb61c45937
+      contract_commit: 20b764efe46821fab7ede7dd210c4ec2d1a7f90e
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
