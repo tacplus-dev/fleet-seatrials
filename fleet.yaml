@@ -18,6 +18,14 @@ services:
     repo: https://github.com/tacplus-dev/opa.git
   - name: gateway
     repo: https://github.com/tacplus-dev/gateway.git
+  # gateway reads letsencrypt's state; letsencrypt publishes through eventbus and
+  # its records are read through stratum's query plane.
+  - name: letsencrypt
+    repo: https://github.com/tacplus-dev/letsencrypt.git
+  - name: eventbus
+    repo: https://github.com/tacplus-dev/eventbus.git
+  - name: stratum
+    repo: https://github.com/tacplus-dev/stratum.git
   - name: llmproxy
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger

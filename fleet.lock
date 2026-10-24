@@ -1,0 +1,62 @@
+# Written by tacplus fleet build. The exact commits this fleet was resolved to; regenerate, do not edit.
+tacplus: "2.2"
+registries:
+    - repo: https://github.com/tacplus-dev/registry.git
+      commit: b0527d877874225a91c3dede9c3a58dfc8870e3b
+services:
+    - name: kernel
+      id: 8
+      repo: https://github.com/tacplus-dev/kernel.git
+      commit: de380a8cc5b51e7445f98d69c05d8414db0cc2a0
+      contract: https://github.com/tacplus-dev/kernel.git
+      contract_commit: de380a8cc5b51e7445f98d69c05d8414db0cc2a0
+      depends:
+        - opa
+    - name: opa
+      id: 29
+      repo: https://github.com/tacplus-dev/opa.git
+      commit: 90aea513c21da3afcd8c8823873042f6d0157657
+      contract: https://github.com/tacplus-dev/opa.git
+      contract_commit: 90aea513c21da3afcd8c8823873042f6d0157657
+    - name: gateway
+      id: 7
+      repo: https://github.com/tacplus-dev/gateway.git
+      commit: f75d0208bd65ab8741d4fd74e8de4c365fa48514
+      contract: https://github.com/tacplus-dev/gateway.git
+      contract_commit: f75d0208bd65ab8741d4fd74e8de4c365fa48514
+    - name: letsencrypt
+      id: 9
+      repo: https://github.com/tacplus-dev/letsencrypt.git
+      commit: 2e351a3cef15969010d705b1856fd9b5bb74f4a3
+      contract: https://github.com/tacplus-dev/letsencrypt.git
+      contract_commit: 2e351a3cef15969010d705b1856fd9b5bb74f4a3
+      depends:
+        - kernel
+        - eventbus
+        - stratum
+    - name: eventbus
+      id: 18
+      repo: https://github.com/tacplus-dev/eventbus.git
+      commit: 6ade048a85fefd1f59caf98a5f88c867e518ff85
+      contract: https://github.com/tacplus-dev/eventbus.git
+      contract_commit: 6ade048a85fefd1f59caf98a5f88c867e518ff85
+    - name: stratum
+      id: 34
+      repo: https://github.com/tacplus-dev/stratum.git
+      commit: 101faa4136fb5fe74f0e2960d1901bf25f7c2949
+      contract: https://github.com/tacplus-dev/stratum.git
+      contract_commit: 101faa4136fb5fe74f0e2960d1901bf25f7c2949
+    - name: llmproxy
+      id: 75
+      repo: https://github.com/tacplus-dev/llmproxy.git
+      commit: 89dbb3650b945d1067ec773020765e718458c6a2
+      contract: https://github.com/tacplus-dev/llmproxy.git
+      contract_commit: 89dbb3650b945d1067ec773020765e718458c6a2
+    - name: doppelganger
+      id: 101
+      repo: https://github.com/tacplus-dev/doppelganger.git
+      commit: bb2c078275da90758ff31309bb809e01abc62fa2
+      contract: https://github.com/tacplus-dev/doppelganger.git
+      contract_commit: bb2c078275da90758ff31309bb809e01abc62fa2
+      depends:
+        - llmproxy
