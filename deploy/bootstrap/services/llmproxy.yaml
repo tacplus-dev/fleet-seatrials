@@ -1,12 +1,14 @@
-# llmproxy reaches Anthropic with federated identity, no API key. The four
-# federation ids below are the fleet's Anthropic workspace binding; Jody
-# supplies them (they are not in any repo). Until they are set, model calls
-# fail and doppelganger's answers surface that; everything up to the call still
-# proves out.
-anthropic_federation_rule_id: ""
-anthropic_organization_id: ""
-anthropic_service_account_id: ""
-anthropic_workspace_id: ""
+# llmproxy reaches Anthropic with federated identity, no API key: kernel signs
+# an assertion for llmproxy's own identity (aud https://api.anthropic.com) and
+# Anthropic's Workload Identity Federation exchanges it under the rule below.
+# These are ids, not secrets. Console objects (2026-10-24): issuer "seatrials"
+# (https://seatrials.tacplus.dev, OIDC discovery), service account
+# "llmproxy-seatrials", rule "llmproxy-seatrials" (sub
+# spiffe://local.dev/system/services/llmproxy, scope workspace:developer).
+anthropic_federation_rule_id: fdrl_01Fvxu1oSKHN6rwtdZmRbGY8
+anthropic_organization_id: deec78e0-a50d-4817-89e4-043b3d94a5a0
+anthropic_service_account_id: svac_01EoVk8wqp7sVYgBkRyyd5MT
+anthropic_workspace_id: wrkspc_017AfVbSBgLY399kXGDRtQ6e
 # The aliases this proxy serves. The provider model behind an alias is config:
 # change it here and apply; callers keep asking for the alias. Prices are
 # micro-USD per token (here $3 / $15 per million).
