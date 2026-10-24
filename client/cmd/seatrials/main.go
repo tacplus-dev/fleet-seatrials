@@ -8,6 +8,7 @@
 //
 //	seatrials keygen NAME [--tenant /tenants/alpha] [--grant TOKEN]...   # prints the cred_pair to configure
 //	seatrials login  [--as NAME]                                          # proof → token (~/.seatrials/NAME.token)
+//	seatrials context push DIR [--as NAME] [--tenant]                     # replace a doppelganger context with DIR's Markdown
 //	seatrials tenant create NAMESPACE [--as root]
 //	seatrials tenant cred NAMESPACE CREDNAME [--as root]                  # installs CREDNAME's pair under the tenant
 //	seatrials ping MESSAGE [--as NAME]
@@ -74,6 +75,8 @@ func envOr(k, d string) string {
 var tenantAdminGrants = []string{
 	"KERNEL_TENANT_ADMIN_GET_TENANT_CONFIG",
 	"KERNEL_TENANT_ADMIN_UPDATE_TENANT_CONFIG",
+	// The tenant's shared doppelganger context is the tenant admin's to set.
+	"DOPPELGANGER_DOPPELGANGER_UPDATE_TENANT_CONTEXT",
 }
 
 func main() {
@@ -107,6 +110,11 @@ func run(args []string) error {
 		return fmt.Errorf("unknown tenant command %q", args[1])
 	case "ping":
 		return ping(args[1:])
+	case "context":
+		if len(args) < 2 || args[1] != "push" {
+			return errors.New("usage: seatrials context push DIR [--as NAME] [--tenant]")
+		}
+		return contextPush(args[2:])
 	case "ask":
 		return ask(args[1:])
 	}
@@ -546,6 +554,68 @@ func ask(args []string) error {
 		return err
 	}
 	resp, err := c.GenerateAnswer(ctx, &doppelganger_pb.GenerateAnswerRequest{SessionId: sess.GetSessionId(), Question: q})
+	if err != nil {
+		return err
+	}
+	return printProto(resp)
+}
+
+// contextPush replaces a doppelganger context with the Markdown files under
+// DIR: the caller's own by default, the tenant's shared context with --tenant
+// (the caller's pair must hold that RPC's grant). .git and inbox are skipped,
+// as doppelganger itself skips them.
+func contextPush(args []string) error {
+	fs := flag.NewFlagSet("context push", flag.ContinueOnError)
+	as := fs.String("as", "root", "credential name")
+	tenant := fs.Bool("tenant", false, "replace the tenant's shared context instead of the caller's own")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: seatrials context push DIR [--as NAME] [--tenant]")
+	}
+	dir := fs.Arg(0)
+	var files []*doppelganger_pb.ContextFile
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == "inbox") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(p, ".md") {
+			return nil
+		}
+		content, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		files = append(files, &doppelganger_pb.ContextFile{Path: filepath.ToSlash(rel), Content: content})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	m, done, err := manager(*as)
+	if err != nil {
+		return err
+	}
+	defer done()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	c := m.Grpc().Clients().Services().DoppelgangerClient()
+	if *tenant {
+		resp, err := c.UpdateTenantContext(ctx, &doppelganger_pb.UpdateTenantContextRequest{Files: files})
+		if err != nil {
+			return err
+		}
+		return printProto(resp)
+	}
+	resp, err := c.UpdateContext(ctx, &doppelganger_pb.UpdateContextRequest{Files: files})
 	if err != nil {
 		return err
 	}
