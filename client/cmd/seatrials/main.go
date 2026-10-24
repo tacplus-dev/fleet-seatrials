@@ -35,7 +35,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -400,7 +402,9 @@ func tenantCred(args []string) error {
 	defer cancel()
 	admin := m.Grpc().Clients().Services().TenantAdminClient()
 	cfg, err := admin.GetTenantConfig(ctx, &kernel_pb.GetTenantConfigRequest{TenantNamespace: ns})
-	if err != nil {
+	if status.Code(err) == codes.NotFound {
+		cfg = &tenant_config_pb.TenantConfig{} // a fresh tenant has no config yet
+	} else if err != nil {
 		return fmt.Errorf("GetTenantConfig: %w", err)
 	}
 	if cfg.Kernel == nil {
@@ -421,8 +425,6 @@ func tenantCred(args []string) error {
 	printJSON(map[string]any{"tenant": ns, "cred_pair": pair.GetId(), "cred_pairs": len(cfg.Kernel.CredPairs)})
 	return nil
 }
-
-var _ *tenant_config_pb.TenantConfig // the type GetTenantConfig returns; kept named for readers
 
 // ---------------------------------------------------------------- the proofs
 
