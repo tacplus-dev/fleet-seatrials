@@ -1,0 +1,21 @@
+# Layers the fleet's tacplus binary onto tacplus's full build image. Source is
+# the images/ directory (the Dockerfile only).
+substitutions:
+  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _TACPLUS_COMMIT: unknown
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]
+    args:
+      - build
+      - --file=tacplus-build.Dockerfile
+      - --build-arg=TACPLUS_IMAGE=${_REGISTRY}/ci/tacplus:${_TACPLUS_COMMIT}
+      - --tag=${_REGISTRY}/ci/tacplus-build:${_TACPLUS_COMMIT}
+      - --tag=${_REGISTRY}/ci/tacplus-build:seatrials
+      - .
+images:
+  - ${_REGISTRY}/ci/tacplus-build:${_TACPLUS_COMMIT}
+  - ${_REGISTRY}/ci/tacplus-build:seatrials
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s

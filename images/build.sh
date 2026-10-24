@@ -35,6 +35,9 @@ build_tacplus() {
   gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
   rm -rf "$src"
+  # The build image the service steps run in: toolchains + this tacplus.
+  gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" \
+    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
 }
 
 # language and go main package, read from the service checkout itself.
@@ -54,7 +57,7 @@ build_service() {
   read -r lang main <<<"$(service_facts "$src" "$name")"
   echo "== $name ($lang) @ ${commit:0:12}"
   gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_TACPLUS_IMAGE=$registry/ci/tacplus:$tacplus_commit"
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit"
   rm -rf "$src"
 }
 

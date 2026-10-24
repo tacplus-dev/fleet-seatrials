@@ -11,7 +11,7 @@ substitutions:
   _MAIN: .            # go: the main package to build
   _COMMIT: unknown
   _FLEET_COMMIT: unknown
-  _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus:seatrials
+  _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:seatrials
 steps:
   - id: generate
     name: ${_TACPLUS_IMAGE}
