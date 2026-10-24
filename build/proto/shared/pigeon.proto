@@ -1,0 +1,230 @@
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
+//
+// pigeon — what a dog and a pigeon say to each other: the bodies of
+// coop.PigeonMessage, by direction. The coop carries them as bytes and never
+// parses them; the dog runtime and the pigeon host validate them with the
+// generated validators of ToPigeon / FromPigeon.
+//
+// A KIND is "<system>.<verb>" (e.g. "texas811.prepare_ticket"). Its request
+// and result schemas are the kind owner's, not the platform's: they travel as
+// `request` / `result` bytes that the kind's own proto defines, so a fleet adds
+// kinds without changing this file. The platform knows a kind by name, image
+// and ceilings (coop.Config.kinds).
+//
+// Shared/ because several services use these shapes (every dog with a pigeon
+// allowance, every pigeon image); no one service file owns them.
+syntax = "proto3";
+
+package pigeon;
+
+import "sys/spec.proto";
+
+// ============================================================================
+// 1. Envelope bodies — what travels in coop.PigeonMessage.body, by direction
+// ============================================================================
+
+// ToPigeon is the body of a TO_PIGEON message (dog -> pigeon).
+message ToPigeon {
+  oneof body {
+    // task is the first message; repeats are ignored (idempotent on run_id).
+    PigeonTask task = 1;
+    // answer is the reply to a Question.
+    Answer answer = 2;
+    // cancel: stop at the next safe point and return what you have.
+    Cancel cancel = 3;
+  }
+}
+
+// FromPigeon is the body of a FROM_PIGEON message (pigeon -> dog).
+message FromPigeon {
+  oneof body {
+    // ready: the pigeon has its identity and any lease login; the coop marks
+    // the run RUNNING on it.
+    Ready ready = 4;
+    Progress progress = 1;
+    // question: the pigeon needs a choice the request did not make.
+    Question question = 2;
+    // result is terminal; the pigeon then waits for discard or deadline.
+    PigeonResult result = 3;
+  }
+}
+
+// ============================================================================
+// 2. Task, and the dog's replies to a running pigeon
+// ============================================================================
+
+message PigeonTask {
+  // kind must equal the kind the run was requested with (coop PigeonRun.kind);
+  // the pigeon fails a mismatch FAILURE_CODE_INVALID_TASK.
+  string kind = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // job_id is the caller's work item, echoed in the result for filing.
+  string job_id = 2 [(spec.assert_max_size) = 64];
+  // request is the kind's request message, serialized; the kind's schema
+  // validates it, this file cannot.
+  bytes request = 3 [(spec.assert_max_size) = 1048576];
+}
+
+message Ready {}
+
+message Answer {
+  string question_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // choice is one of Question.options[].id, or empty with text for "other".
+  string choice = 2 [(spec.assert_max_size) = 64];
+  string text = 3 [(spec.assert_max_size) = 2000];
+}
+
+message Cancel {
+  string reason = 1 [(spec.assert_max_size) = 500];
+}
+
+// ============================================================================
+// 3. What a running pigeon sends
+// ============================================================================
+
+message Progress {
+  int32 step = 1 [(spec.assert_ge) = 0];
+  RunMode mode = 2 [(spec.assert_enum_defined) = true];
+  // note is one line for the logbook ("county list loaded", "draft saved").
+  string note = 3 [(spec.assert_max_size) = 500];
+}
+
+// Question: the page offers a choice the request does not decide. The pigeon
+// never guesses a field the request names.
+message Question {
+  string question_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // field is the request field it concerns.
+  string field = 2 [(spec.assert_max_size) = 128];
+  // prompt is scrubbed of any lease value.
+  string prompt = 3 [(spec.assert_max_size) = 1000];
+  repeated Option options = 4 [(spec.assert_max_size) = 32];
+  // snapshot is the page as the pigeon saw it.
+  EvidenceRef snapshot = 5;
+  // answer_by_ms: after this the run ends RESULT_STATUS_NEEDS_ANSWER.
+  int64 answer_by_ms = 6 [(spec.assert_ge) = 0];
+}
+
+message Option {
+  string id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  string label = 2 [(spec.assert_max_size) = 500];
+}
+
+enum RunMode {
+  RUN_MODE_UNSPECIFIED = 0;
+  RUN_MODE_SCRIPT = 1;
+  RUN_MODE_MODEL = 2;
+  // MIXED: script with model takeover at one or more steps.
+  RUN_MODE_MIXED = 3;
+}
+
+// ============================================================================
+// 4. Result
+// ============================================================================
+
+message PigeonResult {
+  string kind = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  RunMode mode_used = 2 [(spec.assert_enum_defined) = true];
+  ResultStatus status = 3 [(spec.assert_enum_defined) = true];
+  // result is the kind's result message, serialized (see PigeonTask.request).
+  bytes result = 4 [(spec.assert_max_size) = 1048576];
+  // evidence: every page/screenshot/download the result relies on (blobstore,
+  // tenant namespace). The dog copies refs onto its own record; never bytes.
+  repeated EvidenceRef evidence = 5 [(spec.assert_max_size) = 64];
+  // failure is set iff status != OK.
+  Failure failure = 6;
+  // recorded_path: set when any step ran in model mode and the run succeeded.
+  // A blob of RecordedStep rows; the promotion input.
+  EvidenceRef recorded_path = 7;
+}
+
+enum ResultStatus {
+  RESULT_STATUS_UNSPECIFIED = 0;
+  RESULT_STATUS_OK = 1;
+  RESULT_STATUS_FAILED = 2;
+  // NEEDS_ANSWER: a Question went unanswered by answer_by_ms.
+  RESULT_STATUS_NEEDS_ANSWER = 3;
+  RESULT_STATUS_CANCELLED = 4;
+}
+
+message Failure {
+  FailureCode code = 1 [(spec.assert_enum_defined) = true];
+  int32 step = 2 [(spec.assert_ge) = 0];
+  // detail is scrubbed of any lease value.
+  string detail = 3 [(spec.assert_max_size) = 2000];
+  // trace: scrubbed step snapshots.
+  EvidenceRef trace = 4;
+}
+
+enum FailureCode {
+  FAILURE_CODE_UNSPECIFIED = 0;
+  // UNRECOGNIZED_PAGE: script mode, and model mode is not allowed for the kind.
+  FAILURE_CODE_UNRECOGNIZED_PAGE = 1;
+  FAILURE_CODE_LOGIN_FAILED = 2;
+  // LEASE_UNAVAILABLE: the coop refused the lease (no store yet).
+  FAILURE_CODE_LEASE_UNAVAILABLE = 3;
+  // DOMAIN_BLOCKED: the egress proxy refused a CONNECT.
+  FAILURE_CODE_DOMAIN_BLOCKED = 4;
+  // PORTAL_REJECTED: the portal's validation message, quoted in detail.
+  FAILURE_CODE_PORTAL_REJECTED = 5;
+  // COMMIT_CONTROL_BLOCKED: the path required actuating a commit control.
+  FAILURE_CODE_COMMIT_CONTROL_BLOCKED = 6;
+  // READBACK_MISMATCH: the read-back compare failed.
+  FAILURE_CODE_READBACK_MISMATCH = 7;
+  // SCRUB_FAILED: a snapshot could not be scrubbed and was withheld.
+  FAILURE_CODE_SCRUB_FAILED = 8;
+  // INVALID_TASK: the body failed the kind's schema, or named another kind.
+  FAILURE_CODE_INVALID_TASK = 9;
+  // CHILD_FAILED: the kind's child process ended without a result.
+  FAILURE_CODE_CHILD_FAILED = 10;
+}
+
+// ============================================================================
+// 5. Evidence and recorded steps
+// ============================================================================
+
+message EvidenceRef {
+  string blob_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
+  string sha256 = 2 [(spec.assert_max_size) = 64];
+  string content_type = 3 [(spec.assert_max_size) = 128];
+  // source_url is scrubbed of query secrets.
+  string source_url = 4 [(spec.assert_max_size) = 2048];
+  int64 captured_ms = 5 [(spec.assert_ge) = 0];
+  string pigeon_run_id = 6 [(spec.assert_max_size) = 32];
+  EvidenceKind kind = 7 [(spec.assert_enum_defined) = true];
+}
+
+enum EvidenceKind {
+  EVIDENCE_KIND_UNSPECIFIED = 0;
+  EVIDENCE_KIND_PAGE = 1;
+  EVIDENCE_KIND_SCREENSHOT = 2;
+  EVIDENCE_KIND_DOWNLOAD = 3;
+  EVIDENCE_KIND_RECORDED_PATH = 4;
+}
+
+// RecordedStep is one model-mode action, stored as a row in the recorded_path
+// blob. Values are REFERENCES to request fields or credential names, never
+// literals, so the promoted script is generic and holds no secret.
+message RecordedStep {
+  int32 step = 1 [(spec.assert_ge) = 0];
+  // url_pattern is the path with ids replaced by placeholders.
+  string url_pattern = 2 [(spec.assert_max_size) = 2048];
+  // landmark is the role+name that identified the page.
+  string landmark = 3 [(spec.assert_max_size) = 500];
+  ActionKind action = 4 [(spec.assert_enum_defined) = true];
+  string target_role = 5 [(spec.assert_max_size) = 64];
+  string target_name = 6 [(spec.assert_max_size) = 500];
+  // css_fallback is the last-resort selector.
+  string css_fallback = 7 [(spec.assert_max_size) = 1000];
+  // value_ref: "request.<field>" | "credential:<name>" | "const:<literal>".
+  string value_ref = 8 [(spec.assert_max_size) = 500];
+}
+
+enum ActionKind {
+  ACTION_KIND_UNSPECIFIED = 0;
+  ACTION_KIND_NAVIGATE = 1;
+  ACTION_KIND_CLICK = 2;
+  ACTION_KIND_FILL = 3;
+  ACTION_KIND_SELECT = 4;
+  ACTION_KIND_WAIT_FOR = 5;
+  ACTION_KIND_FILL_CREDENTIAL = 6;
+}

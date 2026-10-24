@@ -20,6 +20,7 @@ syntax = "proto3";
 
 package coop;
 
+import "shared/pigeon.proto";
 import "sys/spec.proto";
 
 option (spec.service) = {name: "coop"};
@@ -57,9 +58,11 @@ message Kind {
   // cpu and memory are the Job's limits, Kubernetes quantities.
   string cpu = 7 [(spec.assert_max_size) = 32];
   string memory = 8 [(spec.assert_max_size) = 32];
-  // mock_result is the serialized pigeon.FromPigeon the mock pigeon answers
-  // a task with (MODE_MOCK only).
-  bytes mock_result = 9 [(spec.assert_max_size) = 1048576];
+  // mock_result is what the mock pigeon answers a task with in MODE_MOCK;
+  // unset, it answers an OK result with no bytes. Typed, so the fleet's config
+  // bundle writes it as a message, and so the pigeon protocol is part of this
+  // contract.
+  pigeon.FromPigeon mock_result = 9;
 }
 
 message Config {
