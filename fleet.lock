@@ -21,9 +21,9 @@ services:
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
-      commit: f75d0208bd65ab8741d4fd74e8de4c365fa48514
+      commit: 0a81d42ea5b43d8148295a23d850e030256c835f
       contract: https://github.com/tacplus-dev/gateway.git
-      contract_commit: f75d0208bd65ab8741d4fd74e8de4c365fa48514
+      contract_commit: 0a81d42ea5b43d8148295a23d850e030256c835f
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
@@ -37,9 +37,11 @@ services:
     - name: eventbus
       id: 18
       repo: https://github.com/tacplus-dev/eventbus.git
-      commit: 6ade048a85fefd1f59caf98a5f88c867e518ff85
+      commit: 3870ec215dc5667b6d062aeabea4db2bdfeba4fd
       contract: https://github.com/tacplus-dev/eventbus.git
-      contract_commit: 6ade048a85fefd1f59caf98a5f88c867e518ff85
+      contract_commit: 3870ec215dc5667b6d062aeabea4db2bdfeba4fd
+      depends:
+        - kernel
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
@@ -49,9 +51,11 @@ services:
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
-      commit: 5aa0e6653a17bed7c25acff4a024cc013816bc1c
+      commit: de6e342d424c1bb619c9494f81bfb80094c89e1b
       contract: https://github.com/tacplus-dev/oauth.git
-      contract_commit: 5aa0e6653a17bed7c25acff4a024cc013816bc1c
+      contract_commit: de6e342d424c1bb619c9494f81bfb80094c89e1b
+      depends:
+        - kernel
     - name: llmproxy
       id: 75
       repo: https://github.com/tacplus-dev/llmproxy.git
