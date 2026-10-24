@@ -31,8 +31,9 @@ message PingRequest {
 message PingResponse {
   // message is the request's message, as received.
   string message = 1;
-  // served_by is the answering instance's own service identity path, e.g.
-  // tenants/acme/services/tenantecho.
+  // served_by is the answering instance's own SPIFFE identity, e.g.
+  // spiffe://local.dev/tenants/acme/services/tenantecho: the tenant is in it,
+  // the bare service path is not.
   string served_by = 2;
   // caller_namespace is the tenant namespace on the caller's token.
   string caller_namespace = 3;
