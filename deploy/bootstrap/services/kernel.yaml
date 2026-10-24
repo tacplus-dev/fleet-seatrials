@@ -85,8 +85,10 @@ delegates:
       tenant_namespace: /tenants/alpha
       authorized_services:
         - doppelganger
+        - eventbus
         - kernel
         - llmproxy
+        - stratum
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: doppelganger-alpha
@@ -94,8 +96,10 @@ delegates:
       tenant_namespace: /tenants/beta
       authorized_services:
         - doppelganger
+        - eventbus
         - kernel
         - llmproxy
+        - stratum
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: doppelganger-beta

@@ -71,9 +71,9 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: a172d214eda844e89239e2971187aaf58fbfd1ba
+      commit: 256a44fcb0ffcb0a3ce577f380d77321cb1266f4
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: a172d214eda844e89239e2971187aaf58fbfd1ba
+      contract_commit: 256a44fcb0ffcb0a3ce577f380d77321cb1266f4
       depends:
         - llmproxy
         - eventbus

@@ -1,6 +1,6 @@
-# doppelganger: one instance per tenant. Context is ContextDocument records in
-# stratum, uploaded through the service (seatrials context push: the tenant's
-# shared context with a tenant-admin pair, a user's own with their pair);
-# nothing is mounted, synced in, or kept on the instance's disk.
-state_dir: /var/lib/doppelganger/sessions
+# doppelganger: one instance per tenant. Context (ContextDocument) and sessions
+# (Session) are records in stratum; context is uploaded through the service
+# (seatrials context push: the tenant's shared context with a tenant-admin
+# pair, a user's own with their pair). Nothing is mounted, synced in, or kept
+# on the instance's disk.
 model_alias: claude-sonnet # the one alias llmproxy serves today (anthropic.rs resolve_model_alias)
