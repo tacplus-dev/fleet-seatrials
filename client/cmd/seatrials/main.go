@@ -158,7 +158,7 @@ func keygen(args []string) error {
 	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
 	tenant := fs.String("tenant", "/", `owning tenant namespace: "/" for the root pair, or /tenants/<name>`)
 	var grants stringList
-	fs.Var(&grants, "grant", "entitlement grant token (repeatable); default KERNEL_ANY for root, TENANTECHO_ANY+DOPPELGANGER_ANY otherwise")
+	fs.Var(&grants, "grant", "entitlement grant token (repeatable); default KERNEL_ANY for the root pair, none otherwise")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -180,12 +180,11 @@ func keygen(args []string) error {
 	}
 	pairID := name + "-" + hex.EncodeToString(idb)
 	kp.Id = pairID // the key is known by the pair id it backs; the proof's kid is the same
-	if len(grants) == 0 {
-		if *tenant == "/" {
-			grants = []string{"KERNEL_ANY"}
-		} else {
-			grants = []string{"TENANTECHO_ANY", "DOPPELGANGER_ANY"}
-		}
+	// A tenant pair carries no grants by default: tenantecho and doppelganger
+	// take any authenticated user, and a new tenant's entitlement ceiling is
+	// empty, so any grant would exceed it. The root pair administers tenants.
+	if len(grants) == 0 && *tenant == "/" {
+		grants = []string{"KERNEL_ANY"}
 	}
 	now := time.Now().Unix()
 	pair := &credentials_pb.CredPair{
