@@ -7,9 +7,9 @@ services:
     - name: kernel
       id: 8
       repo: https://github.com/tacplus-dev/kernel.git
-      commit: de380a8cc5b51e7445f98d69c05d8414db0cc2a0
+      commit: 2e40f6c05dc853013cbfbb144630b3e9ac2f46a2
       contract: https://github.com/tacplus-dev/kernel.git
-      contract_commit: de380a8cc5b51e7445f98d69c05d8414db0cc2a0
+      contract_commit: 2e40f6c05dc853013cbfbb144630b3e9ac2f46a2
       depends:
         - opa
     - name: opa
@@ -45,9 +45,9 @@ services:
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 101faa4136fb5fe74f0e2960d1901bf25f7c2949
+      commit: 2a687315d87c84b7d58ec8186d754656cca91bf6
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 101faa4136fb5fe74f0e2960d1901bf25f7c2949
+      contract_commit: 2a687315d87c84b7d58ec8186d754656cca91bf6
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
@@ -56,6 +56,12 @@ services:
       contract_commit: de6e342d424c1bb619c9494f81bfb80094c89e1b
       depends:
         - kernel
+    - name: kmaker
+      id: 49
+      repo: https://github.com/tacplus-dev/kmaker.git
+      commit: db730c66c7fb8ed7a2f848aa6274e4de4ee97fac
+      contract: https://github.com/tacplus-dev/kmaker.git
+      contract_commit: db730c66c7fb8ed7a2f848aa6274e4de4ee97fac
     - name: llmproxy
       id: 75
       repo: https://github.com/tacplus-dev/llmproxy.git
@@ -65,9 +71,9 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 5c2827bbbf11cedfec9fe2d4575207865ae9650e
+      commit: 975a224e186dc0bda7dc916e4e820d0bdd0256e6
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 5c2827bbbf11cedfec9fe2d4575207865ae9650e
+      contract_commit: 975a224e186dc0bda7dc916e4e820d0bdd0256e6
       depends:
         - llmproxy
     - name: tenantecho
