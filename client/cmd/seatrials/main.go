@@ -89,7 +89,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: seatrials keygen|login|tenant|ping|ask ...")
+		return errors.New("usage: seatrials keygen|login|tenant|ping|pingpigeon|ask ...")
 	}
 	switch args[0] {
 	case "keygen":
@@ -109,6 +109,8 @@ func run(args []string) error {
 			return tenantDelete(args[2:])
 		}
 		return fmt.Errorf("unknown tenant command %q", args[1])
+	case "pingpigeon":
+		return pingPigeon(args[1:])
 	case "ping":
 		return ping(args[1:])
 	case "context":
@@ -524,6 +526,33 @@ func ping(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	resp, err := m.Grpc().Clients().Services().TenantEchoClient().Ping(ctx, &tenantecho_pb.PingRequest{Message: msg})
+	if err != nil {
+		return err
+	}
+	return printProto(resp)
+}
+
+// pingPigeon pings through a pigeon: the tenant's tenantecho asks the coop
+// for an echo.ping pigeon and relays its result, the proof that a tenant
+// service's round trip through the coop works.
+func pingPigeon(args []string) error {
+	fs := flag.NewFlagSet("pingpigeon", flag.ContinueOnError)
+	as := fs.String("as", "root", "credential name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	msg := strings.Join(fs.Args(), " ")
+	if msg == "" {
+		msg = "ping"
+	}
+	m, done, err := manager(*as)
+	if err != nil {
+		return err
+	}
+	defer done()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := m.Grpc().Clients().Services().TenantEchoClient().PingPigeon(ctx, &tenantecho_pb.PingPigeonRequest{Message: msg})
 	if err != nil {
 		return err
 	}
