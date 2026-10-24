@@ -17,7 +17,7 @@ topology:
     kmaker_nodes: 1
     oauth_nodes: 1
     opa_nodes: 1
-    stratum_nodes: 1
+    stratum_nodes: 2 # stratum refuses to open its hot maps below two writers
     app_services:
         # llmproxy is an app service to the operator (the library knows the
         # kernel-side platform set; everything else is named here).
