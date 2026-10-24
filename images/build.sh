@@ -21,16 +21,13 @@ tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
 [ -d "$here/build/proto" ] || { echo "build/proto missing: run tacplus fleet build first" >&2; exit 1; }
 
-lock_field() { # service field
-  python3 - "$here/fleet.lock" "$1" "$2" <<'PY'
-import sys, yaml
-lock = yaml.safe_load(open(sys.argv[1]))
-for s in lock["services"]:
-    if s["name"] == sys.argv[2]:
-        print(s[sys.argv[3]]); break
-PY
+lock_field() { # service field -> value, from fleet.lock's flat per-service block
+  awk -v svc="$1" -v field="$2" '
+    /^    - name: / { cur = $3 }
+    cur == svc && $1 == field":" { print $2; exit }
+  ' "$here/fleet.lock"
 }
-services() { python3 -c 'import sys,yaml; print(" ".join(s["name"] for s in yaml.safe_load(open(sys.argv[1]))["services"]))' "$here/fleet.lock"; }
+services() { awk '/^    - name: / { printf "%s ", $3 }' "$here/fleet.lock"; }
 
 build_tacplus() {
   local src; src=$(mktemp -d)

@@ -15,9 +15,9 @@ services:
     - name: opa
       id: 29
       repo: https://github.com/tacplus-dev/opa.git
-      commit: 90aea513c21da3afcd8c8823873042f6d0157657
+      commit: 2cfe7c94c08b197f7cb1a6a01243231fb891854f
       contract: https://github.com/tacplus-dev/opa.git
-      contract_commit: 90aea513c21da3afcd8c8823873042f6d0157657
+      contract_commit: 2cfe7c94c08b197f7cb1a6a01243231fb891854f
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
@@ -27,9 +27,9 @@ services:
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
-      commit: 2e351a3cef15969010d705b1856fd9b5bb74f4a3
+      commit: 019667133e73bffd3675ed9b9daeb3cb7d38cf1f
       contract: https://github.com/tacplus-dev/letsencrypt.git
-      contract_commit: 2e351a3cef15969010d705b1856fd9b5bb74f4a3
+      contract_commit: 019667133e73bffd3675ed9b9daeb3cb7d38cf1f
       depends:
         - kernel
         - eventbus
@@ -51,17 +51,17 @@ services:
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
-      commit: de6e342d424c1bb619c9494f81bfb80094c89e1b
+      commit: 1e2e9433f84e0c1bd5499fbf9f63424d946a089a
       contract: https://github.com/tacplus-dev/oauth.git
-      contract_commit: de6e342d424c1bb619c9494f81bfb80094c89e1b
+      contract_commit: 1e2e9433f84e0c1bd5499fbf9f63424d946a089a
       depends:
         - kernel
     - name: kmaker
       id: 49
       repo: https://github.com/tacplus-dev/kmaker.git
-      commit: db730c66c7fb8ed7a2f848aa6274e4de4ee97fac
+      commit: b1f0cf06146166b8879f2f352aa4c7b05ded5800
       contract: https://github.com/tacplus-dev/kmaker.git
-      contract_commit: db730c66c7fb8ed7a2f848aa6274e4de4ee97fac
+      contract_commit: b1f0cf06146166b8879f2f352aa4c7b05ded5800
     - name: llmproxy
       id: 75
       repo: https://github.com/tacplus-dev/llmproxy.git
@@ -71,14 +71,14 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 975a224e186dc0bda7dc916e4e820d0bdd0256e6
+      commit: f33c46d169c01bd6b834940f2ba32075747d2d58
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 975a224e186dc0bda7dc916e4e820d0bdd0256e6
+      contract_commit: f33c46d169c01bd6b834940f2ba32075747d2d58
       depends:
         - llmproxy
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
-      commit: 6c1307cee56ef54e3a240a26205d4d9e0a45297a
+      commit: a58e3968cb06a3d7a38012a09c6000050893117f
       contract: https://github.com/tacplus-dev/tenantecho.git
-      contract_commit: 6c1307cee56ef54e3a240a26205d4d9e0a45297a
+      contract_commit: a58e3968cb06a3d7a38012a09c6000050893117f
