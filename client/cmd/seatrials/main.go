@@ -9,6 +9,7 @@
 //	seatrials keygen NAME [--tenant /tenants/alpha] [--grant TOKEN]...   # prints the cred_pair to configure
 //	seatrials login  [--as NAME]                                          # proof → token (~/.seatrials/NAME.token)
 //	seatrials context push DIR [--as NAME] [--tenant]                     # replace a doppelganger context with DIR's Markdown
+//	seatrials ask QUESTION [--as NAME] [--session ID] [--context TEXT]... # ask; --session continues an earlier one
 //	seatrials tenant create NAMESPACE [--as root]
 //	seatrials tenant cred NAMESPACE CREDNAME [--as root]                  # installs CREDNAME's pair under the tenant
 //	seatrials ping MESSAGE [--as NAME]
@@ -532,6 +533,7 @@ func ping(args []string) error {
 func ask(args []string) error {
 	fs := flag.NewFlagSet("ask", flag.ContinueOnError)
 	as := fs.String("as", "root", "credential name")
+	session := fs.String("session", "", "continue this session instead of opening one (the id every answer prints)")
 	var ctxs stringList
 	fs.Var(&ctxs, "context", "session context (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -549,14 +551,23 @@ func ask(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	c := m.Grpc().Clients().Services().DoppelgangerClient()
-	sess, err := c.CreateSession(ctx, &doppelganger_pb.CreateSessionRequest{Context: ctxs})
+	sessionID := *session
+	if sessionID == "" {
+		sess, err := c.CreateSession(ctx, &doppelganger_pb.CreateSessionRequest{Context: ctxs})
+		if err != nil {
+			return err
+		}
+		sessionID = sess.GetSessionId()
+	} else if len(ctxs) > 0 {
+		if _, err := c.UpdateSession(ctx, &doppelganger_pb.UpdateSessionRequest{SessionId: sessionID, Context: ctxs}); err != nil {
+			return err
+		}
+	}
+	resp, err := c.GenerateAnswer(ctx, &doppelganger_pb.GenerateAnswerRequest{SessionId: sessionID, Question: q})
 	if err != nil {
 		return err
 	}
-	resp, err := c.GenerateAnswer(ctx, &doppelganger_pb.GenerateAnswerRequest{SessionId: sess.GetSessionId(), Question: q})
-	if err != nil {
-		return err
-	}
+	fmt.Fprintln(os.Stderr, "session:", sessionID)
 	return printProto(resp)
 }
 
