@@ -37,15 +37,12 @@ build_tacplus() {
   rm -rf "$src"
 }
 
-# language, go main package, and jar, read from the service checkout itself.
-service_facts() { # dir -> "lang main jar"
-  local dir=$1 lang main="." jar=""
+# language and go main package, read from the service checkout itself.
+service_facts() { # dir name -> "lang main"
+  local dir=$1 lang main="."
   lang=$(sed -n 's/^language: *//p' "$dir/tacplus.yaml")
-  if [ "$lang" = go ]; then
-    if [ -d "$dir/cmd/$2" ]; then main="./cmd/$2"; fi
-  fi
-  if [ "$lang" = java ]; then jar=$(grep -o 'server/target/[a-z-]*\.jar' "$dir/Dockerfile" | head -1); fi
-  echo "$lang $main $jar"
+  if [ "$lang" = go ] && [ -d "$dir/cmd/$2" ]; then main="./cmd/$2"; fi
+  echo "$lang $main"
 }
 
 build_service() {
@@ -54,10 +51,10 @@ build_service() {
   src=$(mktemp -d)
   git clone -q "$repo" "$src" && git -C "$src" checkout -q "$commit"
   mkdir -p "$src/.fleet" && cp -R "$here/build/proto" "$src/.fleet/proto"
-  read -r lang main jar <<<"$(service_facts "$src" "$name")"
+  read -r lang main <<<"$(service_facts "$src" "$name")"
   echo "== $name ($lang) @ ${commit:0:12}"
   gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_JAR=$jar,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_TACPLUS_IMAGE=$registry/ci/tacplus:$tacplus_commit"
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_TACPLUS_IMAGE=$registry/ci/tacplus:$tacplus_commit"
   rm -rf "$src"
 }
 

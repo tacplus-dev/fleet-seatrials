@@ -9,7 +9,6 @@ substitutions:
   _SERVICE: unknown
   _LANG: go
   _MAIN: .            # go: the main package to build
-  _JAR: ""            # java: the jar the Dockerfile copies (server/target/<name>.jar)
   _COMMIT: unknown
   _FLEET_COMMIT: unknown
   _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus:seatrials
