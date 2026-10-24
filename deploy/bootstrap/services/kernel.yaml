@@ -48,3 +48,34 @@ delegates:
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: stratum
+    - name: doppelganger
+      authorized_services:
+        - doppelganger
+        - kernel
+        - llmproxy
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: doppelganger
+    - name: tenantecho
+      tenant_namespace: /tenants/alpha
+      authorized_services:
+        - kernel
+        - tenantecho
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: tenantecho-alpha
+    - name: tenantecho
+      tenant_namespace: /tenants/beta
+      authorized_services:
+        - kernel
+        - tenantecho
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: tenantecho-beta
+    - name: llmproxy
+      authorized_services:
+        - kernel
+        - llmproxy
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: llmproxy

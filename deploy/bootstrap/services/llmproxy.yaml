@@ -1,0 +1,9 @@
+# llmproxy reaches Anthropic with federated identity, no API key. The four
+# federation ids below are the fleet's Anthropic workspace binding; Jody
+# supplies them (they are not in any repo). Until they are set, model calls
+# fail and doppelganger's answers surface that; everything up to the call still
+# proves out.
+anthropic_federation_rule_id: ""
+anthropic_organization_id: ""
+anthropic_service_account_id: ""
+anthropic_workspace_id: ""
