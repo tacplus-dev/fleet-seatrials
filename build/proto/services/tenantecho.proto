@@ -15,9 +15,23 @@ import "sys/spec.proto";
 // tenant, so a misrouted call is visible in the response itself.
 // ---------------------------------------------------------------------------
 option (spec.service) = {name: "tenantecho", tenant_owned: true};
+// PingPigeon asks the coop for a pigeon over S2S.
+option (spec.grpc_s2s_client) = {service: "coop.Coop"};
 
 message Config {
   option (spec.grpc_config) = {service_name: "tenantecho"};
+
+  // PingPigeon is a dog: it puts a task on a pigeon's thread (the coop's
+  // topic) and reads the pigeon's answer off the same thread. The grant to do
+  // either is coop's, on PigeonMessage (auth_services ["*"]); these name the
+  // halves this service uses.
+  option (spec.event_publish) = {
+    topic_ref: "coop.PigeonMessageBus.stream"
+  };
+  option (spec.event_watch) = {
+    topic_ref: "coop.PigeonMessageBus.stream"
+    method_s2s: {auth_services: ["tenantecho"]}
+  };
 
   // greeting is returned with every ping; per-tenant config is the second thing
   // this proves (each instance gets its own tenant's Config).
@@ -41,12 +55,33 @@ message PingResponse {
   string greeting = 4;
 }
 
+message PingPigeonRequest {
+  string message = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 4096];
+}
+
+message PingPigeonResponse {
+  // run_id and pigeon_spiffe_id are from the coop's ticket.
+  string run_id = 1;
+  string pigeon_spiffe_id = 2;
+  // result is the pigeon's result bytes as text (the echo kind answers "pong").
+  string result = 3;
+  string served_by = 4;
+  string caller_namespace = 5;
+}
+
 service TenantEcho {
   option (spec.service_c2s) = {};
 
   // Pings a tenant instance: echoes the message back, naming the instance that answered and the
   // caller's tenant. Use it to check that a call lands in your own tenant.
   rpc Ping(PingRequest) returns (PingResponse) {
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+
+  // Pings through a pigeon: asks the coop for an echo.ping pigeon as this tenant's instance, sends
+  // the message as its task on the thread, and returns the pigeon's result. The second proof: a
+  // tenant service's round trip through the coop.
+  rpc PingPigeon(PingPigeonRequest) returns (PingPigeonResponse) {
     option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
 }

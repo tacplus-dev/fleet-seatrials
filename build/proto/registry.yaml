@@ -2,6 +2,10 @@
 registries:
     - https://github.com/tacplus-dev/registry.git
 services:
+    - name: coop
+      id: 106
+      contract: https://github.com/tacplus-dev/coop.git
+      visibility: public
     - name: doppelganger
       id: 101
       contract: https://github.com/tacplus-dev/doppelganger.git

@@ -1,0 +1,15 @@
+# coop: the fleet's one door to pigeons, in MODE_MOCK: no Jobs and no minted
+# pigeon identities yet (slice 2); the coop itself answers as the pigeon, so a
+# dog's round trip on the thread is proven end to end. The one kind here is
+# echo.ping, whose mock_result is a serialized pigeon.FromPigeon Result with
+# the bytes "pong" (status OK, mode SCRIPT).
+mode: MODE_MOCK
+max_live_runs: 32
+max_live_runs_per_tenant: 8
+ready_timeout_ms: 60000
+kinds:
+    - name: echo.ping
+      domain_ceiling: []
+      max_deadline_ms: 600000
+      max_budget_micros: 0
+      mock_result: GhUKCWVjaG8ucGluZxABGAEiBHBvbmc=

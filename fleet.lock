@@ -2,7 +2,7 @@
 tacplus: "2.2"
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: 4d5b1732c49e52d9876f90a38056e351e0453d38
+      commit: 0d16e3d3bc8731f75a2283bc4388a401194a1659
 services:
     - name: kernel
       id: 8
@@ -81,6 +81,19 @@ services:
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
-      commit: 77883f64f906d80a669580aed8dca0bf5333cd8b
+      commit: d7be816e8856ee05b0d5f23ab6dbbb966db51317
       contract: https://github.com/tacplus-dev/tenantecho.git
-      contract_commit: 77883f64f906d80a669580aed8dca0bf5333cd8b
+      contract_commit: d7be816e8856ee05b0d5f23ab6dbbb966db51317
+      depends:
+        - coop
+        - eventbus
+    - name: coop
+      id: 106
+      repo: https://github.com/tacplus-dev/coop.git
+      commit: 97c2b6136e0b372d99d2fd97229ce0b35127ba89
+      contract: https://github.com/tacplus-dev/coop.git
+      contract_commit: 97c2b6136e0b372d99d2fd97229ce0b35127ba89
+      depends:
+        - kernel
+        - eventbus
+        - stratum

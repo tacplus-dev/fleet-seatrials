@@ -1,0 +1,308 @@
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
+//
+// coop — the fleet's one door to pigeons: short-lived, sandboxed browser
+// workloads a tenant's service (a "dog") asks for by kind. The coop holds the
+// only Kubernetes Job rights, mints each pigeon's identity under the calling
+// dog, and answers for pigeons that are gone. After creation every word to
+// or from a pigeon is a PigeonMessage on the coop's topic, keyed by run.
+//
+// Design: schematic/looper/schematic/decisions/a30-a31-pigeons-design-2026-10-02.md
+// (the shape built here), a33-coop-pigeon-commit-and-self-healing-scripts-
+// 2026-10-07.md (later slices). The bodies a dog and a pigeon exchange are
+// shared/pigeon.proto; a kind's own request/result schemas are the kind
+// owner's.
+//
+// Slices: 1 = MOCK mode (no Job, no identity; an in-process mock pigeon
+// answers with the kind's fixture), the topic, PigeonRun, the dead-pigeon
+// answer. 2 = Jobs and MintWorkload. 3 = egress through a proxy.
+syntax = "proto3";
+
+package coop;
+
+import "sys/spec.proto";
+
+option (spec.service) = {name: "coop"};
+
+// A pigeon's identity is minted under the calling dog with the dog's own
+// exchanged token (slice 2); the coop calls kernel.Mint for it.
+option (spec.grpc_s2s_client) = {service: "kernel.Mint"};
+
+// ============================================================================
+// Config
+// ============================================================================
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  // JOBS: one Kubernetes Job per pigeon, in pigeons_namespace.
+  MODE_JOBS = 1;
+  // MOCK: no Job and no identity; an in-process mock pigeon answers every
+  // task on the thread with the kind's mock_result.
+  MODE_MOCK = 2;
+}
+
+// Kind is one pigeon kind the fleet runs: the platform's ceiling for it. The
+// kind's request/result schemas, scripts and selectors are the kind owner's.
+message Kind {
+  // name is "<system>.<verb>", e.g. "texas811.prepare_ticket".
+  string name = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // image runs the kind: the generic pigeon host with the kind's child.
+  string image = 2 [(spec.assert_max_size) = 512];
+  // domain_ceiling is every domain a run of this kind may ever reach; a
+  // request's allowed_domains must be a subset.
+  repeated string domain_ceiling = 3 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 253];
+  int64 max_deadline_ms = 4 [(spec.assert_ge) = 0];
+  int64 max_budget_micros = 5 [(spec.assert_ge) = 0];
+  bool model_mode_allowed = 6;
+  // cpu and memory are the Job's limits, Kubernetes quantities.
+  string cpu = 7 [(spec.assert_max_size) = 32];
+  string memory = 8 [(spec.assert_max_size) = 32];
+  // mock_result is the serialized pigeon.FromPigeon the mock pigeon answers
+  // a task with (MODE_MOCK only).
+  bytes mock_result = 9 [(spec.assert_max_size) = 1048576];
+}
+
+message Config {
+  option (spec.grpc_config) = {service_name: "coop"};
+
+  // The topics tacplus synthesizes from the (spec.event) and (spec.record)
+  // below: the coop publishes FROM_COOP messages (the dead-pigeon answer,
+  // ENDED, the mock pigeon's replies) and every PigeonRun transition.
+  option (spec.event_publish) = {topic_ref: "coop.PigeonMessageBus.stream"};
+  option (spec.event_publish) = {topic_ref: "coop.PigeonRunBus.stream"};
+
+  Mode mode = 1 [(spec.assert_enum_defined) = true];
+  // kinds are config, not code; empty refuses every request.
+  repeated Kind kinds = 2 [(spec.assert_max_size) = 64];
+  // paused refuses new requests and discards every live run with KILLED.
+  bool paused = 3;
+  // paused_tenants does the same for the named tenants (/tenants/<t>).
+  repeated string paused_tenants = 4 [(spec.assert_max_size) = 256, (spec.assert_element_max_size) = 512];
+  // pigeons_namespace holds every Job; nothing else runs there.
+  string pigeons_namespace = 5 [(spec.default_string) = "pigeons", (spec.assert_max_size) = 63];
+  int32 max_live_runs = 6 [(spec.default_int) = 32, (spec.assert_ge) = 0];
+  int32 max_live_runs_per_tenant = 7 [(spec.default_int) = 8, (spec.assert_ge) = 0];
+  // ready_timeout_ms: a run the pigeon has not reported Ready on by then ends
+  // FAILED.
+  int64 ready_timeout_ms = 8 [(spec.default_int) = 60000, (spec.assert_ge) = 0];
+}
+
+// ============================================================================
+// The RPCs
+// ============================================================================
+
+message PigeonRequest {
+  string kind = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // task is the serialized pigeon.ToPigeon{task}, validated by the pigeon
+  // against the kind's request schema; the coop keeps only its digest.
+  bytes task = 2 [(spec.assert_max_size) = 1048576];
+  // allowed_domains ⊆ the kind's domain_ceiling.
+  repeated string allowed_domains = 3 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 253];
+  int64 budget_micros = 4 [(spec.assert_ge) = 0];
+  // deadline_ms is absolute, epoch ms; ≤ now + the kind's max_deadline_ms.
+  int64 deadline_ms = 5 [(spec.assert_ge) = 0];
+  // lease_names are names only; refused FAILED_PRECONDITION until the lease
+  // store exists.
+  repeated string lease_names = 6 [(spec.assert_max_size) = 8, (spec.assert_element_max_size) = 128];
+  // idempotency_key: a replay by the same caller returns the same run and
+  // never a second Job.
+  string idempotency_key = 7 [(spec.assert_max_size) = 128];
+}
+
+message PigeonTicket {
+  string run_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 32];
+  string thread_id = 2 [(spec.assert_max_size) = 128];
+  string pigeon_spiffe_id = 3 [(spec.assert_max_size) = 1024];
+}
+
+enum DiscardReason {
+  DISCARD_REASON_UNSPECIFIED = 0;
+  // DONE: the caller is finished with the pigeon.
+  DISCARD_REASON_DONE = 1;
+  DISCARD_REASON_KILL = 2;
+}
+
+message CancelPigeonRequest {
+  string run_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 32];
+  DiscardReason reason = 2 [(spec.assert_enum_defined) = true];
+}
+
+message CancelPigeonResponse {}
+
+message GetPigeonRequest {
+  string run_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 32];
+}
+
+enum RunState {
+  RUN_STATE_UNSPECIFIED = 0;
+  RUN_STATE_REQUESTED = 1;
+  RUN_STATE_STARTING = 2;
+  RUN_STATE_RUNNING = 3;
+  RUN_STATE_ENDED = 4;
+}
+
+enum EndReason {
+  END_REASON_UNSPECIFIED = 0;
+  END_REASON_DONE = 1;
+  END_REASON_DEADLINE = 2;
+  END_REASON_KILLED = 3;
+  END_REASON_FAILED = 4;
+  END_REASON_BUDGET = 5;
+}
+
+// PigeonStatus is a run as the coop sees it now.
+message PigeonStatus {
+  string run_id = 1;
+  string thread_id = 2;
+  string kind = 3;
+  RunState state = 4;
+  EndReason end_reason = 5;
+  string pigeon_spiffe_id = 6;
+  int64 deadline_ms = 7;
+  int64 created_ms = 8;
+}
+
+// The design record names these RequestPigeon and DiscardPigeon; tacplus's
+// closed verb registry has neither, so they are Create (a run is a resource
+// brought into existence) and Cancel (in-flight work ended). Same semantics.
+service Coop {
+  option (spec.service_s2s) = {};
+
+  // CreatePigeon validates the request against the kind's ceiling and the
+  // caps, mints the pigeon's identity under the caller, records the run, and
+  // starts the Job (or the mock pigeon). Idempotent on (caller,
+  // idempotency_key).
+  rpc CreatePigeon(PigeonRequest) returns (PigeonTicket) {
+    option (spec.rpc) = {principal: RPC_PRINCIPAL_SERVICE, auth_services: ["*"]};
+  }
+  // CancelPigeon ends a run: DONE when the caller is finished, KILL to stop
+  // it. Only the run's caller may. Idempotent.
+  rpc CancelPigeon(CancelPigeonRequest) returns (CancelPigeonResponse) {
+    option (spec.rpc) = {principal: RPC_PRINCIPAL_SERVICE, auth_services: ["*"]};
+  }
+  // GetPigeon is the run's live status, for its caller.
+  rpc GetPigeon(GetPigeonRequest) returns (PigeonStatus) {
+    option (spec.rpc) = {principal: RPC_PRINCIPAL_SERVICE, auth_services: ["*"]};
+  }
+}
+
+// ============================================================================
+// The topic: every word to or from a pigeon
+// ============================================================================
+
+enum Direction {
+  DIRECTION_UNSPECIFIED = 0;
+  DIRECTION_TO_PIGEON = 1;
+  DIRECTION_FROM_PIGEON = 2;
+  DIRECTION_FROM_COOP = 3;
+}
+
+enum MessageErrorCode {
+  MESSAGE_ERROR_CODE_UNSPECIFIED = 0;
+  // PIGEON_GONE: the run is unknown or no longer STARTING/RUNNING; detail
+  // says why (never_created | discarded | expired | killed | failed).
+  MESSAGE_ERROR_CODE_PIGEON_GONE = 1;
+}
+
+message MessageError {
+  MessageErrorCode code = 1 [(spec.assert_enum_defined) = true];
+  string detail = 2 [(spec.assert_max_size) = 500];
+}
+
+// PigeonMessage is one word on a pigeon's thread. Publishers: the dog, the
+// pigeon, the coop. Subscribers: the same, and stratum for the transcript.
+// The sender is stamped by eventbus from its token; the coop and the pigeon
+// drop a TO_PIGEON message whose sender is not the run's caller.
+//
+// auth "*" until tacplus names the pigeon service path pattern (design OQ2):
+// a dog is a tenant service and a pigeon is a workload under it.
+message PigeonMessage {
+  option (spec.event) = {
+    s2s: {auth_services: ["*"]}
+    s2s_subscribe: {auth_services: ["*"]}
+  };
+
+  // run_id is the partition key: one pigeon's traffic stays in order.
+  string run_id = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 32];
+  string thread_id = 2 [(spec.assert_max_size) = 128];
+  Direction direction = 3 [(spec.assert_enum_defined) = true];
+  string kind = 4 [(spec.assert_max_size) = 64];
+  // seq is sender-monotonic.
+  int64 seq = 5 [(spec.assert_ge) = 0];
+  // body is the serialized pigeon.ToPigeon or pigeon.FromPigeon.
+  bytes body = 6 [(spec.assert_max_size) = 1048576];
+  MessageError error = 7;
+  // tenant_namespace pins delivery to the tenant.
+  string tenant_namespace = 8 [(spec.store_namespace) = true, (spec.assert_required) = true, (spec.assert_max_size) = 512];
+  int64 sent_ms = 9 [(spec.assert_ge) = 0];
+  // sender is the publisher's principal, stamped by the generated publish
+  // wrapper from the authenticated caller (a sender cannot claim another's).
+  string sender = 10 [(spec.principal) = true, (spec.assert_max_size) = 1024];
+}
+
+// ============================================================================
+// The record: every transition of every run, on the record in stratum
+// ============================================================================
+
+message PigeonRun {
+  option (spec.record) = {
+    key: "record_id"
+    owner: "caller_spiffe_id"
+    s2s: {auth_services: ["coop"]}
+    s2s_subscribe: {auth_services: ["stratum"]}
+    // Append-only audit: ninety days idle, thirty after deletion (unused:
+    // transitions are never deleted).
+    residency: {idle_seconds: 7776000 deleted_max_age_seconds: 2592000}
+  };
+
+  // record_id is "<run_id>/<seq>": one row per transition.
+  string record_id = 1 [(spec.indexed) = true, (spec.assert_required) = true, (spec.assert_max_size) = 48];
+  string run_id = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 32, (spec.query_field) = {op: QUERY_OP_EQ}];
+  string tenant_namespace = 3 [(spec.store_namespace) = true, (spec.assert_required) = true, (spec.assert_max_size) = 512, (spec.query_field) = {op: QUERY_OP_EQ}];
+  string caller_spiffe_id = 4 [(spec.assert_required) = true, (spec.assert_max_size) = 1024];
+  string pigeon_spiffe_id = 5 [(spec.assert_max_size) = 1024];
+  string kind = 6 [(spec.assert_max_size) = 64];
+  // task_digest is the sha256 of the task bytes; the task itself is never on
+  // the record.
+  string task_digest = 7 [(spec.assert_max_size) = 64];
+  repeated string allowed_domains = 8 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 253];
+  int64 budget_micros = 9;
+  int64 deadline_ms = 10;
+  string thread_id = 11 [(spec.assert_max_size) = 128];
+  RunState state = 12 [(spec.assert_enum_defined) = true];
+  EndReason end_reason = 13 [(spec.assert_enum_defined) = true];
+  repeated string lease_names = 14 [(spec.assert_max_size) = 8, (spec.assert_element_max_size) = 128];
+  string job_name = 15 [(spec.assert_max_size) = 63];
+  int32 seq = 16 [(spec.assert_ge) = 0];
+  int64 ts_ms = 17;
+}
+
+// ============================================================================
+// Live state: the runs now, in kernel state; the coop is the only writer
+// ============================================================================
+
+message LiveRun {
+  string run_id = 1 [(spec.indexed) = true];
+  string tenant_namespace = 2;
+  string caller_spiffe_id = 3;
+  string pigeon_spiffe_id = 4;
+  string kind = 5;
+  string thread_id = 6;
+  RunState state = 7;
+  EndReason end_reason = 8;
+  int64 deadline_ms = 9;
+  int64 created_ms = 10;
+  string idempotency_key = 11;
+  string job_name = 12;
+  // seq is the last PigeonRun transition written.
+  int32 seq = 13;
+}
+
+message CoopState {
+  option (spec.service_state) = {label: ["kernel"]};
+  // The coop reads its own topic to answer for pigeons that are gone, and in
+  // MOCK mode to be the pigeon.
+  option (spec.subscribe) = {source: "coop.PigeonMessageBus.stream"};
+
+  repeated LiveRun runs = 1;
+}

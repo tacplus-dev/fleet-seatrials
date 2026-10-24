@@ -39,3 +39,7 @@ services:
     repo: https://github.com/tacplus-dev/doppelganger.git
   - name: tenantecho
     repo: https://github.com/tacplus-dev/tenantecho.git
+  # coop: the pigeon protocol and the one door to pigeons; in MODE_MOCK here so
+  # the fleet proves a dog's round trip on the thread before Jobs exist.
+  - name: coop
+    repo: https://github.com/tacplus-dev/coop.git
