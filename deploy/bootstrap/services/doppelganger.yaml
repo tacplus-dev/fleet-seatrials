@@ -4,4 +4,4 @@
 # mounted or synced in. On disk until stratum is ported.
 repo_dir: /var/lib/doppelganger/repo
 state_dir: /var/lib/doppelganger/sessions
-model_alias: default
+model_alias: claude-sonnet # the one alias llmproxy serves today (anthropic.rs resolve_model_alias)
