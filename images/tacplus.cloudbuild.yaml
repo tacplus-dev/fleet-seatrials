@@ -7,6 +7,7 @@ substitutions:
   _TACPLUS_COMMIT: unknown
 steps:
   - name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"] # the Dockerfile uses $BUILDPLATFORM, a BuildKit variable
     args:
       - build
       - --file=images/tacplus.Dockerfile
