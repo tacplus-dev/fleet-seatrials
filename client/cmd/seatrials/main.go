@@ -177,6 +177,7 @@ func keygen(args []string) error {
 		return err
 	}
 	pairID := name + "-" + hex.EncodeToString(idb)
+	kp.Id = pairID // the key is known by the pair id it backs; the proof's kid is the same
 	if len(grants) == 0 {
 		if *tenant == "/" {
 			grants = []string{"KERNEL_ANY"}
