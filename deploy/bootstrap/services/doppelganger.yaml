@@ -1,7 +1,7 @@
-# doppelganger: the jody context repo is expected at repo_dir; the deployment
-# puts it there (open: a git-sync sidecar with a deploy key). Until then the
-# directory is empty and answers are NEEDS_CONTEXT, which still proves the
-# gateway → doppelganger → llmproxy path.
+# doppelganger: one instance per tenant. Context lives under repo_dir and is
+# uploaded through the service (seatrials context push: the tenant's shared
+# context with a tenant-admin pair, a user's own with their pair); nothing is
+# mounted or synced in. On disk until stratum is ported.
 repo_dir: /var/lib/doppelganger/repo
 state_dir: /var/lib/doppelganger/sessions
 model_alias: default
