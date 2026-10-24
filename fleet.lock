@@ -21,9 +21,9 @@ services:
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
-      commit: 20b764efe46821fab7ede7dd210c4ec2d1a7f90e
+      commit: e51e2b790e6bcb02bf5468be8493fda4e5594aae
       contract: https://github.com/tacplus-dev/gateway.git
-      contract_commit: 20b764efe46821fab7ede7dd210c4ec2d1a7f90e
+      contract_commit: e51e2b790e6bcb02bf5468be8493fda4e5594aae
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
@@ -71,9 +71,9 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 11868e3652d1e67177b04f336e655056746fb669
+      commit: 1175360fa251b1bf0f1a0b52c78841041ecbdf68
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 11868e3652d1e67177b04f336e655056746fb669
+      contract_commit: 1175360fa251b1bf0f1a0b52c78841041ecbdf68
       depends:
         - llmproxy
         - eventbus
