@@ -1,0 +1,50 @@
+key_rotation_interval_seconds: 604800
+default_token_expiry_seconds: 3600
+tls:
+    cert: MIIBsjCCATegAwIBAgIRAILbTN-U2eBlAcE0xPPbPJEwCgYIKoZIzj0EAwMwFTETMBEGA1UEAwwKbW9jay10b2tlbjAeFw0yNjEwMjQwNDI5NDVaFw0yNjEwMjQwNTI5NDVaMBUxEzARBgNVBAMMCm1vY2stdG9rZW4wdjAQBgcqhkjOPQIBBgUrgQQAIgNiAASlHmgf3j0RRQaYgkOkwcomrZdjFineQQ5ia5ciqQzIKgMnQ4Sz-g2UR9NeBLKyMH-X5MomnK3-I3BejEOHztCGM11zuu1HpEFCG2PvQO6twkvoVTB5EvFEIyQvDQ9JUPajSzBJMA4GA1UdDwEB_wQEAwIHgDATBgNVHSUEDDAKBggrBgEFBQcDATAMBgNVHRMBAf8EAjAAMBQGA1UdEQQNMAuCCWxvY2FsaG9zdDAKBggqhkjOPQQDAwNpADBmAjEAtqDsUMJFElT9hFZqbnuIlr5Ia_QY_Zt2xJ56315jnmNdqfDnxd9O2twvIrIb-PSbAjEA2n-p8yxR_XIwkaBw8aZNwLAwfA1oeHgg9Md8QhXWHWnYW77e7t9VG4E0nT8Tz0i2
+    key: YmFzZTY0OiBMUzB0TFMxQ1JVZEpUaUJGUXlCUVVrbFdRVlJGSUV0RldTMHRMUzB0Q2sxSlIydEJaMFZDUWtSRWJrZFlZVU5pWXl0NFYzUkNhVlF6UWtadGQwVnpaMUkyVjA1RmVVVnJlamRQU1VzMlIwVTNjbmt6TWtrNGN6SmpUbmRvUkVjS1l6RndkemxNV0daTFlrZG5RbmRaUmtzMFJVVkJRMHRvV2tGT2FVRkJVMnhJYldkbU0yb3dVbEpSWVZsbmEwOXJkMk52YlhKYVpHcEdhVzVsVVZFMWFRcGhOV05wY1ZGNlNVdG5UVzVSTkZONksyY3lWVkk1VG1WQ1RFdDVUVWdyV0RWTmIyMXVTek1yU1ROQ1pXcEZUMGg2ZEVOSFRURXhlblYxTVVod1JVWkRDa2N5VUhaUlR6WjBkMnQyYjFaVVFqVkZka1pGU1hsUmRrUlJPVXBWVUZrOUNpMHRMUzB0UlU1RUlFVkRJRkJTU1ZaQlZFVWdTMFZaTFMwdExTMEsKY3JlYXRlZDogMTc5MjgxNjE4NQppZDogQ01iY1hFaUJ3ZWxqRnVJMzhqZWdaMmU3SEhFVDd3TUQK
+delegates:
+    - name: eventbus
+      authorized_services:
+        - eventbus
+        - kernel
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: eventbus
+    - name: gateway
+      authorized_services:
+        - gateway
+        - kernel
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: gateway
+    - name: oauth
+      authorized_services:
+        - kernel
+        - oauth
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: oauth
+      auth_broker_kinds:
+        - idp
+    - name: opa
+      authorized_services:
+        - kernel
+        - opa
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: opa
+    - name: operator
+      authorized_services:
+        - kernel
+        - operator
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: schematic-operator
+    - name: stratum
+      authorized_services:
+        - kernel
+        - stratum
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: stratum

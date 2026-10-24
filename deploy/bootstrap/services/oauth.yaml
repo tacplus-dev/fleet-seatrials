@@ -1,0 +1,23 @@
+# OAuth service configuration.
+# Unified auth broker: browser OAuth (OIDC) + CLI/device token delivery.
+# Edit these, then run: schematic-operator generate
+enable: true
+scopes:
+  - openid
+  - profile
+  - email
+providers:
+  - enable: true
+    name: Google
+    domains:
+      - schematic.io
+      - example.org
+    issuer: https://accounts.google.com
+    client_id: YOUR_GOOGLE_CLIENT_ID
+    client_secret: YOUR_GOOGLE_CLIENT_SECRET
+    allowed_redirect_uri_prefixes:
+      - https://schematic.146.148.80.132.nip.io/
+    scopes:
+      - openid
+      - profile
+      - email

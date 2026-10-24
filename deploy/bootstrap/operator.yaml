@@ -1,0 +1,23 @@
+# The sea-trials deployment: one of everything, two tenants, the two proofs as
+# app services. TLS is the operator CA's cert chain (no DNS: nip.io on the
+# reserved gateway IP); the local client trusts ca.pem.
+dev: true
+fqdn: schematic.146.148.80.132.nip.io
+external_ip: 146.148.80.132
+port: 443
+optional_services:
+    oauth: true
+tenants:
+    - alpha
+    - beta
+topology:
+    kernel_nodes: 1
+    eventbus_nodes: 1
+    gateway_nodes: 1
+    kmaker_nodes: 1
+    oauth_nodes: 1
+    opa_nodes: 1
+    stratum_nodes: 1
+    app_services:
+        doppelganger: 1
+        tenantecho: 1

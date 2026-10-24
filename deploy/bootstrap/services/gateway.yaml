@@ -1,0 +1,3 @@
+# Gateway service configuration.
+# Edit these, then run: schematic-operator generate
+{}

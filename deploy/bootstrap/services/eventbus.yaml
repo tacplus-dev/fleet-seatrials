@@ -1,0 +1,8 @@
+# Eventbus service configuration.
+# Edit these, then run: schematic-operator generate
+data_dir: /app/data
+default_retention_hours: 168
+default_partitions: 6
+default_replication_factor: 1
+controller_count: 1
+broker_count: 1

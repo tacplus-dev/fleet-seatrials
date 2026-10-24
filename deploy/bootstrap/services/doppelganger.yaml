@@ -1,0 +1,7 @@
+# doppelganger: the jody context repo is expected at repo_dir; the deployment
+# puts it there (open: a git-sync sidecar with a deploy key). Until then the
+# directory is empty and answers are NEEDS_CONTEXT, which still proves the
+# gateway → doppelganger → llmproxy path.
+repo_dir: /var/lib/doppelganger/repo
+state_dir: /var/lib/doppelganger/sessions
+model_alias: default

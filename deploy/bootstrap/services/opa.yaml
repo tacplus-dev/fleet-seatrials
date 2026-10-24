@@ -1,0 +1,5 @@
+# OPA service configuration.
+# OPA entitlements policy is loaded from services/opa/ directory.
+# Run 'schematic-operator init-opa' to generate default policy.
+# Edit these, then run: schematic-operator generate
+{}

@@ -1,3 +1,7 @@
 build/*
 !build/proto/
 bin/
+deploy/bootstrap/crypto.yaml
+deploy/bootstrap/ca.pem
+deploy/bootstrap/configs/
+deploy/bootstrap/charts/
