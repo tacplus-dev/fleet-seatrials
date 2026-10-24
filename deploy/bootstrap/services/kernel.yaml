@@ -75,17 +75,14 @@ delegates:
         - kubernetes_namespace: schematic
           kubernetes_service_account: tenantecho-beta
     - name: llmproxy
-      # The one off-cluster audience llmproxy may mint its own identity for:
-      # the jwt-bearer assertion Anthropic's Workload Identity Federation
-      # exchanges for a short-lived token (no API key anywhere).
-      external_audiences:
-        - https://api.anthropic.com
       authorized_services:
         - kernel
         - llmproxy
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: llmproxy
+      external_audiences:
+        - https://api.anthropic.com
     - name: doppelganger
       tenant_namespace: /tenants/alpha
       authorized_services:
@@ -108,3 +105,12 @@ delegates:
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: doppelganger-beta
+    - name: letsencrypt
+      authorized_services:
+        - eventbus
+        - kernel
+        - letsencrypt
+        - stratum
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: letsencrypt
