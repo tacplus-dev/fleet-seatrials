@@ -26,6 +26,10 @@ services:
     repo: https://github.com/tacplus-dev/eventbus.git
   - name: stratum
     repo: https://github.com/tacplus-dev/stratum.git
+  # oauth: users log in through it to get the token the gateway checks; kernel's
+  # people/tenant code and the gateway reference its contract directly.
+  - name: oauth
+    repo: https://github.com/tacplus-dev/oauth.git
   - name: llmproxy
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger
