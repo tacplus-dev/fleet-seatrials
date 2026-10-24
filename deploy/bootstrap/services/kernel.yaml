@@ -61,6 +61,8 @@ delegates:
     - name: tenantecho
       tenant_namespace: /tenants/alpha
       authorized_services:
+        - coop
+        - eventbus
         - kernel
         - tenantecho
       kubernetes_service_accounts:
@@ -69,6 +71,8 @@ delegates:
     - name: tenantecho
       tenant_namespace: /tenants/beta
       authorized_services:
+        - coop
+        - eventbus
         - kernel
         - tenantecho
       kubernetes_service_accounts:
@@ -105,6 +109,14 @@ delegates:
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: doppelganger-beta
+    - name: coop
+      authorized_services:
+        - coop
+        - eventbus
+        - kernel
+      kubernetes_service_accounts:
+        - kubernetes_namespace: schematic
+          kubernetes_service_account: coop
     - name: letsencrypt
       authorized_services:
         - eventbus

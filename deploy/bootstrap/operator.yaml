@@ -29,6 +29,7 @@ topology:
         llmproxy: 1
         doppelganger: 1
         tenantecho: 1
+        coop: 1
 # The root credential pair the local client (client/) authenticates with; its
 # private key is in ~/.seatrials/root.cred.json on the operator's machine.
 root_cred_pairs:
