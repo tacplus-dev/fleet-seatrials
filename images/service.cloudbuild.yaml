@@ -37,10 +37,15 @@ steps:
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "bin/${_SERVICE}" "${_MAIN}"
             ;;
           rust)
-            # gateway embeds dist/ (its web app) at compile time and its image
-            # bundles webapp-dist/, web-dist/ and clients/: this fleet ships the
-            # API surface, not Seabeam's web app, so those are empty here.
+            # gateway embeds dist/ at compile time and its image bundles
+            # webapp-dist/ (its own web console, built here from webapp/ against
+            # this fleet's protos), web-dist/ (a customer app; none in this
+            # fleet) and clients/ (downloadable client binaries; none).
             mkdir -p dist webapp-dist web-dist clients
+            if [ -d webapp ]; then
+              (cd webapp && tacplus build --src ../.fleet/proto && npm ci && npm run build)
+              rm -rf webapp-dist && cp -R webapp/dist webapp-dist
+            fi
             cargo build --release
             ;;
           java)

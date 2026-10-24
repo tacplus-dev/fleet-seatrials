@@ -2,7 +2,7 @@
 tacplus: "2.2"
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: 5c45709d9b5edc873b0242bcc432b7b0a27810e8
+      commit: 4d5b1732c49e52d9876f90a38056e351e0453d38
 services:
     - name: kernel
       id: 8
@@ -21,9 +21,9 @@ services:
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
-      commit: fde72dd0294fd6df8deb437d38cfc8ae22972c4d
+      commit: 79a0d0ae8368a755886e4adf82fa01d3fb4cefa8
       contract: https://github.com/tacplus-dev/gateway.git
-      contract_commit: fde72dd0294fd6df8deb437d38cfc8ae22972c4d
+      contract_commit: 79a0d0ae8368a755886e4adf82fa01d3fb4cefa8
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
