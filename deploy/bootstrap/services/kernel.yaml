@@ -13,6 +13,7 @@ delegates:
           kubernetes_service_account: eventbus
     - name: gateway
       authorized_services:
+        - eventbus
         - gateway
         - kernel
       kubernetes_service_accounts:
@@ -43,6 +44,7 @@ delegates:
           kubernetes_service_account: schematic-operator
     - name: stratum
       authorized_services:
+        - eventbus
         - kernel
         - stratum
       kubernetes_service_accounts:

@@ -42,6 +42,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	sm "github.com/tacplus-dev/fleet-seatrials/client/tacplus/c2sm"
+	"github.com/tacplus-dev/fleet-seatrials/client/tacplus/chassis/client_im"
 	"github.com/tacplus-dev/fleet-seatrials/client/tacplus/chassis/key"
 	"github.com/tacplus-dev/fleet-seatrials/client/tacplus/chassis/token"
 	credentials_pb "github.com/tacplus-dev/fleet-seatrials/client/tacplus/types/common/credentials"
@@ -68,6 +69,13 @@ func envOr(k, d string) string {
 	return d
 }
 
+// tenantAdminGrants is what a tenant's cred pair may hold: read and replace
+// its own tenant config. It is also the ceiling `tenant create` gives a tenant.
+var tenantAdminGrants = []string{
+	"KERNEL_TENANT_ADMIN_GET_TENANT_CONFIG",
+	"KERNEL_TENANT_ADMIN_UPDATE_TENANT_CONFIG",
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		printJSON(map[string]string{"error": err.Error()})
@@ -86,13 +94,15 @@ func run(args []string) error {
 		return login(args[1:])
 	case "tenant":
 		if len(args) < 2 {
-			return errors.New("usage: seatrials tenant create|cred ...")
+			return errors.New("usage: seatrials tenant create|delete|cred ...")
 		}
 		switch args[1] {
 		case "create":
 			return tenantCreate(args[2:])
 		case "cred":
 			return tenantCred(args[2:])
+		case "delete":
+			return tenantDelete(args[2:])
 		}
 		return fmt.Errorf("unknown tenant command %q", args[1])
 	case "ping":
@@ -158,7 +168,7 @@ func keygen(args []string) error {
 	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
 	tenant := fs.String("tenant", "/", `owning tenant namespace: "/" for the root pair, or /tenants/<name>`)
 	var grants stringList
-	fs.Var(&grants, "grant", "entitlement grant token (repeatable); default KERNEL_ANY for the root pair, none otherwise")
+	fs.Var(&grants, "grant", "entitlement grant token (repeatable); default KERNEL_ANY for the root pair, the tenant's own config admin otherwise")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -180,11 +190,16 @@ func keygen(args []string) error {
 	}
 	pairID := name + "-" + hex.EncodeToString(idb)
 	kp.Id = pairID // the key is known by the pair id it backs; the proof's kid is the same
-	// A tenant pair carries no grants by default: tenantecho and doppelganger
-	// take any authenticated user, and a new tenant's entitlement ceiling is
-	// empty, so any grant would exceed it. The root pair administers tenants.
-	if len(grants) == 0 && *tenant == "/" {
-		grants = []string{"KERNEL_ANY"}
+	// Defaults: the root pair administers the fleet; a tenant pair administers
+	// its own tenant config (the kernel requires one such pair per tenant and
+	// `tenant create` sets the ceiling to exactly these). tenantecho and
+	// doppelganger take any authenticated user, so no grant is needed for them.
+	if len(grants) == 0 {
+		if *tenant == "/" {
+			grants = []string{"KERNEL_ANY"}
+		} else {
+			grants = tenantAdminGrants
+		}
 	}
 	now := time.Now().Unix()
 	pair := &credentials_pb.CredPair{
@@ -259,18 +274,58 @@ func tokenPath(name string) (string, error) {
 	return filepath.Join(d, name+".token"), nil
 }
 
-func savedToken(name string) func() (string, error) {
-	return func() (string, error) {
-		p, err := tokenPath(name)
-		if err != nil {
-			return "", err
-		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return "", fmt.Errorf("not logged in as %q: run seatrials login --as %s (%w)", name, name, err)
-		}
-		return strings.TrimSpace(string(b)), nil
+// credPairSource is the generated identity manager's TokenSource for a
+// credential pair: it signs a short-lived proof with the pair's key (kid = the
+// pair id, audience kernel, a fresh jti) and exchanges it through the gateway
+// for a kernel-minted token (kernel.Mint/MintClientToken carries its own proof,
+// so no bearer is needed for that one call). The identity manager then
+// exchanges that token for one scoped to each service the client calls.
+type credPairSource struct{ name string }
+
+func (c credPairSource) SupportsAutoAcquire() bool { return true }
+
+func (c credPairSource) Acquire(ctx context.Context, conn grpc.ClientConnInterface) (client_im.RefreshResult, error) {
+	cf, ik, err := loadCred(c.name)
+	if err != nil {
+		return client_im.RefreshResult{}, err
 	}
+	now := time.Now().Unix()
+	jti := make([]byte, 16)
+	if _, err := rand.Read(jti); err != nil {
+		return client_im.RefreshResult{}, err
+	}
+	proof := token.NewImmutableToken(&token_pb.Token{})
+	proof.SetKid(cf.PairID).SetIssuer("seatrials").SetSubject(cf.PairID).SetAudience("kernel").
+		SetNamespace(cf.Tenant). // the pair's owner; kernel sets the minted token's namespace from the pair itself
+		SetIssuedAt(now).SetExpiration(now + 30).SetJTI(hex.EncodeToString(jti))
+	if err := proof.Sign(ik); err != nil {
+		return client_im.RefreshResult{}, fmt.Errorf("signing proof: %w", err)
+	}
+	resp, err := kernel_pb.NewMintClient(conn).MintClientToken(ctx, &tokenrequest_pb.MintClientTokenRequest{InputToken: proof.GetBase64()})
+	if err != nil {
+		return client_im.RefreshResult{}, fmt.Errorf("MintClientToken: %w", err)
+	}
+	tok := resp.GetAccessToken().GetBase64()
+	if tok == "" {
+		return client_im.RefreshResult{}, errors.New("MintClientToken returned no access token")
+	}
+	return client_im.RefreshResult{RefreshToken: tok}, nil
+}
+
+// identity returns the identity manager for a credential, primed with the
+// token `login` saved so commands do not re-prove on every run.
+func identity(name string, conn grpc.ClientConnInterface) (*client_im.ClientIdentityManager, error) {
+	im := client_im.New(conn, credPairSource{name})
+	p, err := tokenPath(name)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil, fmt.Errorf("not logged in as %q: run seatrials login --as %s (%w)", name, name, err)
+	}
+	im.SetRefreshToken(strings.TrimSpace(string(b)))
+	return im, nil
 }
 
 func manager(name string) (*sm.ServiceManager, func(), error) {
@@ -278,36 +333,28 @@ func manager(name string) (*sm.ServiceManager, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return sm.New(conn, savedToken(name)), func() { conn.Close() }, nil
+	im, err := identity(name, conn)
+	if err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+	// Each service checks the token's audience against its own id, so every
+	// client gets a token exchanged for that service.
+	tokenFor := func(service string) func() (string, error) {
+		return func() (string, error) { return im.GetTokenFor(service) }
+	}
+	return sm.NewWithTokenProviderFor(conn, tokenFor), func() { conn.Close() }, nil
 }
 
 // ---------------------------------------------------------------- login
 
-// login signs a short-lived proof with the credential's key (kid = the pair id,
-// audience kernel, a fresh jti) and exchanges it for a kernel-minted token
-// through the gateway (kernel.Mint/MintClientToken carries its own proof, so no
-// bearer is needed for that one call).
+// login proves the credential once (credPairSource) and saves the kernel token
+// the identity manager keeps as its root; every command exchanges it per service.
 func login(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	as := fs.String("as", "root", "credential name")
 	if err := fs.Parse(args); err != nil {
 		return err
-	}
-	cf, ik, err := loadCred(*as)
-	if err != nil {
-		return err
-	}
-	now := time.Now().Unix()
-	jti := make([]byte, 16)
-	if _, err := rand.Read(jti); err != nil {
-		return err
-	}
-	proof := token.NewImmutableToken(&token_pb.Token{})
-	proof.SetKid(cf.PairID).SetIssuer("seatrials").SetSubject(cf.PairID).SetAudience("kernel").
-		SetNamespace(cf.Tenant). // the pair's owner; kernel sets the minted token's namespace from the pair itself
-		SetIssuedAt(now).SetExpiration(now + 30).SetJTI(hex.EncodeToString(jti))
-	if err := proof.Sign(ik); err != nil {
-		return fmt.Errorf("signing proof: %w", err)
 	}
 	conn, err := dial()
 	if err != nil {
@@ -316,16 +363,11 @@ func login(args []string) error {
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	// MintClientToken is self-authenticating: the generated client would attach a
-	// bearer we do not have yet, so it is called on the raw stub.
-	resp, err := kernel_pb.NewMintClient(conn).MintClientToken(ctx, &tokenrequest_pb.MintClientTokenRequest{InputToken: proof.GetBase64()})
-	if err != nil {
-		return fmt.Errorf("MintClientToken: %w", err)
+	im := client_im.New(conn, credPairSource{*as})
+	if _, err := im.EnsureAuthenticated(ctx); err != nil {
+		return err
 	}
-	tok := resp.GetAccessToken().GetBase64()
-	if tok == "" {
-		return errors.New("MintClientToken returned no access token")
-	}
+	tok := im.RefreshToken()
 	p, err := tokenPath(*as)
 	if err != nil {
 		return err
@@ -362,11 +404,39 @@ func tenantCreate(args []string) error {
 	defer done()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	t, err := m.Grpc().Clients().Services().TenantAdminClient().CreateTenant(ctx, &kernel_pb.CreateTenantRequest{TenantNamespace: fs.Arg(0)})
+	t, err := m.Grpc().Clients().Services().TenantAdminClient().CreateTenant(ctx, &kernel_pb.CreateTenantRequest{
+		TenantNamespace: fs.Arg(0),
+		Constraints: &kernel_pb.Constraints{
+			EntitlementsCeiling: &entitlements_pb.TokenEntitlements{Grants: tenantAdminGrants},
+		},
+	})
 	if err != nil {
 		return err
 	}
 	return printProto(t)
+}
+
+func tenantDelete(args []string) error {
+	fs := flag.NewFlagSet("tenant delete", flag.ContinueOnError)
+	as := fs.String("as", "root", "credential name (a root pair)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: seatrials tenant delete /tenants/NAME [--as root]")
+	}
+	m, done, err := manager(*as)
+	if err != nil {
+		return err
+	}
+	defer done()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r, err := m.Grpc().Clients().Services().TenantAdminClient().DeleteTenant(ctx, &kernel_pb.DeleteTenantRequest{TenantNamespace: fs.Arg(0)})
+	if err != nil {
+		return err
+	}
+	return printProto(r)
 }
 
 // tenantCred installs a credential pair (made by keygen --tenant NS) under the
