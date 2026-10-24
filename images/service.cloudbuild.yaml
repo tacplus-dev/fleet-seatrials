@@ -28,6 +28,9 @@ steps:
     args:
       - -ceu
       - |
+        # Every service image runs under the launcher; the Dockerfiles copy it
+        # from beside themselves.
+        cp /usr/local/bin/launcher launcher-linux-amd64
         case "${_LANG}" in
           go)
             mkdir -p bin
@@ -42,7 +45,6 @@ steps:
             ;;
           java)
             mvn -q -B package -DskipTests
-            cp /usr/local/bin/launcher launcher-linux-amd64
             ;;
           *) echo "unknown language ${_LANG}"; exit 1 ;;
         esac
