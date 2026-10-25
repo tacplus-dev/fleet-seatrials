@@ -21,9 +21,9 @@ services:
     - name: gateway
       id: 7
       repo: https://github.com/tacplus-dev/gateway.git
-      commit: e51e2b790e6bcb02bf5468be8493fda4e5594aae
+      commit: 69970175109781988e8313db4659bb6974b71d6e
       contract: https://github.com/tacplus-dev/gateway.git
-      contract_commit: e51e2b790e6bcb02bf5468be8493fda4e5594aae
+      contract_commit: 69970175109781988e8313db4659bb6974b71d6e
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 40ba94373ce16ea252c96132338f9ebf4a208021
+      commit: c4761b03e2e8b8ee9553202127817462c50bc63a
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 40ba94373ce16ea252c96132338f9ebf4a208021
+      contract_commit: c4761b03e2e8b8ee9553202127817462c50bc63a
       depends:
         - kernel
         - eventbus

@@ -6,15 +6,18 @@ scopes:
   - openid
   - profile
   - email
+# Anyone with a Google (later Apple, Microsoft) account may sign in; whether
+# they are entitled to anything is tenant membership, not the provider, so no
+# provider lists domains. The client secret is NOT here: it rides the
+# kernel-config-override ConfigMap (ConfigOverride paths
+# configs.oauth_config.providers), which git never holds.
 providers:
   - enable: true
     name: Google
-    domains:
-      - schematic.io
-      - example.org
     issuer: https://accounts.google.com
-    client_id: YOUR_GOOGLE_CLIENT_ID
-    client_secret: YOUR_GOOGLE_CLIENT_SECRET
+    # OAuth client "seatrials-web" in GCP project jody1-328023 (2026-10-24),
+    # redirect URI https://seatrials.tacplus.dev/
+    client_id: 23279701427-3nm40dmid06nd3niqufrq88sbl90p0n3.apps.googleusercontent.com
     allowed_redirect_uri_prefixes:
       - https://seatrials.tacplus.dev/
     scopes:
