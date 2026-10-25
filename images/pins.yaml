@@ -1,5 +1,5 @@
 # The tacplus commit this fleet generates and builds with (branch registry-and-floor
 # until it is merged and released; then this becomes the released MAJOR.MINOR).
-tacplus_commit: 4161ae926195495b3ae05b487d7ee93e3465fb24
+tacplus_commit: 326ef93a716a13685bd8170a366746857299115d
 operator_commit: fe3988b995338ad10a0bc9a620b28b5cd24deb03
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708

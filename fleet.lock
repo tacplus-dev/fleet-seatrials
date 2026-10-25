@@ -2,7 +2,7 @@
 tacplus: "2.2"
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: 937bae87da7549a338a3447201b91661e5349c63
+      commit: c63d4259624d784eed0172aa2cad64f548547d78
 services:
     - name: kernel
       id: 8
@@ -50,10 +50,13 @@ services:
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 3c08e5cabca4d6f8cadb352e358de24330b2398f
+      commit: 1b078beca068757f87bb837a289d557fc519707e
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 3c08e5cabca4d6f8cadb352e358de24330b2398f
-      inputs_digest: 689321c26f02a29f35999eaaf2bcbe90f45370da85ed1a90e2e37f6ffae2237e
+      contract_commit: 1b078beca068757f87bb837a289d557fc519707e
+      depends:
+        - eventbus
+        - letsencrypt
+      inputs_digest: a0dab4ecb3e3e9c30ab04639e2ffd36ea6bcfa41868b7fc956799ad4bf785946
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
@@ -87,7 +90,7 @@ services:
         - llmproxy
         - eventbus
         - stratum
-      inputs_digest: c7e90cae08e1e5e638eeba08ab7be1f59b2a9d379a457375ab4749aa3df161f7
+      inputs_digest: cc96efcb413d1474a94294bf595685975ba717e5c9f59467ce4b286c5394f44b
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
@@ -97,7 +100,7 @@ services:
       depends:
         - coop
         - eventbus
-      inputs_digest: 5ae194387f34a8bba60caa4f1535ba46e8a077c393412cda3c09ebe7e9f5df68
+      inputs_digest: d229280681e517ef6b1abb345a31905ef2c1cadf2a6830348411833470ad7346
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
@@ -108,7 +111,7 @@ services:
         - kernel
         - eventbus
         - stratum
-      inputs_digest: 465d3f7bd35b9cc682e7197e3c0f5f06af9c1df5a713149cc541c6b84c8e973c
+      inputs_digest: a6640f1bf2863ad86e3c6956cb0eab5e631707fd941e86887fb0dbb86bb2c08c
     - name: pigeonhost
       id: 107
       repo: https://github.com/tacplus-dev/pigeon.git
@@ -118,4 +121,4 @@ services:
       depends:
         - coop
         - eventbus
-      inputs_digest: dec41a3ce95a95793fa55b3306973650d6233c4c95459ee6f31bfa99a7154fb1
+      inputs_digest: 5fdf9fdc14bf2003730776747d92d6fa00258891f001d60099672a1b79027f0f
