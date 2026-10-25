@@ -27,9 +27,9 @@ services:
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
-      commit: 9e003650d213deb0d70c1c119019f884106d1eb1
+      commit: 5f4096f36dea91b424cc76cf99c22433157f1f56
       contract: https://github.com/tacplus-dev/letsencrypt.git
-      contract_commit: 9e003650d213deb0d70c1c119019f884106d1eb1
+      contract_commit: 5f4096f36dea91b424cc76cf99c22433157f1f56
       depends:
         - kernel
         - eventbus
@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 434cb622fcb9d5635e0c8ba97068a6d73bc5130c
+      commit: 22e1764df4e5ce1e4bcdc20e700f9571e3dd6b68
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 434cb622fcb9d5635e0c8ba97068a6d73bc5130c
+      contract_commit: 22e1764df4e5ce1e4bcdc20e700f9571e3dd6b68
       depends:
         - kernel
         - eventbus

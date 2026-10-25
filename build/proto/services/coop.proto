@@ -243,9 +243,12 @@ message PigeonMessage {
   // tenant_namespace pins delivery to the tenant.
   string tenant_namespace = 8 [(spec.store_namespace) = true, (spec.assert_required) = true, (spec.assert_max_size) = 512];
   int64 sent_ms = 9 [(spec.assert_ge) = 0];
-  // sender is the publisher's principal, stamped by the generated publish
-  // wrapper from the authenticated caller (a sender cannot claim another's).
-  string sender = 10 [(spec.principal) = true, (spec.assert_max_size) = 1024];
+  // spiffe_id is the publisher's identity, stamped by eventbus from the
+  // publish token onto every topic type that carries a `string spiffe_id`
+  // field (eventbus TopicDiscovery / IdentityStamper): a publisher cannot
+  // claim another's. Named for that convention; (spec.principal) says what
+  // it is.
+  string spiffe_id = 10 [(spec.principal) = true, (spec.assert_max_size) = 1024];
 }
 
 // ============================================================================
