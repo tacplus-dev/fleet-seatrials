@@ -81,18 +81,18 @@ services:
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
-      commit: cc348749c65ce7d0d4d172d77e89f3276ce29d26
+      commit: da13f53926df4ed379153a286b200dff088c5b31
       contract: https://github.com/tacplus-dev/tenantecho.git
-      contract_commit: cc348749c65ce7d0d4d172d77e89f3276ce29d26
+      contract_commit: da13f53926df4ed379153a286b200dff088c5b31
       depends:
         - coop
         - eventbus
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 85b19c4e98306e94c6a42a1eea4827baf633813c
+      commit: d3f78e666994ff3254c537c8470b42f6eb52727d
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 85b19c4e98306e94c6a42a1eea4827baf633813c
+      contract_commit: d3f78e666994ff3254c537c8470b42f6eb52727d
       depends:
         - kernel
         - eventbus

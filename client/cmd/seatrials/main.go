@@ -538,6 +538,7 @@ func ping(args []string) error {
 func pingPigeon(args []string) error {
 	fs := flag.NewFlagSet("pingpigeon", flag.ContinueOnError)
 	as := fs.String("as", "root", "credential name")
+	keep := fs.Bool("keep", false, "leave the run alive after the result, so the coop's deadline ends it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -552,7 +553,7 @@ func pingPigeon(args []string) error {
 	defer done()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := m.Grpc().Clients().Services().TenantEchoClient().PingPigeon(ctx, &tenantecho_pb.PingPigeonRequest{Message: msg})
+	resp, err := m.Grpc().Clients().Services().TenantEchoClient().PingPigeon(ctx, &tenantecho_pb.PingPigeonRequest{Message: msg, Keep: *keep})
 	if err != nil {
 		return err
 	}

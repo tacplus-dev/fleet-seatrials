@@ -57,6 +57,9 @@ message PingResponse {
 
 message PingPigeonRequest {
   string message = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 4096];
+  // keep leaves the run alive after the result instead of cancelling it, so
+  // the coop's own deadline ends it: the proof of that path (A30 §6.5).
+  bool keep = 2;
 }
 
 message PingPigeonResponse {
