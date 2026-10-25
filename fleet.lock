@@ -81,18 +81,18 @@ services:
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
-      commit: 794a3ac5dd5ad814ef8183a04e92e2da3bce4ac4
+      commit: cc348749c65ce7d0d4d172d77e89f3276ce29d26
       contract: https://github.com/tacplus-dev/tenantecho.git
-      contract_commit: 794a3ac5dd5ad814ef8183a04e92e2da3bce4ac4
+      contract_commit: cc348749c65ce7d0d4d172d77e89f3276ce29d26
       depends:
         - coop
         - eventbus
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 22e1764df4e5ce1e4bcdc20e700f9571e3dd6b68
+      commit: 85b19c4e98306e94c6a42a1eea4827baf633813c
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 22e1764df4e5ce1e4bcdc20e700f9571e3dd6b68
+      contract_commit: 85b19c4e98306e94c6a42a1eea4827baf633813c
       depends:
         - kernel
         - eventbus
@@ -100,9 +100,9 @@ services:
     - name: pigeon
       id: 107
       repo: https://github.com/tacplus-dev/pigeon.git
-      commit: 4ed1acdbdc88ddee868c6887bdd1f95290777e93
+      commit: 362d6cc0398c1afb0d642d6b119837d74e7d36d3
       contract: https://github.com/tacplus-dev/pigeon.git
-      contract_commit: 4ed1acdbdc88ddee868c6887bdd1f95290777e93
+      contract_commit: 362d6cc0398c1afb0d642d6b119837d74e7d36d3
       depends:
         - coop
         - eventbus
