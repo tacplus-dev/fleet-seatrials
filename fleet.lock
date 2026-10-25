@@ -27,9 +27,9 @@ services:
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
-      commit: 5f4096f36dea91b424cc76cf99c22433157f1f56
+      commit: 57e9e46b2ec98530ddcce4dd50f7948dfcd836fe
       contract: https://github.com/tacplus-dev/letsencrypt.git
-      contract_commit: 5f4096f36dea91b424cc76cf99c22433157f1f56
+      contract_commit: 57e9e46b2ec98530ddcce4dd50f7948dfcd836fe
       depends:
         - kernel
         - eventbus
@@ -45,9 +45,9 @@ services:
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 0bccac09bc73e50ae64f751805dae423ba14a7cc
+      commit: 3c08e5cabca4d6f8cadb352e358de24330b2398f
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 0bccac09bc73e50ae64f751805dae423ba14a7cc
+      contract_commit: 3c08e5cabca4d6f8cadb352e358de24330b2398f
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
@@ -71,9 +71,9 @@ services:
     - name: doppelganger
       id: 101
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 1175360fa251b1bf0f1a0b52c78841041ecbdf68
+      commit: f2f9cfb12ab0bbbe898abd4b76dcebfece8aa316
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 1175360fa251b1bf0f1a0b52c78841041ecbdf68
+      contract_commit: f2f9cfb12ab0bbbe898abd4b76dcebfece8aa316
       depends:
         - llmproxy
         - eventbus
@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 4940558732abd005e7439b28bc9766edd87c8458
+      commit: 67cbfa81070fd98f91f61a0a0576cc55aeefe7bb
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 4940558732abd005e7439b28bc9766edd87c8458
+      contract_commit: 67cbfa81070fd98f91f61a0a0576cc55aeefe7bb
       depends:
         - kernel
         - eventbus
