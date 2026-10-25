@@ -208,7 +208,9 @@ enum MessageErrorCode {
 }
 
 message MessageError {
-  MessageErrorCode code = 1 [(spec.assert_enum_defined) = true];
+  // code is UNSPECIFIED on an informational FROM_COOP message (the run ended),
+  // so it is not required to be a defined value.
+  MessageErrorCode code = 1;
   string detail = 2 [(spec.assert_max_size) = 500];
 }
 
@@ -273,7 +275,8 @@ message PigeonRun {
   int64 deadline_ms = 10;
   string thread_id = 11 [(spec.assert_max_size) = 128];
   RunState state = 12 [(spec.assert_enum_defined) = true];
-  EndReason end_reason = 13 [(spec.assert_enum_defined) = true];
+  // end_reason is UNSPECIFIED on every row but the ENDED one.
+  EndReason end_reason = 13;
   repeated string lease_names = 14 [(spec.assert_max_size) = 8, (spec.assert_element_max_size) = 128];
   string job_name = 15 [(spec.assert_max_size) = 63];
   int32 seq = 16 [(spec.assert_ge) = 0];
