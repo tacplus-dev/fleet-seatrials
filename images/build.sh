@@ -12,13 +12,16 @@
 #   images/build.sh fingerprint        # print each service's fingerprint and whether it is built
 #
 # A service's image depends on its own repo and on everything it generates
-# from: its contract, the contracts of its `depends` closure, and the compiler's
-# sys protos. Its FINGERPRINT is the hash of those commits (Jody, 2026-10-25:
-# one MAJOR.MINOR across tacplus and types never break within it, so once
-# versions exist a dependency's patch bump will drop out of this and only a
-# MAJOR.MINOR change will stay). The image carries it as the tag fp-<hash>;
-# `changed` builds a service only when the registry has no image with its
-# current fingerprint.
+# from. The compiler says what that is: `tacplus fleet build` writes each
+# service's inputs_digest into fleet.lock, a hash over the descriptors of the
+# service's scope (its contract, its `depends` and what they reach, the sys
+# protos; the whole tree for grpc-servers/grpc-clients/states: all). Its
+# FINGERPRINT is the hash of the compiler's MAJOR.MINOR, its own commit and
+# that digest (Jody, 2026-10-25: "Tacplus should tell us so we can skip
+# rebuilds when they are not necessary"). A dependency's commit that changes
+# no descriptor in the scope leaves it alone. The image carries it as the tag
+# fp-<hash>; `changed` builds a service only when the registry has no image
+# with its current fingerprint.
 #
 # Each service's repo is cloned here at the locked commit and submitted as the
 # build source, with build/proto copied in at .fleet/proto; Cloud Build clones
@@ -40,40 +43,14 @@ lock_field() { # service field -> value, from fleet.lock's flat per-service bloc
 }
 services() { awk '/^    - name: / { printf "%s ", $3 }' "$here/fleet.lock"; }
 
-# fingerprint SERVICE -> sha256 (12 hex) over: the compiler commit, the service's
-# own commit, and the contract commit of every service in its transitive
-# `depends` closure, each on its own line, sorted — so the same inputs always
-# give the same fingerprint whatever order the lock lists them in.
+# fingerprint SERVICE -> sha256 (12 hex) over the compiler MAJOR.MINOR, the
+# service's own commit and its inputs_digest, one per line.
 fingerprint() {
-  python3 - "$here/fleet.lock" "$tacplus_commit" "$1" <<'PY'
-import sys, hashlib
-lock, tacplus, name = sys.argv[1], sys.argv[2], sys.argv[3]
-# fleet.lock is regular (tacplus writes it): parse the per-service blocks without
-# a yaml library, which this Mac does not have.
-svcs, cur, in_dep = {}, None, False
-for raw in open(lock):
-    line = raw.rstrip("\n")
-    if line.startswith("    - name: "):
-        cur = line.split(":", 1)[1].strip(); svcs[cur] = {"depends": []}; in_dep = False
-    elif cur and line.startswith("      ") and not line.startswith("        "):
-        key, _, val = line.strip().partition(":")
-        in_dep = key == "depends"
-        if val.strip():
-            svcs[cur][key] = val.strip()
-    elif cur and in_dep and line.startswith("        - "):
-        svcs[cur]["depends"].append(line.split("-", 1)[1].strip())
-seen, todo = set(), [name]
-while todo:
-    n = todo.pop()
-    if n in seen or n not in svcs:
-        continue
-    seen.add(n)
-    todo.extend(svcs[n]["depends"])
-lines = ["tacplus " + tacplus, "self " + svcs[name]["commit"]]
-for n in sorted(seen - {name}):
-    lines.append(n + " " + svcs[n]["contract_commit"])
-print(hashlib.sha256("\n".join(lines).encode()).hexdigest()[:12])
-PY
+  local minor digest
+  minor=$(sed -n 's/^tacplus: *"\{0,1\}\([0-9.]*\)"\{0,1\}$/\1/p' "$here/fleet.lock")
+  digest=$(lock_field "$1" inputs_digest)
+  [ -n "$digest" ] || { echo "fleet.lock has no inputs_digest for $1: rerun tacplus fleet build" >&2; exit 1; }
+  printf 'tacplus %s\nself %s\ninputs %s\n' "$minor" "$(lock_field "$1" commit)" "$digest" | shasum -a 256 | cut -c1-12
 }
 
 # built SERVICE FINGERPRINT -> 0 when the registry already holds an image built
