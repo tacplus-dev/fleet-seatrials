@@ -7,9 +7,9 @@ services:
     - name: kernel
       id: 8
       repo: https://github.com/tacplus-dev/kernel.git
-      commit: 99b95abf2f977cc9a17f24d868a4f921141319d7
+      commit: d8ba29dec3d5cf68c70b765e6dcc0d3182b76a64
       contract: https://github.com/tacplus-dev/kernel.git
-      contract_commit: 99b95abf2f977cc9a17f24d868a4f921141319d7
+      contract_commit: d8ba29dec3d5cf68c70b765e6dcc0d3182b76a64
       depends:
         - opa
     - name: opa
