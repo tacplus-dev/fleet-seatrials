@@ -20,12 +20,13 @@ import "sys/spec.proto";
 // ---------------------------------------------------------------------------
 option (spec.service) = {name: "pigeon"};
 
-message Config {
-  option (spec.grpc_config) = {service_name: "pigeon"};
-
-  // The pigeon's half of the thread: it answers on the coop's topic and reads
-  // its dog's tasks off it. Both grants are coop's, on PigeonMessage: the
-  // pigeon workload pattern it names is what admits this identity.
+// Thread carries the pigeon's half of the coop's topic. A pigeon has no
+// Config: everything it needs is in the Job's environment and its bootstrap
+// token, and a workload may not read a service's config state anyway. It
+// answers on the coop's topic and reads its dog's tasks off it; both grants
+// are coop's, on PigeonMessage, where the pigeon workload pattern admits this
+// identity.
+message Thread {
   option (spec.event_publish) = {
     topic_ref: "coop.PigeonMessageBus.stream"
   };

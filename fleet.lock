@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 13349ae8e20d185c6d44abb2f75c8855241f0e41
+      commit: 054400db14a4cd53d03ad4a3d031f26c422fecb5
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 13349ae8e20d185c6d44abb2f75c8855241f0e41
+      contract_commit: 054400db14a4cd53d03ad4a3d031f26c422fecb5
       depends:
         - kernel
         - eventbus
@@ -100,9 +100,9 @@ services:
     - name: pigeon
       id: 107
       repo: https://github.com/tacplus-dev/pigeon.git
-      commit: cb37e90fb890640df48b8bce423fa0cb17412874
+      commit: 4ed1acdbdc88ddee868c6887bdd1f95290777e93
       contract: https://github.com/tacplus-dev/pigeon.git
-      contract_commit: cb37e90fb890640df48b8bce423fa0cb17412874
+      contract_commit: 4ed1acdbdc88ddee868c6887bdd1f95290777e93
       depends:
         - coop
         - eventbus
