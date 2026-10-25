@@ -1,0 +1,36 @@
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package pigeon;
+
+import "sys/spec.proto";
+
+// ---------------------------------------------------------------------------
+// pigeon: the generic pigeon host. One runs per pigeon, as the Job the coop
+// creates, under the identity the coop minted for the run
+// (<service>/workloads/pigeon-<run_id>). It learns its run from the Job's
+// environment, says Ready on its thread, does the tasks its dog puts there,
+// and answers with results. It serves no RPC: a pigeon is spoken to only on
+// its thread (A30).
+//
+// The kinds it can do are the host's own; a product's kind (SeaBeam's
+// texas811) is that product's host, not this one.
+// ---------------------------------------------------------------------------
+option (spec.service) = {name: "pigeon"};
+
+message Config {
+  option (spec.grpc_config) = {service_name: "pigeon"};
+
+  // The pigeon's half of the thread: it answers on the coop's topic and reads
+  // its dog's tasks off it. Both grants are coop's, on PigeonMessage: the
+  // pigeon workload pattern it names is what admits this identity.
+  option (spec.event_publish) = {
+    topic_ref: "coop.PigeonMessageBus.stream"
+  };
+  option (spec.event_watch) = {
+    topic_ref: "coop.PigeonMessageBus.stream"
+    method_s2s: {auth_services: ["[^/]+/workloads/pigeon-[a-z0-9]+"]}
+  };
+}

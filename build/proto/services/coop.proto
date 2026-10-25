@@ -222,9 +222,12 @@ message MessageError {
 // auth "*" until tacplus names the pigeon service path pattern (design OQ2):
 // a dog is a tenant service and a pigeon is a workload under it.
 message PigeonMessage {
+  // Any service may publish and subscribe (a dog, the coop), and so may any
+  // pigeon: "*" admits service subjects only, so the pigeon workload path
+  // (<service>/workloads/pigeon-<run_id>, PIGEON_SERVICE_PATH) is named.
   option (spec.event) = {
-    s2s: {auth_services: ["*"]}
-    s2s_subscribe: {auth_services: ["*"]}
+    s2s: {auth_services: ["*", "[^/]+/workloads/pigeon-[a-z0-9]+"]}
+    s2s_subscribe: {auth_services: ["*", "[^/]+/workloads/pigeon-[a-z0-9]+"]}
   };
 
   // run_id is the partition key: one pigeon's traffic stays in order.

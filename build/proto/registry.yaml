@@ -45,6 +45,10 @@ services:
       tenant_slice_field: 2
       contract: https://github.com/tacplus-dev/opa.git
       visibility: private
+    - name: pigeon
+      id: 107
+      contract: https://github.com/tacplus-dev/pigeon.git
+      visibility: public
     - name: stratum
       id: 34
       contract: https://github.com/tacplus-dev/stratum.git

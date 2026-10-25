@@ -176,6 +176,8 @@ enum FailureCode {
   FAILURE_CODE_INVALID_TASK = 9;
   // CHILD_FAILED: the kind's child process ended without a result.
   FAILURE_CODE_CHILD_FAILED = 10;
+  // SCRIPT_FAILED: the kind's own code raised; the detail is its error.
+  FAILURE_CODE_SCRIPT_FAILED = 11;
 }
 
 // ============================================================================

@@ -1,14 +1,19 @@
-# coop: the fleet's one door to pigeons, in MODE_MOCK: no Jobs and no minted
-# pigeon identities yet (slice 2); the coop itself answers as the pigeon, so a
-# dog's round trip on the thread is proven end to end. The one kind here is
-# echo.ping, whose mock_result is a pigeon.FromPigeon Result with the bytes
-# "pong" (status OK, mode SCRIPT).
-mode: MODE_MOCK
+# coop: the fleet's one door to pigeons, in MODE_JOBS: one Kubernetes Job per
+# pigeon in the pigeons namespace the operator renders (<fleet>-pigeons), each
+# with an identity kernel mints for the run. The one kind is echo.ping, done
+# by the generic pigeon host (github.com/tacplus-dev/pigeon): the result is
+# the request. mock_result is what MODE_MOCK would answer with; it is kept so
+# flipping the mode back is one line.
+mode: MODE_JOBS
+pigeons_namespace: schematic-pigeons
 max_live_runs: 32
 max_live_runs_per_tenant: 8
 ready_timeout_ms: 60000
 kinds:
     - name: echo.ping
+      image: us-central1-docker.pkg.dev/jody1-328023/seabeam/schematic/pigeon:local
+      cpu: 250m
+      memory: 128Mi
       domain_ceiling: []
       max_deadline_ms: 600000
       max_budget_micros: 0
