@@ -13,38 +13,38 @@ services:
     - name: eventbus
       id: 18
       contract: https://github.com/tacplus-dev/eventbus.git
-      visibility: private
+      visibility: public
     - name: gateway
       id: 7
       contract: https://github.com/tacplus-dev/gateway.git
-      visibility: private
+      visibility: public
     - name: kernel
       id: 8
       tenant_slice_field: 1
       contract: https://github.com/tacplus-dev/kernel.git
-      visibility: private
+      visibility: public
     - name: kmaker
       id: 49
       contract: https://github.com/tacplus-dev/kmaker.git
-      visibility: private
+      visibility: public
     - name: letsencrypt
       id: 9
       contract: https://github.com/tacplus-dev/letsencrypt.git
-      visibility: private
+      visibility: public
     - name: llmproxy
       id: 75
       contract: https://github.com/tacplus-dev/llmproxy.git
-      visibility: private
+      visibility: public
     - name: oauth
       id: 21
       tenant_slice_field: 3
       contract: https://github.com/tacplus-dev/oauth.git
-      visibility: private
+      visibility: public
     - name: opa
       id: 29
       tenant_slice_field: 2
       contract: https://github.com/tacplus-dev/opa.git
-      visibility: private
+      visibility: public
     - name: pigeonhost
       id: 107
       contract: https://github.com/tacplus-dev/pigeon.git
@@ -52,7 +52,7 @@ services:
     - name: stratum
       id: 34
       contract: https://github.com/tacplus-dev/stratum.git
-      visibility: private
+      visibility: public
     - name: tenantecho
       id: 103
       contract: https://github.com/tacplus-dev/tenantecho.git
@@ -61,8 +61,8 @@ vservices:
     - name: proxypolicy
       field_id: 45
       contract: https://github.com/tacplus-dev/kernel.git
-      visibility: private
+      visibility: public
     - name: query
       field_id: 71
       contract: https://github.com/tacplus-dev/stratum.git
-      visibility: private
+      visibility: public
