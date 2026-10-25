@@ -7,9 +7,9 @@ services:
     - name: kernel
       id: 8
       repo: https://github.com/tacplus-dev/kernel.git
-      commit: 847ce576cbc288150e5c8980ad4d16d21e817f82
+      commit: 99b95abf2f977cc9a17f24d868a4f921141319d7
       contract: https://github.com/tacplus-dev/kernel.git
-      contract_commit: 847ce576cbc288150e5c8980ad4d16d21e817f82
+      contract_commit: 99b95abf2f977cc9a17f24d868a4f921141319d7
       depends:
         - opa
     - name: opa
@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 6f1338da095fdd6d2450767c2a15b191602f29db
+      commit: 434cb622fcb9d5635e0c8ba97068a6d73bc5130c
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 6f1338da095fdd6d2450767c2a15b191602f29db
+      contract_commit: 434cb622fcb9d5635e0c8ba97068a6d73bc5130c
       depends:
         - kernel
         - eventbus
