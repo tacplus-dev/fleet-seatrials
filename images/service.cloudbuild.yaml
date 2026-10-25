@@ -11,6 +11,10 @@ substitutions:
   _MAIN: .            # go: the main package to build
   _COMMIT: unknown
   _FLEET_COMMIT: unknown
+  # The build fingerprint: the service's own commit plus the compiler's and every
+  # contract it generates from (images/build.sh fingerprint). Carried as a tag so
+  # `images/build.sh changed` can ask the registry what each image was built from.
+  _FINGERPRINT: unknown
   _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:seatrials
 steps:
   - id: generate
@@ -62,10 +66,12 @@ steps:
       - --build-arg=TARGETARCH=amd64
       - --tag=${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
       - --tag=${_REGISTRY}/schematic/${_SERVICE}:local
+      - --tag=${_REGISTRY}/schematic/${_SERVICE}:fp-${_FINGERPRINT}
       - .
 images:
   - ${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
   - ${_REGISTRY}/schematic/${_SERVICE}:local
+  - ${_REGISTRY}/schematic/${_SERVICE}:fp-${_FINGERPRINT}
 options:
   machineType: E2_HIGHCPU_8
 timeout: 3600s
