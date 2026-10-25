@@ -3,12 +3,14 @@
 
 syntax = "proto3";
 
-package pigeon;
+package pigeonhost;
 
 import "sys/spec.proto";
 
 // ---------------------------------------------------------------------------
-// pigeon: the generic pigeon host. One runs per pigeon, as the Job the coop
+// pigeonhost: the generic pigeon host. (The package is pigeonhost, not pigeon:
+// pigeon is the protocol's package, shared/pigeon.proto, and one package in
+// two directories is one module too many for the Rust model.) One runs per pigeon, as the Job the coop
 // creates, under the identity the coop minted for the run
 // (<service>/workloads/pigeon-<run_id>). It learns its run from the Job's
 // environment, says Ready on its thread, does the tasks its dog puts there,
@@ -18,7 +20,7 @@ import "sys/spec.proto";
 // The kinds it can do are the host's own; a product's kind (SeaBeam's
 // texas811) is that product's host, not this one.
 // ---------------------------------------------------------------------------
-option (spec.service) = {name: "pigeon"};
+option (spec.service) = {name: "pigeonhost"};
 
 // Thread carries the pigeon's half of the coop's topic. A pigeon has no
 // Config: everything it needs is in the Job's environment and its bootstrap

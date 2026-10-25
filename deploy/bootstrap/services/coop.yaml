@@ -1,7 +1,7 @@
 # coop: the fleet's one door to pigeons, in MODE_JOBS: one Kubernetes Job per
 # pigeon in the pigeons namespace the operator renders (<fleet>-pigeons), each
 # with an identity kernel mints for the run. The one kind is echo.ping, done
-# by the generic pigeon host (github.com/tacplus-dev/pigeon): the result is
+# by the generic pigeon host (pigeonhost, github.com/tacplus-dev/pigeon): the result is
 # the request. mock_result is what MODE_MOCK would answer with; it is kept so
 # flipping the mode back is one line.
 mode: MODE_JOBS
@@ -11,7 +11,7 @@ max_live_runs_per_tenant: 8
 ready_timeout_ms: 60000
 kinds:
     - name: echo.ping
-      image: us-central1-docker.pkg.dev/jody1-328023/seabeam/schematic/pigeon:local
+      image: us-central1-docker.pkg.dev/jody1-328023/seabeam/schematic/pigeonhost:local
       cpu: 250m
       memory: 128Mi
       domain_ceiling: []

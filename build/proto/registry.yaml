@@ -45,7 +45,7 @@ services:
       tenant_slice_field: 2
       contract: https://github.com/tacplus-dev/opa.git
       visibility: private
-    - name: pigeon
+    - name: pigeonhost
       id: 107
       contract: https://github.com/tacplus-dev/pigeon.git
       visibility: public

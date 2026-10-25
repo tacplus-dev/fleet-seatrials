@@ -2,7 +2,7 @@
 tacplus: "2.2"
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: bbfa6aaf37fc5e45b7a3102f50b08247e4d66d96
+      commit: 937bae87da7549a338a3447201b91661e5349c63
 services:
     - name: kernel
       id: 8
@@ -90,19 +90,19 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: d3f78e666994ff3254c537c8470b42f6eb52727d
+      commit: 4940558732abd005e7439b28bc9766edd87c8458
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: d3f78e666994ff3254c537c8470b42f6eb52727d
+      contract_commit: 4940558732abd005e7439b28bc9766edd87c8458
       depends:
         - kernel
         - eventbus
         - stratum
-    - name: pigeon
+    - name: pigeonhost
       id: 107
       repo: https://github.com/tacplus-dev/pigeon.git
-      commit: 362d6cc0398c1afb0d642d6b119837d74e7d36d3
+      commit: 8008e671ac344023daf1f9b24ec364366cc95881
       contract: https://github.com/tacplus-dev/pigeon.git
-      contract_commit: 362d6cc0398c1afb0d642d6b119837d74e7d36d3
+      contract_commit: 8008e671ac344023daf1f9b24ec364366cc95881
       depends:
         - coop
         - eventbus

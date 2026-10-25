@@ -43,7 +43,7 @@ services:
   # the fleet proves a dog's round trip on the thread before Jobs exist.
   - name: coop
     repo: https://github.com/tacplus-dev/coop.git
-  # pigeon: the generic pigeon host. Never a Deployment: the coop runs it as a
-  # Job per pigeon; it is in the fleet for its contract and its image.
-  - name: pigeon
+  # pigeonhost: the generic pigeon host. Never a Deployment: the coop runs it
+  # as a Job per pigeon; it is in the fleet for its contract and its image.
+  - name: pigeonhost
     repo: https://github.com/tacplus-dev/pigeon.git
