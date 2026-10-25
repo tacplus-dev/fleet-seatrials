@@ -90,9 +90,9 @@ services:
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
-      commit: 38f31a3ec20405b4fe4726dbe7005fb0fbec4883
+      commit: b03896f72c9525568a10f2453d849e9368821af7
       contract: https://github.com/tacplus-dev/coop.git
-      contract_commit: 38f31a3ec20405b4fe4726dbe7005fb0fbec4883
+      contract_commit: b03896f72c9525568a10f2453d849e9368821af7
       depends:
         - kernel
         - eventbus
