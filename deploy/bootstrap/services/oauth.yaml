@@ -6,11 +6,13 @@ scopes:
   - openid
   - profile
   - email
-# Anyone with a Google (later Apple, Microsoft) account may sign in; whether
+# Anyone with a Google, Microsoft or Apple account may sign in; whether
 # they are entitled to anything is tenant membership, not the provider, so no
-# provider lists domains. The client secret is NOT here: it rides the
-# kernel-config-override ConfigMap (ConfigOverride paths
-# configs.oauth_config.providers), which git never holds.
+# provider lists domains. Client secrets are NOT here: Google's and
+# Microsoft's ride the kernel-config-override ConfigMap (ConfigOverride path
+# configs.oauth_config.providers, which replaces this whole list, so every
+# provider must be in it — deploy/signin-secrets.sh keeps the two in step), and
+# Apple's .p8 key rides the oauth-pipeline-secrets Secret. Git holds neither.
 providers:
   - enable: true
     name: Google
@@ -24,3 +26,39 @@ providers:
       - openid
       - profile
       - email
+
+  # App registration "seatrials-web" in Entra, directory jodyseabeam.onmicrosoft.com
+  # (jody@seabeam.net, 2026-10-26): any Entra directory plus personal accounts,
+  # redirect URI https://seatrials.tacplus.dev/, optional ID-token claims email
+  # and xms_edov. issuer is the common endpoint (discovery, JWKS); a token's own
+  # iss names its directory, checked against issuer_template.
+  - enable: true
+    name: Microsoft
+    issuer: https://login.microsoftonline.com/common/v2.0
+    issuer_template: https://login.microsoftonline.com/{tid}/v2.0
+    email_verified_claim: xms_edov
+    client_id: deee63f8-1d3b-46c8-aa3a-f7b2d7eb3f85
+    allowed_redirect_uri_prefixes:
+      - https://seatrials.tacplus.dev/
+    scopes:
+      - openid
+      - profile
+      - email
+  # Sign in with Apple, Apple Developer team DQQPWV62P5 (2026-10-26): Services ID
+  # dev.tacplus.seatrials.web on primary App ID dev.tacplus.seatrials, domain
+  # seatrials.tacplus.dev, return URL the gateway's form-post callback. No client
+  # secret: oauth mints one per request from the .p8 key (key D9JNT33239), which
+  # rides the oauth-pipeline-secrets Secret, never git.
+  - enable: true
+    name: Apple
+    issuer: https://appleid.apple.com
+    client_id: dev.tacplus.seatrials.web
+    allowed_redirect_uri_prefixes:
+      - https://seatrials.tacplus.dev/
+    scopes:
+      - name
+      - email
+    apple:
+      team_id: DQQPWV62P5
+      key_id: D9JNT33239
+      form_post_redirect_uri: https://seatrials.tacplus.dev/oauth/Auth/BrokerFormPostCallback
