@@ -50,12 +50,12 @@ services:
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 9a6534c3dfd5532005960cd40ff75f1e55a1c9e4
+      commit: d4c08e1fba841ccb744b7e49b36f157bf08fffab
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 9a6534c3dfd5532005960cd40ff75f1e55a1c9e4
+      contract_commit: d4c08e1fba841ccb744b7e49b36f157bf08fffab
       depends:
         - eventbus
-      inputs_digest: 03aade52930f5b31fd3d0ff3467f3230570c8811944253a7aa0a82bf7c476f94
+      inputs_digest: 6b440913a354a1016cd6c20e478c81dac9bb46d2f00f20ab3a08b1215f29b369
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
