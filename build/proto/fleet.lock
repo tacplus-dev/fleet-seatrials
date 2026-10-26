@@ -50,13 +50,12 @@ services:
     - name: stratum
       id: 34
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 1b078beca068757f87bb837a289d557fc519707e
+      commit: 9a6534c3dfd5532005960cd40ff75f1e55a1c9e4
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 1b078beca068757f87bb837a289d557fc519707e
+      contract_commit: 9a6534c3dfd5532005960cd40ff75f1e55a1c9e4
       depends:
         - eventbus
-        - letsencrypt
-      inputs_digest: f34483fd5e525d6c0f1c62ddfb9685c1d143b0f15abaff51df9eda14a05ee627
+      inputs_digest: 03aade52930f5b31fd3d0ff3467f3230570c8811944253a7aa0a82bf7c476f94
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
@@ -90,7 +89,7 @@ services:
         - llmproxy
         - eventbus
         - stratum
-      inputs_digest: 040a307bf0ca2f14123bde7a384d20536202280bf929c059c5bf1dac30a0e260
+      inputs_digest: 34a6c0b504581a0b20dc045daa12a23dd07db23c1b4bc8230103c477ad9274b4
     - name: tenantecho
       id: 103
       repo: https://github.com/tacplus-dev/tenantecho.git
@@ -100,7 +99,7 @@ services:
       depends:
         - coop
         - eventbus
-      inputs_digest: 940f27d50b21ea4759956d6af1ae31a57343bca971d643f737eedb27fe294ba2
+      inputs_digest: e0866bcbe4a99243eaa88453999c7741e7865100261268df10841bf717154f99
     - name: coop
       id: 106
       repo: https://github.com/tacplus-dev/coop.git
@@ -111,7 +110,7 @@ services:
         - kernel
         - eventbus
         - stratum
-      inputs_digest: 926c99b67fe8eff48ac168edac85265d9941d3d00ab410e869f8c6bedfa3d7ca
+      inputs_digest: 83b894b385228a93b810cffefdf8ba463faf7e5276498bbf495354d81977bdda
     - name: pigeonhost
       id: 107
       repo: https://github.com/tacplus-dev/pigeon.git
@@ -121,4 +120,4 @@ services:
       depends:
         - coop
         - eventbus
-      inputs_digest: 26dd6b474df0cec8183c1b7b2c7ff7ae1f37c2ab053ee1084f590bd795085fe4
+      inputs_digest: 5dd628c91a39cbae220b484da6f6c3d5cf782af23ef741757e0ebfa189612876
