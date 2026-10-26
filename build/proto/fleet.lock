@@ -30,9 +30,9 @@ services:
     - name: letsencrypt
       id: 9
       repo: https://github.com/tacplus-dev/letsencrypt.git
-      commit: 57e9e46b2ec98530ddcce4dd50f7948dfcd836fe
+      commit: 2c60a0d510eccc9982bff7f00fd81a627e7ea97d
       contract: https://github.com/tacplus-dev/letsencrypt.git
-      contract_commit: 57e9e46b2ec98530ddcce4dd50f7948dfcd836fe
+      contract_commit: 2c60a0d510eccc9982bff7f00fd81a627e7ea97d
       depends:
         - kernel
         - eventbus
