@@ -1,0 +1,9 @@
+# alpha's OAuth slice (oauth.OAuthTenantConfig). A Google sign-in with a
+# verified thescottsweb.com email is an org proof for /tenants/alpha; any other
+# sign-in is a personal proof. oauth mints email_domain only from a verified
+# email. The operator renders this into the OPA routing policy
+# (tenants/namespace.rego).
+claim_matchers:
+  - provider_issuer_url: https://accounts.google.com
+    claim_key: email_domain
+    claim_value: thescottsweb.com
