@@ -3,7 +3,7 @@
 # tacplus binary on top, and the Java containers' launcher built from source
 # (images/build.sh clones github.com/tacplus-dev/launcher at the pinned commit
 # into launcher/ beside this file). The slim tacplus image has no compilers.
-ARG BUILD_IMAGE=ghcr.io/tacplus-dev/tacplus/build:latest
+ARG BUILD_IMAGE=ghcr.io/tacplus-dev/tacplus/build:2.3
 ARG TACPLUS_IMAGE
 FROM ${TACPLUS_IMAGE} AS tacplus
 FROM ${BUILD_IMAGE} AS launcher
