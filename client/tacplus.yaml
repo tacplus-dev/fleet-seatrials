@@ -9,3 +9,6 @@ output-name: tacplus
 header: |
   Copyright (c) 2026 Jody Scott
   SPDX-License-Identifier: Apache-2.0
+# The services whose client-facing surfaces proto/clients/seatrials.proto calls;
+# the compiler fetches their contracts from the registry.
+depends: [kernel, tenantecho, doppelganger]
