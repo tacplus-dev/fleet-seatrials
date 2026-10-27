@@ -59,9 +59,9 @@ services:
     - name: oauth
       id: 21
       repo: https://github.com/tacplus-dev/oauth.git
-      commit: 4bc3b2f5b0ce2a6202c45e278787c94e043f289d
+      commit: 48508785d3ec73c564927fda9957ff92750d9382
       contract: https://github.com/tacplus-dev/oauth.git
-      contract_commit: 4bc3b2f5b0ce2a6202c45e278787c94e043f289d
+      contract_commit: 48508785d3ec73c564927fda9957ff92750d9382
       depends:
         - kernel
       inputs_digest: 03bd0b46c5fd213baa676ef04266a661f953f5f98230e9562cc49f41b203a33f
