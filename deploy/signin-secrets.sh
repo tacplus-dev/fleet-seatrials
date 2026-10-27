@@ -45,6 +45,23 @@ done
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# The clipboard has held the Secret ID and this script's own command line
+# instead of the secret VALUE; Microsoft then refuses the client (AADSTS7000215)
+# and sign-in fails with a 500. So refuse, before anything is written, a value
+# not shaped like an Entra secret value — and never echo it.
+if $ms_from_clipboard; then
+  ms_secret=$(pbpaste; echo x); ms_secret=${ms_secret%x}   # keeps a trailing newline, to refuse it
+  refuse() { echo "the clipboard $1: copy the Entra client secret VALUE (not its Secret ID) and run again" >&2; exit 1; }
+  [ -n "$ms_secret" ] || refuse "is empty"
+  [[ "$ms_secret" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] &&
+    refuse "holds a GUID, which is the Secret ID"
+  [[ "$ms_secret" =~ [[:space:]] ]] && refuse "holds whitespace or a newline, as a command or a path would"
+  case "$ms_secret" in [~/.]*) refuse "starts with ~, / or ., as a path or a command would" ;; esac
+  [[ "$ms_secret" =~ ^[A-Za-z0-9_.~-]{30,60}$ ]] ||
+    refuse "is not 30-60 characters of A-Z a-z 0-9 _ . ~ - (Entra secret values are 40)"
+  printf '%s' "$ms_secret" > "$tmp/ms_secret"
+fi
+
 if [ -n "$apple_key" ]; then
   grep -q "BEGIN PRIVATE KEY" "$apple_key" || { echo "$apple_key is not a .p8 PEM key" >&2; exit 1; }
   kubectl -n "$ns" create secret generic oauth-pipeline-secrets --from-file=apple_signin_key_p8="$apple_key" \
@@ -61,12 +78,7 @@ fi
 
 yq -o=json '.providers' "$here/deploy/bootstrap/services/oauth.yaml" > "$tmp/bundle.json"
 kubectl -n "$ns" get configmap kernel-config-override -o jsonpath='{.data.override\.json}' > "$tmp/current.json"
-if $ms_from_clipboard; then
-  pbpaste | tr -d '\r\n' > "$tmp/ms_secret"
-  [ -s "$tmp/ms_secret" ] || { echo "the clipboard is empty: copy the Entra client secret VALUE first" >&2; exit 1; }
-else
-  : > "$tmp/ms_secret"
-fi
+$ms_from_clipboard || : > "$tmp/ms_secret"
 jq --slurpfile bundle "$tmp/bundle.json" --rawfile ms "$tmp/ms_secret" \
    --argjson apple_ready "$apple_ready" --arg now "$(($(date +%s) * 1000))" '
   (.configs.oauth_config.providers // []) as $old
