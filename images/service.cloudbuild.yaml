@@ -4,6 +4,10 @@
 # the fleet's protos with the fleet's tacplus image, build the binary for the
 # service's language, bake the service's own Dockerfile, push by lock commit and
 # as :local (what the operator's local-images mode references).
+# Each step builds for every platform in _PLATFORMS: the binaries are cross-
+# compiled (Go and Rust; a jar runs anywhere), each platform's image is pushed
+# as fp-<fingerprint>-<arch> (QEMU runs the Dockerfiles' RUN steps for a
+# platform the worker is not), and the tags above name one index over them.
 substitutions:
   _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
   _SERVICE: unknown
@@ -16,6 +20,10 @@ substitutions:
   # `images/build.sh changed` can ask the registry what each image was built from.
   _FINGERPRINT: unknown
   _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:seatrials
+  # The platforms to build, space-separated (images/pins.yaml's platforms).
+  _PLATFORMS: arm64
+  # Registers QEMU for the platforms the worker cannot run natively.
+  _BINFMT: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 steps:
   - id: generate
     name: ${_TACPLUS_IMAGE}
@@ -32,14 +40,14 @@ steps:
     args:
       - -ceu
       - |
-        # Every service image runs under the launcher; the Dockerfiles copy it
-        # from beside themselves.
-        cp /usr/local/bin/launcher launcher-linux-amd64
+        # Each platform's binary goes to .fleet/out/<arch>/; the image step puts
+        # it where the Dockerfile copies it from.
+        machine() { # ELF file -> amd64|arm64, from its e_machine
+          case "$$(od -An -tx1 -j18 -N2 "$$1" | tr -d ' \n')" in
+            3e00) echo amd64 ;; b700) echo arm64 ;; *) echo unknown ;;
+          esac
+        }
         case "${_LANG}" in
-          go)
-            mkdir -p bin
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "bin/${_SERVICE}" "${_MAIN}"
-            ;;
           rust)
             # gateway embeds dist/ at compile time and its image bundles
             # webapp-dist/ (its own web console, built here from webapp/ against
@@ -50,28 +58,65 @@ steps:
               (cd webapp && tacplus build --src ../.fleet/proto && npm ci && npm run build)
               rm -rf webapp-dist && cp -R webapp/dist webapp-dist
             fi
-            cargo build --release
             ;;
           java)
             mvn -q -B package -Dmaven.test.skip=true
             ;;
+          go) ;;
           *) echo "unknown language ${_LANG}"; exit 1 ;;
         esac
+        for arch in ${_PLATFORMS}; do
+          out=.fleet/out/$$arch
+          mkdir -p "$$out"
+          # Every service image runs under the launcher; the Dockerfiles copy
+          # launcher-linux-<arch> from beside themselves.
+          cp "/usr/local/bin/launcher-linux-$$arch" .
+          case "${_LANG}" in
+            go)
+              CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -ldflags="-s -w" -o "$$out/${_SERVICE}" "${_MAIN}"
+              ;;
+            rust)
+              triple=$$(case $$arch in amd64) echo x86_64 ;; arm64) echo aarch64 ;; esac)-unknown-linux-gnu
+              cargo build --release --target "$$triple"
+              cp "target/$$triple/release/${_SERVICE}" "$$out/${_SERVICE}"
+              ;;
+          esac
+          for bin in "launcher-linux-$$arch" "$$out"/*; do
+            [ -e "$$bin" ] || continue
+            [ "$$(machine "$$bin")" = "$$arch" ] || { echo "$$bin is built for $$(machine "$$bin"), not $$arch"; exit 1; }
+          done
+        done
   - id: image
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     args:
-      - build
-      - --build-arg=VERSION=${_FLEET_COMMIT}
-      - --build-arg=VCS_REF=${_COMMIT}
-      - --build-arg=TARGETARCH=amd64
-      - --tag=${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
-      - --tag=${_REGISTRY}/schematic/${_SERVICE}:local
-      - --tag=${_REGISTRY}/schematic/${_SERVICE}:fp-${_FINGERPRINT}
-      - .
-images:
-  - ${_REGISTRY}/schematic/${_SERVICE}:${_FLEET_COMMIT}
-  - ${_REGISTRY}/schematic/${_SERVICE}:local
-  - ${_REGISTRY}/schematic/${_SERVICE}:fp-${_FINGERPRINT}
+      - -ceu
+      - |
+        repo=${_REGISTRY}/schematic/${_SERVICE}
+        native=$$(docker version --format '{{.Server.Arch}}')
+        emulate=
+        for arch in ${_PLATFORMS}; do [ "$$arch" = "$$native" ] || emulate=$$emulate$${emulate:+,}$$arch; done
+        [ -z "$$emulate" ] || docker run --privileged --rm ${_BINFMT} --install "$$emulate"
+        for arch in ${_PLATFORMS}; do
+          case "${_LANG}" in
+            go) mkdir -p bin && cp ".fleet/out/$$arch/${_SERVICE}" "bin/${_SERVICE}" ;;
+            rust) mkdir -p target/release && cp ".fleet/out/$$arch/${_SERVICE}" "target/release/${_SERVICE}" ;;
+          esac
+          image=$$repo:fp-${_FINGERPRINT}-$$arch
+          docker buildx build --platform "linux/$$arch" --provenance=false --load \
+            --build-arg=VERSION=${_FLEET_COMMIT} --build-arg=VCS_REF=${_COMMIT} --build-arg=TARGETARCH=$$arch \
+            --tag="$$image" .
+          platform=$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$$image")
+          [ "$$platform" = "linux/$$arch" ] || { echo "$$image is $$platform, not linux/$$arch"; exit 1; }
+          docker push "$$image"
+        done
+        # One index over the platforms, under the tags the fleet references; it
+        # is pushed last, so fp-<fingerprint> exists only when every platform does.
+        sources=
+        for arch in ${_PLATFORMS}; do sources="$$sources $$repo:fp-${_FINGERPRINT}-$$arch"; done
+        docker buildx imagetools create --prefer-index \
+          --tag="$$repo:${_FLEET_COMMIT}" --tag="$$repo:local" --tag="$$repo:fp-${_FINGERPRINT}" $$sources
+        docker buildx imagetools inspect "$$repo:fp-${_FINGERPRINT}"
 options:
   machineType: E2_HIGHCPU_8
 timeout: 3600s

@@ -62,6 +62,44 @@ out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" WAIT_INTERVAL=0 WAIT=1 STU
 [[ "$out" == *gateway*FAILURE* ]] && echo "ok   the failed build is named" ||
   { echo "FAIL the failed build is not named: [$out]"; failures=$((failures + 1)); }
 
+# The platforms setting in images/pins.yaml: each build is told which platforms
+# to build (_PLATFORMS, sorted), and the fingerprint covers them, so an
+# arm64-only image is never taken for a multi-arch one. Run against a copy of
+# the tree whose pins.yaml says PLATFORMS_LINE.
+platforms_run() { # PLATFORMS_LINE ARGS... -> build.sh's output; the gcloud calls in $work/log
+  local tree=$work/tree; rm -rf "$tree"
+  mkdir -p "$tree/images" "$tree/build/proto"
+  cp "$here/build.sh" "$here/service.cloudbuild.yaml" "$tree/images/"
+  cp "$here/../fleet.lock" "$tree/"
+  grep -v '^platforms:' "$here/pins.yaml" > "$tree/images/pins.yaml"
+  [ -z "$1" ] || echo "$1" >> "$tree/images/pins.yaml"
+  shift
+  : > "$work/log"
+  env PATH="$work/bin:$PATH" STUB_LOG="$work/log" "$tree/images/build.sh" "$@" 2>&1
+}
+substitution() { # NAME -> its value in the first build submitted
+  grep -m1 '^builds submit ' "$work/log" | tr ',' '\n' | sed -n "s/^.*$1=//p"
+}
+check "pins.yaml builds arm64 only" "$(grep '^platforms:' "$here/pins.yaml")" "platforms: [arm64]"
+platforms_run "platforms: [arm64]" kernel > /dev/null
+check "[arm64]: _PLATFORMS" "$(substitution _PLATFORMS)" "arm64"
+fp_arm64=$(substitution _FINGERPRINT)
+platforms_run "platforms: [arm64, amd64]" kernel > /dev/null
+check "[arm64, amd64]: _PLATFORMS, sorted" "$(substitution _PLATFORMS)" "amd64 arm64"
+fp_both=$(substitution _FINGERPRINT)
+platforms_run "platforms: [amd64,arm64]" kernel > /dev/null
+check "[amd64,arm64]: the same build" "$(substitution _PLATFORMS) $(substitution _FINGERPRINT)" "amd64 arm64 $fp_both"
+[ -n "$fp_arm64" ] && [ "$fp_arm64" != "$fp_both" ] && echo "ok   the fingerprint covers the platforms" ||
+  { echo "FAIL the fingerprint ignores the platforms: [$fp_arm64] [$fp_both]"; failures=$((failures + 1)); }
+check "fingerprint prints the same hash" \
+  "$(platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "kernel" { print $2 }')" "$fp_arm64"
+for bad in "platforms: [arm64, x86]" "platforms: []" ""; do
+  out=$(platforms_run "$bad" kernel) &&
+    { echo "FAIL [$bad] is accepted: [$out]"; failures=$((failures + 1)); } ||
+    { [ ! -s "$work/log" ] && echo "ok   [$bad] is refused, nothing submitted" ||
+      { echo "FAIL [$bad] submitted a build"; failures=$((failures + 1)); }; }
+done
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1
 fi

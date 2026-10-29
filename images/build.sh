@@ -16,14 +16,18 @@
 # (the deploy pipeline's images stage) the script then waits for each one and
 # fails, naming the service, unless every one succeeds, so nothing deploys
 # against an image that does not exist.
+#
+# Each image is built for the platforms in images/pins.yaml (`platforms:
+# [arm64]`; `[arm64, amd64]` builds both): one image per platform, tagged
+# fp-<hash>-<arch>, and the tags below name one multi-arch index over them.
 # A service's image depends on its own repo and on everything it generates
 # from. The compiler says what that is: `tacplus fleet build` writes each
 # service's inputs_digest into fleet.lock, a hash over the descriptors of the
 # service's scope (its contract, its `depends` and what they reach, the sys
 # protos; the whole tree for grpc-servers/grpc-clients/states: all). Its
-# FINGERPRINT is the hash of the compiler's MAJOR.MINOR, its own commit and
-# that digest (Jody, 2026-10-25: "Tacplus should tell us so we can skip
-# rebuilds when they are not necessary"). A dependency's commit that changes
+# FINGERPRINT is the hash of the compiler's MAJOR.MINOR, its own commit, that
+# digest and the platforms it is built for (Jody, 2026-10-25: "Tacplus should
+# tell us so we can skip rebuilds when they are not necessary"). A dependency's commit that changes
 # no descriptor in the scope leaves it alone. The image carries it as the tag
 # fp-<hash>; `changed` builds a service only when the registry has no image
 # with its current fingerprint.
@@ -31,13 +35,20 @@
 # Each service's repo is cloned here at the locked commit and submitted as the
 # build source, with build/proto copied in at .fleet/proto; Cloud Build clones
 # nothing (the repos are private). Images land at
-#   <registry>/schematic/<service>:<fleet commit>  and  :local
+#   <registry>/schematic/<service>:<fleet commit>  and  :local  and  :fp-<hash>
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 registry=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
 tacplus_repo=https://github.com/tacplus-dev/tacplus.git
 tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
+# platforms: [arm64, amd64] -> "amd64 arm64", sorted, so the order in pins.yaml
+# changes neither the build nor its fingerprint.
+platforms=$(sed -n 's/^platforms: *\[\(.*\)\] *$/\1/p' "$here/images/pins.yaml" | tr ', ' '\n\n' | sed '/^$/d' | sort -u | xargs)
+for p in $platforms; do
+  case "$p" in amd64|arm64) ;; *) echo "images/pins.yaml: unknown platform $p (amd64, arm64)" >&2; exit 1 ;; esac
+done
+[ -n "$platforms" ] || { echo "images/pins.yaml: platforms is missing or empty: e.g. platforms: [arm64]" >&2; exit 1; }
 [ -d "$here/build/proto" ] || { echo "build/proto missing: run tacplus fleet build first" >&2; exit 1; }
 
 lock_field() { # service field -> value, from fleet.lock's flat per-service block
@@ -49,13 +60,13 @@ lock_field() { # service field -> value, from fleet.lock's flat per-service bloc
 services() { awk '/^    - name: / { printf "%s ", $3 }' "$here/fleet.lock"; }
 
 # fingerprint SERVICE -> sha256 (12 hex) over the compiler MAJOR.MINOR, the
-# service's own commit and its inputs_digest, one per line.
+# service's own commit, its inputs_digest and the platforms, one per line.
 fingerprint() {
   local minor digest
   minor=$(sed -n 's/^tacplus: *"\{0,1\}\([0-9.]*\)"\{0,1\}$/\1/p' "$here/fleet.lock")
   digest=$(lock_field "$1" inputs_digest)
   [ -n "$digest" ] || { echo "fleet.lock has no inputs_digest for $1: rerun tacplus fleet build" >&2; exit 1; }
-  printf 'tacplus %s\nself %s\ninputs %s\n' "$minor" "$(lock_field "$1" commit)" "$digest" | shasum -a 256 | cut -c1-12
+  printf 'tacplus %s\nself %s\ninputs %s\nplatforms %s\n' "$minor" "$(lock_field "$1" commit)" "$digest" "$platforms" | shasum -a 256 | cut -c1-12
 }
 
 # built SERVICE FINGERPRINT -> 0 when the registry already holds an image built
@@ -99,7 +110,7 @@ build_service() {
   local fp; fp=$(fingerprint "$name")
   local id
   id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet --format 'value(id)' \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit")
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit")
   echo "$id"
   echo "$name $id" >> "$submitted"
   rm -rf "$src"

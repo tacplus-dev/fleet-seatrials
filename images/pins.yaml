@@ -3,3 +3,8 @@
 tacplus_commit: 3acaaf78560fe2c49f6fc91aaba3f786d265b6e8
 operator_commit: 3d0e4b76721a614c259f10c8df1642d949b58efd
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708
+# The platforms every service image is built for (images/build.sh): arm64, what
+# the fleet runs on. amd64 is off to save the cost of a second build (Jody,
+# 2026-10-29: tacplus-dev/roadmap decisions/deployments-per-cluster-2026-10-26.md,
+# the addendum); [arm64, amd64] builds both again, one multi-arch image.
+platforms: [arm64]
