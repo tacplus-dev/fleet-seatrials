@@ -14,7 +14,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 yq_version=v4.54.1
-opa_version=v1.13.1   # dependencies.yaml's github.com/open-policy-agent/opa
+opa_version=v1.21.4   # the pipeline's check CLI; the fleet's OPA library pin is dependencies.yaml's (#13)
 mkdir -p "$here/bin"
 
 # tacplus, built as images/tacplus.cloudbuild.yaml builds it.
