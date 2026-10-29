@@ -56,5 +56,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   steps. Each architecture is pushed as `fp-<hash>-<arch>`, and the existing tags become one multi-arch index.
   The fingerprint includes the platforms. The service Dockerfiles already take `TARGETARCH`. Risk: the live
   `seatrials` cluster is amd64 and pulls `:local`, so it keeps both platforms until that cluster is retired.
+- **Carry the Let's Encrypt state to the `tacplus` cluster, no new order** (2026-10-29, #24, design in its
+  comments): the move off `seatrials` (#4) must not spend the nearly exhausted duplicate-certificate budget.
+  letsencrypt already restores from its `LetsEncryptCert` row on start (same hostname set, no ACME call), so
+  only the way in is missing. Proposal: a read-only `letsencrypt export` run as a one-shot Job (the live pod is
+  untouched) into the protected file variable `LETSENCRYPT_STATE`. A `seed_file` in letsencrypt's config is
+  adopted only when Stratum has no row, then written through the normal record path. A `cert-serial` check
+  proves the same serial before DNS moves. The current certificate enters its renewal window around
+  2026-12-24, so the move must be done by then.
 
 ## Promoted / declined
