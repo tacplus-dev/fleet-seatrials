@@ -7,7 +7,8 @@
 #
 #   bin/tacplus              the fleet's tacplus, images/pins.yaml tacplus_commit
 #   bin/schematic-operator   deploy/build-operator.sh with that tacplus
-#   bin/yq, bin/opa          pinned module versions (checked against the Go checksum database)
+#   bin/yq, bin/opa,         pinned module versions (checked against the Go checksum database)
+#   bin/gitleaks
 #
 #   ci/tools.sh              # needs go and protoc (ghcr.io/tacplus-dev/tacplus/build) and
 #                            # git access to the private operator repo (ci_github)
@@ -15,6 +16,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 yq_version=v4.54.1
 opa_version=v1.21.4   # the pipeline's check CLI; the fleet's OPA library pin is dependencies.yaml's (#13)
+gitleaks_version=v8.30.1   # ci/secrets.sh; .github/workflows/secrets.yml installs the same release
 mkdir -p "$here/bin"
 
 # tacplus, built as images/tacplus.cloudbuild.yaml builds it.
@@ -33,4 +35,5 @@ TACPLUS="$here/bin/tacplus" "$here/deploy/build-operator.sh"
 
 GOBIN="$here/bin" go install "github.com/mikefarah/yq/v4@$yq_version"
 GOBIN="$here/bin" go install "github.com/open-policy-agent/opa@$opa_version"
+GOBIN="$here/bin" go install "github.com/zricethezav/gitleaks/v8@$gitleaks_version"
 echo "bin/: $(ls "$here/bin" | tr '\n' ' ')"

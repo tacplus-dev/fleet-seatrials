@@ -17,8 +17,8 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 
 | Stage | Job | What it does |
 | --- | --- | --- |
-| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq and opa ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
-| checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)), which include the letsencrypt guard's. |
+| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa and gitleaks ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
+| checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)), which include the letsencrypt guard's, and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails. |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only. It **fails if the change touches letsencrypt** (see below). |
@@ -53,7 +53,10 @@ fail and name the objects.
 ## Secrets: GitLab project variables only
 
 Every secret is a **protected variable of the GitLab project**, never of the group: group variables reach
-tacplus-dev/looper, where agents run. Masked variables are also *hidden*. The jobs place the file variables
+tacplus-dev/looper, where agents run. No key material is committed to this repository: `ci/secrets.sh` fails on any, in
+the deploy pipeline's `checks` and on every push to GitHub (`.github/workflows/secrets.yml`, #22). The kernel's
+TLS keys are the cluster PKI in `FLEET_CRYPTO_YAML`; `services/kernel.yaml` has no `tls` block (the one
+`schematic-operator init` writes is a placeholder the operator never renders). Masked variables are also *hidden*. The jobs place the file variables
 under `deploy/bootstrap/` (git-ignored) with mode 600. They remove them when the job ends, and no artifact
 includes them.
 

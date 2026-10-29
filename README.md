@@ -33,8 +33,8 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
   (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
-  secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests (bash, jq,
-  yq, opa).
+  secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets
+  scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks).
 - `client/` — `seatrials`, the local client: a tacplus client project generated against build/proto. It
   authenticates with a credential pair (keygen → the public half goes into the fleet config), gets a kernel
   token through the gateway, administers tenants with the root pair, and runs the two proofs (`ping`, `ask`).

@@ -1,0 +1,10 @@
+# Findings already in history, by commit (ci/secrets.sh, #22). Each applies to
+# its commit only: the tree scan at HEAD still finds what it names.
+#
+# b4268c8 committed services/kernel.yaml with the tls block that
+# `schematic-operator init` writes: a self-signed P-384 certificate (CN=mock-token,
+# DNS:localhost) valid for one hour, expired 2026-10-24 05:29 UTC, and its key.
+# The operator only checks that the key parses: no rendered config carries
+# either, so nothing ever served them. #22 removed the block from the tree.
+b4268c884acb03ccd5eb77e4195fda57bf31576d:deploy/bootstrap/services/kernel.yaml:generic-api-key:5
+b4268c884acb03ccd5eb77e4195fda57bf31576d:deploy/bootstrap/services/kernel.yaml:private-key:5

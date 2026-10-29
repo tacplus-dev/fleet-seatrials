@@ -42,5 +42,11 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **A dry run on every push to main** (2026-10-29, #17): the pipeline runs from the web, the API or a
   schedule. A GitHub webhook to a GitLab pipeline trigger, whose token is held where agents cannot read it,
   would show each commit's diff before anyone asks.
+- **`schematic-operator init` stops writing a `tls` block into services/kernel.yaml** (2026-10-29, #22): `WriteServices`
+  (tacplus-dev/operator `pkg/bootstrap/example.go`) puts a fresh self-signed P-384 key and a one-hour certificate
+  (CN=mock-token) into the kernel.yaml it creates, and `buildKernelConfigProto` only checks that the key parses: no
+  rendered config carries it. The kernel's TLS is the cluster PKI in crypto.yaml. A fleet that commits its
+  services/*.yaml, as this one does, commits a private key for nothing, which is how #22 happened. Proposal: drop
+  the block from the template and `TLSSourceConfig` (accepting and ignoring it in old files), in the operator.
 
 ## Promoted / declined
