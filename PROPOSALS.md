@@ -48,5 +48,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   rendered config carries it. The kernel's TLS is the cluster PKI in crypto.yaml. A fleet that commits its
   services/*.yaml, as this one does, commits a private key for nothing, which is how #22 happened. Proposal: drop
   the block from the template and `TLSSourceConfig` (accepting and ignoring it in old files), in the operator.
+- **Service images for arm64; amd64 behind a setting** (2026-10-29, #23, design in its comments): "arm64
+  everywhere", from the 10-29 addendum to tacplus-dev/roadmap `decisions/deployments-per-cluster-2026-10-26.md`.
+  It is a prerequisite for #4's move onto the arm64 `tacplus` cluster. Proposal: `platforms: [arm64]` in
+  `images/pins.yaml`. Cloud Build cross-compiles (Go `GOARCH`; Rust gets an aarch64 target and C cross-linker in
+  `ci/tacplus-build`; Java jars run on any architecture) and uses QEMU only for the Dockerfiles' small `RUN`
+  steps. Each architecture is pushed as `fp-<hash>-<arch>`, and the existing tags become one multi-arch index.
+  The fingerprint includes the platforms. The service Dockerfiles already take `TARGETARCH`. Risk: the live
+  `seatrials` cluster is amd64 and pulls `:local`, so it keeps both platforms until that cluster is retired.
 
 ## Promoted / declined
