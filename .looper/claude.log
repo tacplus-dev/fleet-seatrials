@@ -1,0 +1,152 @@
+= init
+> Bash gh issue view 16 --repo tacplus-dev/fleet-seatrials --comments; ls; cat STATE.md | head -80
+< HISTORY.md LICENSE PROPOSALS.md README.md ROADMAP.md STATE.md build client cluster dependencies.yaml deploy fleet.lock fleet.yaml images # State: fleet-seatrials  Overwritten to stay current (loopers and agents). Last updated: <date> by <who>.  - **Version / line:** <vX.Y.Z> (<release link>); tacplu...
+Issue view printed nothing. Let me retry.
+> Bash gh issue view 16 --repo tacplus-dev/fleet-seatrials --comments 2>&1; echo "rc=$?"; gh issue view 16 --repo tacplus-dev/fleet-seatrials --json title,body,labels,state,comments 2>&1
+< rc=0 {"body":"## What\n\nThe signed-in page on seatrials shows `Subject spiffe://local.dev/users/f6ce7fb592d3bb13ae34639b1cc9e35c` (Jody's sign-in test, 2026-10-29). Twelve configs under `deploy/bootstrap/configs/` set `spiffe_trust_domain: local.dev` (tenantecho, doppelganger, llmproxy, …), and ker...
+> Bash cat README.md fleet.yaml; ls -R deploy build cluster images | head -80; git ls-files | wc -l; grep -rn "local.dev" --exclude-dir=.git . | grep -v "^./client" | head -60
+< # fleet-seatrials  Sea trials: the proof fleet. A ship goes to sea trials before it is commissioned; this fleet exists to prove the new design end to end on a small, disposable cluster, with doppelganger as the ship under test.  What it proves:  1. **doppelganger runs as an ordinary tacplus service*...
+= thinking_tokens
+= thinking_tokens
+> Bash cat deploy/apply.sh deploy/bootstrap/operator.yaml; cat deploy/init.sh | head -80; ls .github 2>/dev/null; cat PROPOSALS.md | head -50; git log --oneline | head -30
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # Renders the charts from deploy/bootstrap against the fleet's images in the # registry and applies them to the current kube context (the seatrials cluster). set -euo pipefail here=$(cd "$(dirname "$0")/.." &...
+= thinking_tokens
+= thinking_tokens
+> Bash cat deploy/build-operator.sh deploy/bootstrap/services/kernel.yaml deploy/bootstrap/services/llmproxy.yaml; ls .github/workflows; cat .github/workflows/*
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # Builds this fleet's operator from the operator library (github.com/tacplus-dev/ # operator at the pinned commit) against this fleet's merged protos, so the # binary knows exactly the services this fleet run...
+= thinking_tokens
+= thinking_tokens
+> Bash cat images/pins.yaml; mkdir -p /tmp/op && cd /tmp/op && git clone -q https://github.com/tacplus-dev/operator.git src 2>&1 | tail -2; cd src && git checkout -q $(sed -n 's/^operator_commit: *//p' /builds/looper/fleet-seatrials/checkout/images/pins.yaml) && git log --oneline -1 && grep -rn -i "trust_d...
+< # The tacplus commit this fleet generates and builds with (branch registry-and-floor # until it is merged and released; then this becomes the released MAJOR.MINOR). tacplus_commit: 3acaaf78560fe2c49f6fc91aaba3f786d265b6e8 operator_commit: 3d0e4b76721a614c259f10c8df1642d949b58efd launcher_commit: c57...
+> Bash cd /tmp/op/src && sed -n 100,140p pkg/bootstrap/deploy.go; sed -n 655,680p pkg/bootstrap/deploy.go; sed -n 370,390p proto/services/operator.proto; grep -rn "SpiffePrefix\|spiffe_prefix" --include=*.go . | grep -v "\.pb\." | head; git log --oneline origin/main -1; git log --oneline 3d0e4b7..origin/ma...
+< 	if err != nil { 		return nil, err 	} 	FilterTopology(cfg.Topology, deployList)  	t := cfg.Topology  	nodeCount := int(t.KernelNodes)  	kernelConfig, err := buildKernelConfigProto(cfgDir, recordTenants) 	if err != nil { 		return nil, fmt.Errorf("building kernel config: %w", err) 	} 	protoKernel.Conf...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/op/src && grep -rn "SpiffePrefix\|GetSpiffePrefix\|SpiffeTrustDomain" --include=*.go pkg cmd | grep -v "_test\|\.pb\." ; grep -n "func buildKernelConfigProto" -A40 pkg/bootstrap/*.go | head -60
+< pkg/bootstrap/deploy.go:124:	spiffeTrustDomain := kernelConfig.GetSpiffeTrustDomain() pkg/bootstrap/deploy.go:667:	if kmakerConfig.SpiffePrefix == "" { pkg/bootstrap/deploy.go:668:		kmakerConfig.SpiffePrefix = cfg.SpiffePrefix pkg/bootstrap/deploy.go:669:		if kmakerConfig.SpiffePrefix == "" { pkg/bo...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/op/src && git checkout -q origin/main && grep -rn "SpiffePrefix\|GetSpiffeTrustDomain" --include=*.go pkg cmd | grep -v "_test\|\.pb\."; gh issue list --repo tacplus-dev/operator --state all --search "spiffe" --limit 20; gh issue list --repo tacplus-dev/fleet-seatrials --state all --limit 30
+< pkg/bootstrap/deploy.go:124:	spiffeTrustDomain := kernelConfig.GetSpiffeTrustDomain() pkg/bootstrap/deploy.go:666:	if kmakerConfig.SpiffePrefix == "" { pkg/bootstrap/deploy.go:667:		kmakerConfig.SpiffePrefix = cfg.SpiffePrefix pkg/bootstrap/deploy.go:668:		if kmakerConfig.SpiffePrefix == "" { pkg/bo...
+> Bash gh api repos/tacplus-dev/roadmap/contents/decisions --jq '.[].name' | grep -i -E "spiffe|identity|trust"; cd /tmp/op/src && sed -n 1,80p pkg/bootstrap/deployconfig.go | head -5; grep -rn "spiffe_trust_domain\|location_path" pkg/bootstrap/deploy.go | head
+< cross-tenant-system-identity-read-access-findings-2026-09-08.md cross-tenant-system-identity-read-access-problem-2026-09-08.md identity-graph-estimate-2026-10-22.md identity-graph-huddle-2026-10-21.md identity-graph-panel-2026-10-21 identity-session-credential-2026-10-25.md tenant-owned-service-iden...
+> Bash gh api repos/tacplus-dev/roadmap/contents/decisions --jq '.[].name'; gh api "search/code?q=org:tacplus-dev+trust+domain+fleet+spiffe" --jq '.items[] | .repository.name+"/"+.path' 2>&1 | head -20
+< INDEX.md PIECE-A-REPORT.md ci-on-gitlab-2026-10-27.md cross-tenant-system-identity-read-access-findings-2026-09-08.md cross-tenant-system-identity-read-access-problem-2026-09-08.md deployments-per-cluster-2026-10-26.md deterministic-builds-2026-10-27.md fleets-and-canary-huddle-2026-10-22.md flock-p...
+> Bash for f in deployments-per-cluster-2026-10-26.md fleets-and-canary-huddle-2026-10-22.md platform-direction-2026-10-23.md gateway-per-fleet-2026-10-27.md; do echo "=== $f"; gh api repos/tacplus-dev/roadmap/contents/decisions/$f -H 'Accept: application/vnd.github.raw' | grep -n -i -B2 -A4 "trust domain\...
+< Exit code 1 === deployments-per-cluster-2026-10-26.md 17-   recognizable at a glance: **`people` is `00000001`**, fixed in every deployment; `00000002` and up stay free. 18-   Minted ids are random and start with a letter, so they never fall in the reserved range. Using the tid in 19:   SPIFFE paths...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash sed -n 30,60p build/proto/services/kmaker.proto; sed -n 220,232p build/proto/services/kernel.proto; gh issue view 3 --repo tacplus-dev/operator --json body,state --jq '.state, .body' | head -60
+<   // logger configures kmaker process logging.   logger.LoggerConfig logger = 3;    // cluster_ca holds trust anchors that kernel nodes should trust.   repeated x509.X509Cert cluster_ca = 4 [(spec.assert_max_size) = 16];    // signing_ca is the cluster signing CA used to issue kernel certificates.  ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/op/src && git checkout -q 3d0e4b7 && grep -rln "spiffe_prefix\|SpiffePrefix\|spiffe_trust_domain" . --exclude-dir=.git | grep -v "\.pb\.go$"; grep -rn "spiffe" pkg/bootstrap/*.tmpl pkg/bootstrap/templates 2>/dev/null | head; grep -n "func ApplyServicesHolderDefaults" -A30 pkg/bootstrap/*.go ...
+< ./OPERATOR_PROGRESS.md ./pkg/bootstrap/deployconfig_test.go ./pkg/bootstrap/services_config_defaults_test.go ./pkg/bootstrap/stratum_disk_persistence_test.go ./pkg/bootstrap/record_tenants_test.go ./pkg/bootstrap/llm_credential_seed_test.go ./pkg/bootstrap/generate_idempotent_test.go ./pkg/bootstrap...
+= thinking_tokens
+= thinking_tokens
+> Bash gh api repos/tacplus-dev/roadmap/contents/ROADMAP.md -H 'Accept: application/vnd.github.raw' | grep -n -i "trust domain\|spiffe" ; gh api repos/tacplus-dev/operator/contents/ROADMAP.md -H 'Accept: application/vnd.github.raw' | grep -n -i "trust\|spiffe"; grep -n -i "trust\|spiffe" /builds/looper/fle...
+< _template.md doppelganger-fleet-service.md explore-proto-ownership.md flock-design-2026-10-28.md identity-graph.md looper-hierarchy.md multi-cluster.md people-fleet-wide-store.md stratum-transactions.md tacplus-application-sensor.md tacplus-registry-and-floor.md tacplus-security-sweep.md 13	OPEN	gol...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Status: the "one place" fix the issue asks for isn't possible at the pinned operator — it needs an operator change (another repo). Opening the operator bug, then asking for a decision here.
+> Bash cat > /tmp/opissue.md <<'EOF' ## What  `operator.Config.spiffe_prefix` (proto/services/operator.proto:376-385) promises: "Operator propagates this value to kernel's bootstrap AND to every service configmap so all components agree on the trust domain at boot ... Must equal kernel.Config.spiffe_trust_...
+< https://github.com/tacplus-dev/operator/issues/14
+= thinking_tokens
+= thinking_tokens
+> Bash cat > /tmp/c16.md <<'EOF' Looper: stopping for a decision, nothing committed.  **Why it can't be done in one place here today.** The configs under `deploy/bootstrap/configs/` are rendered by the operator (pin `3d0e4b7`, `images/pins.yaml`), and it reads the trust domain from two places:  - kernel an...
+< https://github.com/tacplus-dev/fleet-seatrials/issues/16#issuecomment-6485913284 https://github.com/tacplus-dev/fleet-seatrials/issues/16
+> Bash git status --short; /usr/local/bin/repo-looper --repo fleet-seatrials --issue 16 --checkpoint "Stopped for decision (needs-decision): one-place trust domain needs tacplus-dev/operator#14 (opened); options in issue comment. Nothing committed." 2>&1 | tail -2
+< remote:  [2026-10-29T02:07:55Z] checkpoint of #16 (a step) pushed to looper/fleet-seatrials-16:  2 files changed, 170 insertions(+)
+I stopped issue #16 to ask for a decision. Nothing is committed or pushed to main, and the issue stays open with the `needs-decision` label.
+
+**Why it can't be done in one place yet.** The service configs are generated by the operator this repo pins (`3d0e4b7`), and it reads the trust domain from two different files:
+- **Kernel and every service config:** `spiffe_trust_domain` in `deploy/bootstrap/services/kernel.yaml`. We don't set it, so it defaults to `local.dev`.
+- **kmaker (the name in kernel's own certificate):** `spiffe_prefix` in `deploy/bootstrap/operator.yaml`, which also defaults to `local.dev`.
+
+The operator's own docs say `spiffe_prefix` is passed on to kernel and every service config, but the code doesn't do that, on the pinned commit or on operator main. So the fleet config can't be the single setting the issue asks for without an operator change, and setting it in each file is what the issue rules out.
+
+**What I did:**
+- Opened the operator bug as tacplus-dev/operator#14, with a proposed fix: `spiffe_prefix` becomes the one setting, kernel and the services take it from there, and config generation refuses the two values if they differ.
+- Commented on #16 (https://github.com/tacplus-dev/fleet-seatrials/issues/16#issuecomment-6485913284) with two options:
+  - **Recommended:** wait for operator#14. Then move this repo's operator pin, set `spiffe_prefix: seatrials.tacplus.dev` in `operator.yaml`, and add a check that every generated config names `seatrials.tacplus.dev`. Moving the pin also waits on #1 (the fleet moving to tacplus 2.4), because operator main now requires 2.4.
+  - **Interim:** set the domain in both files now, with the same check making sure they agree. The `kernel.yaml` line goes away once operator#14 lands.
+- Saved a checkpoint to `looper/fleet-seatrials-16`.
+
+**For the deploy step with Jody:** Anthropic's sign-in rule for llmproxy (`llmproxy-seatrials`) matches `spiffe://local.dev/system/services/llmproxy`. It has to be changed in the Anthropic Console when the trust domain changes, or llmproxy loses access to Anthropic.
+
+fleet-dev isn't in this repository, so I didn't touch it.
+= success: I stopped issue #16 to ask for a decision. Nothing is committed or pushed to main, and the issue stays open with the `needs-decision` label.
+
+**Why it can't be done in one place yet.** The service configs are generated by the operator this repo pins (`3d0e4b7`), and it reads the trust domain from two different files:
+- **Kernel and every service config:** `spiffe_trust_domain` in `deploy/bootstrap/services/kernel.yaml`. We don't set it, so it defaults to `local.dev`.
+- **kmaker (the name in kernel's own certificate):** `spiffe_prefix` in `deploy/bootstrap/operator.yaml`, which also defaults to `local.dev`.
+
+The operator's own docs say `spiffe_prefix` is passed on to kernel and every service config, but the code doesn't do that, on the pinned commit or on operator main. So the fleet config can't be the single setting the issue asks for without an operator change, and setting it in each file is what the issue rules out.
+
+**What I did:**
+- Opened the operator bug as tacplus-dev/operator#14, with a proposed fix: `spiffe_prefix` becomes the one setting, kernel and the services take it from there, and config generation refuses the two values if they differ.
+- Commented on #16 (https://github.com/tacplus-dev/fleet-seatrials/issues/16#issuecomment-6485913284) with two options:
+  - **Recommended:** wait for operator#14. Then move this repo's operator pin, set `spiffe_prefix: seatrials.tacplus.dev` in `operator.yaml`, and add a check that every generated config names `seatrials.tacplus.dev`. Moving the pin also waits on #1 (the fleet moving to tacplus 2.4), because operator main now requires 2.4.
+  - **Interim:** set the domain in both files now, with the same check making sure they agree. The `kernel.yaml` line goes away once operator#14 lands.
+- Saved a checkpoint to `looper/fleet-seatrials-16`.
+
+**For the deploy step with Jody:** Anthropic's sign-in rule for llmproxy (`llmproxy-seatrials`) matches `spiffe://local.dev/system/services/llmproxy`. It has to be changed in the Anthropic Console when the trust domain changes, or llmproxy loses access to Anthropic.
+
+fleet-dev isn't in this repository, so I didn't touch it.
