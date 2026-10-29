@@ -8,6 +8,7 @@ tacplus floor 2.2, services pinned by commit in `fleet.lock`, images built per f
 Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, Microsoft (jodyseabeam) to beta (#2).
 
 ## Next
+- Deploy and test from GitLab: the pipeline in gitlab.com/tacplus-dev/fleet-seatrials, secrets in GitLab, nothing on a laptop (#17)
 - Nothing unblocked: every approved issue is blocked (see Later).
 
 ## Later
