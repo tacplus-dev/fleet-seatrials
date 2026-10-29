@@ -13,7 +13,7 @@
 #                            # git access to the private operator repo (ci_github)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
-yq_version=v4.47.1
+yq_version=v4.54.1
 opa_version=v1.13.1   # dependencies.yaml's github.com/open-policy-agent/opa
 mkdir -p "$here/bin"
 
