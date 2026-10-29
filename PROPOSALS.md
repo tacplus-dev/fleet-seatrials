@@ -29,6 +29,13 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **An apply deploys rebuilt images** (2026-10-29, #17): the operator renders every image as `:local`, so a
   rebuilt image leaves the pod template unchanged and the apply does not roll it out. Render the `fp-` (or
   digest) tag instead; pinning by release line (#8) covers release images by digest.
+- **What #8 needs besides the releases** (2026-10-29, #8, tacplus-dev/tacplus#180, #213 there): `version:` in
+  `fleet.yaml` is refused before tacplus 2.6.0, so the fleet's floor moves from 2.2 to 2.6 (past #1's 2.4). The
+  service release images are private packages: the `fleet build` that relocks needs `GH_TOKEN` with
+  `read:packages` (the looper's token has none, so the relock runs in the pipeline or with a token added for
+  it), and the cluster needs an image pull secret from a read-only packages token, held in GitLab, installed in
+  `schematic` and in each tenant namespace nsproxy creates (nsproxy copying it, or the operator rendering it).
+  Making the packages public would remove both, but the repos are private by choice.
 - **Create and initialise a trial cluster from the pipeline** (2026-10-29, #17): `cluster/create.sh` and
   `deploy/init.sh` still run where someone has gcloud. A new trial's CA would then go straight into the
   project's variables, never through a laptop.
