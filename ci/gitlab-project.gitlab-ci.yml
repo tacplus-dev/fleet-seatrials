@@ -1,0 +1,56 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The .gitlab-ci.yml of the GitLab project gitlab.com/tacplus-dev/fleet-seatrials,
+# kept here (github.com/tacplus-dev/fleet-seatrials ci/gitlab-project.gitlab-ci.yml)
+# and copied into that project as is: the project holds the secrets and runs
+# the pipeline, this repository holds its definition. As tacplus-dev/looper
+# does, `fleet-plan` resolves the commit to deploy (main's head, or the
+# commit the project variable FLEET_DEPLOY_COMMIT names), fetches this
+# repository's ci/deploy.gitlab-ci.yml at that commit with the project's
+# read-only GitHub token, and `fleet-deploy` runs it as the child pipeline,
+# with FLEET_COMMIT set. Runbook: docs/deploy-pipeline.md there.
+#
+# Runs when started from the web or the API, or on a schedule (a nightly dry
+# run shows drift); never on a push to this project, which only carries this
+# file. Nothing is passed as a pipeline variable.
+stages: [plan, deploy]
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(web|api|schedule|trigger)$/
+
+fleet-plan:
+  stage: plan
+  image: ghcr.io/tacplus-dev/tacplus/build:2.3
+  tags: [deploy]
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - |
+      set -euo pipefail
+      : "${FLEET_GITHUB_READ_TOKEN:?the project variable FLEET_GITHUB_READ_TOKEN is not set}"
+      helper='!f() { test "$1" = get && echo username=x-access-token && echo "password=$FLEET_GITHUB_READ_TOKEN"; }; f'
+      repo=https://github.com/tacplus-dev/fleet-seatrials.git
+      commit=${FLEET_DEPLOY_COMMIT:-$(git -c credential.helper= -c "credential.https://github.com.helper=$helper" \
+        ls-remote "$repo" refs/heads/main | cut -f1)}
+      [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "not a full commit hash: [$commit]" >&2; exit 1; }
+      git init -q src
+      git -C src -c credential.helper= -c "credential.https://github.com.helper=$helper" \
+        fetch -q --depth 1 "$repo" "$commit"
+      git -C src checkout -q FETCH_HEAD
+      sed "s/^  FLEET_COMMIT: \"\"\$/  FLEET_COMMIT: \"$commit\"/" src/ci/deploy.gitlab-ci.yml > deploy.yml
+      grep -q "^  FLEET_COMMIT: \"$commit\"\$" deploy.yml || { echo "ci/deploy.gitlab-ci.yml has no FLEET_COMMIT to set" >&2; exit 1; }
+      echo "deploying fleet-seatrials $commit: $(git -C src log -1 --format=%s)"
+  artifacts:
+    paths: [deploy.yml]
+    expire_in: 1 week
+
+fleet-deploy:
+  stage: deploy
+  needs: [fleet-plan]
+  trigger:
+    include:
+      - artifact: deploy.yml
+        job: fleet-plan
+    strategy: depend

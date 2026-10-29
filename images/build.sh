@@ -10,7 +10,12 @@
 #   images/build.sh kernel gateway     # some services
 #   images/build.sh changed            # only the services whose fingerprint has no image yet
 #   images/build.sh fingerprint        # print each service's fingerprint and whether it is built
+#   WAIT=1 images/build.sh changed     # and wait for every build submitted; fail if one fails
 #
+# Service builds are submitted asynchronously and run in parallel. With WAIT=1
+# (the deploy pipeline's images stage) the script then waits for each one and
+# fails, naming the service, unless every one succeeds, so nothing deploys
+# against an image that does not exist.
 # A service's image depends on its own repo and on everything it generates
 # from. The compiler says what that is: `tacplus fleet build` writes each
 # service's inputs_digest into fleet.lock, a hash over the descriptors of the
@@ -92,10 +97,31 @@ build_service() {
   read -r lang main <<<"$(service_facts "$src" "$name")"
   echo "== $name ($lang) @ ${commit:0:12}"
   local fp; fp=$(fingerprint "$name")
-  gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit"
+  local id
+  id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet --format 'value(id)' \
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit")
+  echo "$id"
+  echo "$name $id" >> "$submitted"
   rm -rf "$src"
 }
+
+# wait_builds: with WAIT=1, waits for every build submitted by this run; fails
+# unless all succeed.
+wait_builds() {
+  [ "${WAIT:-}" = 1 ] && [ -s "$submitted" ] || return 0
+  local name id status failed=0
+  while read -r name id; do
+    while :; do
+      status=$(gcloud builds describe "$id" --format 'value(status)')
+      case "$status" in QUEUED|PENDING|WORKING|"") sleep "${WAIT_INTERVAL:-30}" ;; *) break ;; esac
+    done
+    echo "== $name: $status ($id)"
+    [ "$status" = SUCCESS ] || failed=1
+  done < "$submitted"
+  [ "$failed" = 0 ] || { echo "image builds failed: see the builds above in Cloud Build" >&2; exit 1; }
+}
+submitted=$(mktemp)
+trap 'rm -f "$submitted"' EXIT
 
 case "${1:-}" in
   tacplus) build_tacplus ;;
@@ -113,3 +139,4 @@ case "${1:-}" in
   "") echo "usage: images/build.sh tacplus | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
   *) for s in "$@"; do build_service "$s"; done ;;
 esac
+wait_builds

@@ -2,10 +2,13 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tests deploy/signin-secrets.sh --microsoft-secret-from-clipboard against stub
-# kubectl, pbpaste and yq: a clipboard value that is not an Entra secret value
-# is refused (non-zero, saying why, never echoing it) and nothing is written to
-# the cluster; a well-formed one is written. Needs bash and jq.
+# Tests deploy/signin-secrets.sh against stub kubectl and yq. The secrets come
+# from the deploy pipeline's GitLab variables, never from a file or clipboard
+# on a laptop: a Microsoft value that is not an Entra secret value, or any
+# secret with whitespace in it, is refused (non-zero, saying why, never echoing
+# it) and nothing is written to the cluster; well-formed ones are written; an
+# unset one keeps the cluster's current secret; the Apple key restarts oauth
+# only when it differs from the one in place. Needs bash and jq.
 #
 #   deploy/signin-secrets_test.sh
 set -uo pipefail
@@ -19,65 +22,104 @@ cat > "$work/bin/kubectl" <<'EOF'
 echo "$*" >> "$STUB_LOG"
 case "$*" in
   "config current-context") echo gke_seatrials ;;
-  *"get configmap kernel-config-override"*) echo '{"configs":{"oauth_config":{"providers":[]}}}' ;;
-  *"get secret"*) ;;
+  *"get configmap kernel-config-override"*)
+    echo '{"configs":{"oauth_config":{"providers":[{"name":"Google","client_secret":"kept-google"},{"name":"Microsoft","client_secret":"kept-microsoft"}]}}}' ;;
+  *"get secret"*) printf '%s' "${STUB_APPLE_B64:-}" ;;
+  *"create configmap"*"--dry-run=client"*)
+    for a in "$@"; do case "$a" in --from-file=override.json=*) cp "${a#*override.json=}" "$STUB_OVERRIDE" ;; esac; done
+    echo "kind: rendered" ;;
   *"--dry-run=client"*) echo "kind: rendered" ;;
   *"apply -f -"*) cat > /dev/null; echo "WRITE" >> "$STUB_LOG" ;;
+  *"rollout restart"*) echo "RESTART" >> "$STUB_LOG" ;;
 esac
-EOF
-cat > "$work/bin/pbpaste" <<'EOF'
-#!/usr/bin/env bash
-printf '%s' "$STUB_CLIPBOARD"
 EOF
 cat > "$work/bin/yq" <<'EOF'
 #!/usr/bin/env bash
-echo '[{"name":"Microsoft","client_id":"x","enable":true}]'
+echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}}]'
 EOF
 chmod +x "$work/bin/"*
 
 failures=0
-# run NAME CLIPBOARD WANT [ARGS...]: WANT is "refuse" or "write".
+fail() { echo "FAIL $1"; failures=$((failures + 1)); }
+# run NAME WANT [VAR=VALUE...]: WANT is "refuse" or "write". Every FLEET_*
+# variable not given is unset. Leaves the log in $work/log and the override in
+# $work/override.json.
 run() {
-  local name=$1 clip=$2 want=$3 out status
-  shift 3
-  : > "$work/log"
-  out=$(PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_CLIPBOARD="$clip" \
-    "$here/signin-secrets.sh" --microsoft-secret-from-clipboard "$@" 2>&1)
+  local name=$1 want=$2 out status
+  shift 2
+  : > "$work/log"; rm -f "$work/override.json"
+  out=$(env -u FLEET_MICROSOFT_CLIENT_SECRET -u FLEET_GOOGLE_CLIENT_SECRET -u FLEET_APPLE_KEY_P8 \
+    PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_OVERRIDE="$work/override.json" "$@" \
+    "$here/signin-secrets.sh" 2>&1)
   status=$?
-  local wrote=false
+  local wrote=false secret
   grep -q WRITE "$work/log" && wrote=true
+  for secret in "$@"; do
+    case "$secret" in
+      FLEET_*=*) secret=${secret#*=}
+        if [ -n "$secret" ] && [[ "$out" == *"$secret"* ]]; then
+          fail "$name: echoed a secret: out=[$out]"; return 1
+        fi ;;
+    esac
+  done
   case "$want" in
     refuse)
-      if [ "$status" -eq 0 ] || $wrote || { [ -n "$clip" ] && [[ "$out" == *"$clip"* ]]; } || [ -z "$out" ]; then
-        echo "FAIL $name: status=$status wrote=$wrote out=[$out]"; failures=$((failures + 1)); return
+      if [ "$status" -eq 0 ] || $wrote || [ -z "$out" ]; then
+        fail "$name: status=$status wrote=$wrote out=[$out]"; return 1
       fi ;;
     write)
       if [ "$status" -ne 0 ] || ! $wrote; then
-        echo "FAIL $name: status=$status wrote=$wrote out=[$out]"; failures=$((failures + 1)); return
+        fail "$name: status=$status wrote=$wrote out=[$out]"; return 1
       fi ;;
   esac
   echo "ok   $name"
 }
+# provider NAME FIELD: the field of that provider in the override written.
+provider() { jq -r --arg n "$1" ".configs.oauth_config.providers[] | select(.name == \$n) | .$2" "$work/override.json"; }
+check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else fail "$1: got [$2], want [$3]"; fi; }
 
 value=abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ0123456   # 40 characters, the shape Entra issues today
-run "well-formed value is written" "$value" write
-run "a GUID (the Secret ID) is refused" "3f2b8c1e-9a4d-4e7b-8c2f-1a2b3c4d5e6f" refuse
-run "an upper-case GUID is refused" "3F2B8C1E-9A4D-4E7B-8C2F-1A2B3C4D5E6F" refuse
-run "a value with a space is refused" "abc8Q~Zx0_yv.Tq-1rLmN PqRsTuVwXyZ0123456" refuse
-run "a value with a tab is refused" "abc8Q~Zx0_yv.Tq-1rLmN	PqRsTuVwXyZ0123456" refuse
-run "a value with a newline is refused" "$value"$'\n' refuse
-run "the script's own command line is refused" \
-  "deploy/signin-secrets.sh --microsoft-secret-from-clipboard" refuse
-run "a value starting with ~ is refused" "~/Downloads/abcdefghijklmnopqrstuvwxyz0123" refuse
-run "a value starting with / is refused" "/abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ012345" refuse
-run "a value starting with . is refused" ".abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ012345" refuse
-run "29 characters is refused" "abcdefghijABCDEFGHIJ012345678" refuse
-run "61 characters is refused" "abcdefghijABCDEFGHIJ0123456789abcdefghijABCDEFGHIJ0123456789x" refuse
-run "a character outside [A-Za-z0-9_.~-] is refused" "abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ01234+6" refuse
-run "an empty clipboard is refused" "" refuse
+run "well-formed Microsoft value is written" write FLEET_MICROSOFT_CLIENT_SECRET="$value" &&
+  check "the Microsoft value is the variable's" "$(provider Microsoft client_secret)" "$value"
+run "a GUID (the Secret ID) is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET=3f2b8c1e-9a4d-4e7b-8c2f-1a2b3c4d5e6f
+run "an upper-case GUID is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET=3F2B8C1E-9A4D-4E7B-8C2F-1A2B3C4D5E6F
+run "a value with a space is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET="abc8Q~Zx0_yv.Tq-1rLmN PqRsTuVwXyZ0123456"
+run "a value with a tab is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET="abc8Q~Zx0_yv.Tq-1rLmN	PqRsTuVwXyZ0123456"
+run "a value with a newline is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET="$value"$'\n'
+run "a value starting with ~ is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET="~/Downloads/abcdefghijklmnopqrstuvwxyz0123"
+run "a value starting with / is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET="/abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ012345"
+run "a value starting with . is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET=".abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ012345"
+run "29 characters is refused" refuse FLEET_MICROSOFT_CLIENT_SECRET=abcdefghijABCDEFGHIJ012345678
+run "61 characters is refused" refuse \
+  FLEET_MICROSOFT_CLIENT_SECRET=abcdefghijABCDEFGHIJ0123456789abcdefghijABCDEFGHIJ0123456789x
+run "a character outside [A-Za-z0-9_.~-] is refused" refuse \
+  FLEET_MICROSOFT_CLIENT_SECRET="abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ01234+6"
+
+run "with no variable, the current secrets are kept" write &&
+  check "Google kept" "$(provider Google client_secret)" kept-google &&
+  check "Microsoft kept" "$(provider Microsoft client_secret)" kept-microsoft &&
+  check "Apple off without a key" "$(provider Apple enable)" false
+run "the Google variable is written" write FLEET_GOOGLE_CLIENT_SECRET=GOCSPX-abcdefghijklmnopqrstuvwxyz12 &&
+  check "the Google value is the variable's" "$(provider Google client_secret)" GOCSPX-abcdefghijklmnopqrstuvwxyz12 &&
+  check "Microsoft still kept" "$(provider Microsoft client_secret)" kept-microsoft
+run "a Google value with whitespace is refused" refuse FLEET_GOOGLE_CLIENT_SECRET="GOCSPX-abc def"
+
 printf -- '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n' > "$work/AuthKey.p8"
-run "a refusal writes no Apple key either" "3f2b8c1e-9a4d-4e7b-8c2f-1a2b3c4d5e6f" refuse \
-  --apple-key "$work/AuthKey.p8"
+run "a new Apple key is written and oauth restarted" write FLEET_APPLE_KEY_P8="$work/AuthKey.p8" \
+  STUB_APPLE_B64="$(printf old | base64)" &&
+  check "oauth restarted" "$(grep -c RESTART "$work/log")" 1
+run "the Apple key already in place restarts nothing" write FLEET_APPLE_KEY_P8="$work/AuthKey.p8" \
+  STUB_APPLE_B64="$(base64 < "$work/AuthKey.p8" | tr -d '\n')" &&
+  check "oauth not restarted" "$(grep -c RESTART "$work/log")" 0 &&
+  check "Apple on with its key" "$(provider Apple enable)" true
+printf 'not a key\n' > "$work/bad.p8"
+run "an Apple variable that is not a .p8 key is refused" refuse FLEET_APPLE_KEY_P8="$work/bad.p8"
+run "a Microsoft refusal writes no Apple key either" refuse \
+  FLEET_MICROSOFT_CLIENT_SECRET=3f2b8c1e-9a4d-4e7b-8c2f-1a2b3c4d5e6f FLEET_APPLE_KEY_P8="$work/AuthKey.p8"
+
+out=$(PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_OVERRIDE="$work/override.json" \
+  "$here/signin-secrets.sh" --microsoft-secret-from-clipboard 2>&1) &&
+  fail "the old clipboard flag is still taken: [$out]" || echo "ok   the clipboard and file flags are gone"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1

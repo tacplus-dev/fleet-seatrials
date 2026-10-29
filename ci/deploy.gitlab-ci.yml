@@ -1,0 +1,171 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The seatrials deploy and test pipeline (#17; tacplus-dev/roadmap
+# decisions/ci-on-gitlab-2026-10-27.md, addendum 2026-10-29). It runs in the
+# private GitLab project gitlab.com/tacplus-dev/fleet-seatrials as the child
+# pipeline of that project's own .gitlab-ci.yml (ci/gitlab-project.gitlab-ci.yml
+# here), which resolves the commit to deploy, FLEET_COMMIT, and includes this
+# file from it. Every job checks this repository out at FLEET_COMMIT. Runbook,
+# variables and the GCP side: docs/deploy-pipeline.md.
+#
+#   tools     tacplus, schematic-operator, yq and opa, built from pinned sources
+#   checks    the repository's script tests (the letsencrypt guard among them)
+#   images    images/build.sh changed on Cloud Build, waiting for every build
+#   generate  schematic-operator generate with the fleet's key material; the routing policy checked
+#   diff      what an apply would change, by object name; fails if it touches letsencrypt
+#   apply     manual, protected environment seatrials
+#   test      post-deploy checks
+#
+# The fleet's key material and the sign-in secrets come from protected project
+# variables (never group variables: those reach the loopers' agents), GCP
+# through GitLab OIDC and Workload Identity Federation (no key file). Nothing
+# secret is written to the repository, an artifact or a job log: no job runs
+# with `set -x`, the diff prints object names only, and the only artifact is
+# bin/ (tools built from public and pinned sources).
+#
+# Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
+# once, max_use_count = 1), never on the agents' runner.
+
+stages: [tools, checks, images, generate, diff, apply, test]
+
+variables:
+  GIT_STRATEGY: none
+  GCP_PROJECT: jody1-328023
+  GCP_DEPLOY_SA: seatrials-deploy@jody1-328023.iam.gserviceaccount.com
+  # The commit being deployed: the parent pipeline writes it here (pipeline
+  # variables are forbidden in the group).
+  FLEET_COMMIT: ""
+
+default:
+  image: ghcr.io/tacplus-dev/tacplus/build:2.3
+  tags: [deploy]
+  interruptible: false
+  before_script:
+    # This repository at the commit being deployed, in src/ (where the tools
+    # job's bin/ artifact lands), fetched with the project's read-only token.
+    - |
+      set -euo pipefail
+      : "${FLEET_COMMIT:?no FLEET_COMMIT: this file runs as the child pipeline of ci/gitlab-project.gitlab-ci.yml}"
+      : "${FLEET_GITHUB_READ_TOKEN:?the GitLab project variable FLEET_GITHUB_READ_TOKEN is not set}"
+      git init -q src
+      git -C src -c credential.helper= \
+        -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$FLEET_GITHUB_READ_TOKEN"; }; f' \
+        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$FLEET_COMMIT"
+      git -C src checkout -q FETCH_HEAD
+      echo "fleet-seatrials at $(git -C src rev-parse --short=12 HEAD)"
+
+.gcp: &gcp
+  id_tokens:
+    GCP_ID_TOKEN:
+      aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
+
+tools:
+  stage: tools
+  needs: []
+  script:
+    - cd src && source ci/lib.sh && ci_github && ci/tools.sh
+  artifacts:
+    paths: [src/bin/]
+    expire_in: 1 day
+
+checks:
+  stage: checks
+  needs: [tools]
+  script:
+    - cd src && PATH=$PWD/bin:$PATH ci/checks.sh
+
+images:
+  stage: images
+  needs: [checks]
+  <<: *gcp
+  script:
+    - cd src && source ci/lib.sh && ci_github && ci_gcp && WAIT=1 images/build.sh changed
+  timeout: 2h
+
+generate:
+  stage: generate
+  needs: [checks, tools]
+  environment: { name: seatrials, action: prepare }
+  script:
+    - |
+      cd src && source ci/lib.sh && ci_crypto
+      export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
+      export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
+      bin/schematic-operator generate
+      deploy/checks.sh opa deploy/bootstrap/configs
+
+diff:
+  stage: diff
+  needs: [tools, images, generate]
+  <<: *gcp
+  environment: { name: seatrials, action: prepare }
+  script:
+    - cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube && deploy/diff.sh
+
+# The apply. Manual, in the protected environment seatrials (only maintainers
+# may start it); the letsencrypt guard runs again first, on the cluster as it
+# is now. Without it the pipeline is a dry run: images, generate, diff.
+apply:
+  stage: apply
+  needs: [tools, diff]
+  <<: *gcp
+  environment: { name: seatrials, action: start }
+  resource_group: seatrials
+  when: manual
+  allow_failure: true
+  script:
+    - |
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      deploy/diff.sh
+      deploy/secrets.sh
+      deploy/apply.sh
+      deploy/signin-secrets.sh
+
+# The apply when it touches letsencrypt, which is never restarted without
+# Jody's explicit OK: its own protected environment, seatrials-letsencrypt,
+# whose only deployer is Jody (docs/deploy-pipeline.md).
+apply-letsencrypt:
+  stage: apply
+  needs: [tools, images, generate]
+  <<: *gcp
+  environment: { name: seatrials-letsencrypt, action: start }
+  resource_group: seatrials
+  when: manual
+  allow_failure: true
+  variables:
+    SEATRIALS_ALLOW_LETSENCRYPT: "1"
+  script:
+    - |
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      deploy/diff.sh
+      deploy/secrets.sh
+      deploy/apply.sh
+      deploy/signin-secrets.sh
+
+# Re-installs the sign-in secrets from the project variables, nothing else: a
+# rotated secret (the Microsoft one every 6 months, #6) is a variable updated
+# in the project and this job run.
+signin-secrets:
+  stage: apply
+  needs: [tools]
+  <<: *gcp
+  environment: { name: seatrials, action: start }
+  resource_group: seatrials
+  when: manual
+  allow_failure: true
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_kube && deploy/signin-secrets.sh
+
+test:
+  stage: test
+  needs: [tools, apply]
+  <<: *gcp
+  environment: { name: seatrials, action: verify }
+  script:
+    - |
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
+      export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
+      bin/schematic-operator generate >/dev/null
+      deploy/checks.sh all deploy/bootstrap/configs
