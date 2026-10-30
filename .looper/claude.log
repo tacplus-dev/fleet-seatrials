@@ -1,0 +1,155 @@
+= init
+> Bash gh issue view 24 --repo tacplus-dev/fleet-seatrials --comments; ls; cat tacplus.yaml
+< Exit code 1 author:	jodydadescott association:	member edited:	false status:	none -- ## Design proposal (looper)  This is a feature, and no ROADMAP.md links it, so I have not built anything. Below are the design and the questions for Jody.  ### What and why The goal is to move seatrials' Let's Encryp...
+> Bash gh issue view 24 --repo tacplus-dev/fleet-seatrials --json title,body,labels -q '.title, .body, [.labels[].name]'; gh issue view 24 --repo tacplus-dev/fleet-seatrials --json comments -q '.comments[0].body' | sed -n '/^### Alternatives/,/^### Size/p'
+< Carry seatrials' Let's Encrypt state to the new tacplus cluster: export it to GitLab, seed the new deployment, no new order ## What Jody, 2026-10-29: tacplus.dev moves to the new Axion cluster **`tacplus`** (us-central1-a, arm64), and the `seatrials` cluster is then destroyed. **The Let's Encrypt ma...
+= thinking_tokens
+= thinking_tokens
+> Bash cat ROADMAP.md; echo ----; cat STATE.md; echo ----; grep -n "" PROPOSALS.md | sed -n '1,400p' | grep -n -i -A60 "Let's Encrypt state" | head -150
+< # Roadmap: fleet-seatrials  Owned by Jody; changed only by an agent at Jody's request. Loopers propose in PROPOSALS.md.  ## Now The deployment of the `seatrials` GKE cluster, live at https://seatrials.tacplus.dev: the proof fleet for tacplus-dev (tacplus-dev/roadmap:decisions/tacplus-dev-stable-gate...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash git log --oneline | head -30; ls -R ci deploy docs cluster | head -80; cat fleet.yaml | head -80
+< bd6b15e Build the service images for arm64; amd64 behind a setting (#23) 71ef87c ROADMAP.md: the move to the tacplus cluster (#23, #24, #4) (agent, at Jody's request) 78a0e5f PROPOSALS.md: carry the Let's Encrypt state to the tacplus cluster (#24) 6f81996 PROPOSALS.md: arm64 service images, amd64 be...
+> Bash gh issue list --repo tacplus-dev/fleet-seatrials --state all --limit 40; gh issue view 4 --repo tacplus-dev/fleet-seatrials --comments | head -150
+< 24	OPEN	Carry seatrials' Let's Encrypt state to the new tacplus cluster: export it to GitLab, seed the new deployment, no new order	approved, looper:in-progress, feature	2026-10-30T00:05:51Z 23	OPEN	Build service images for arm64; keep amd64 builds behind a disabled setting	approved, feature	2026-10...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp && gh issue list --repo tacplus-dev/letsencrypt --state all --limit 30; gh issue list --repo tacplus-dev/operator --state all --limit 15; gh search issues --owner tacplus-dev "LETSENCRYPT_STATE OR seed letsencrypt" --limit 20
+< 8	OPEN	Gates fail on main: stratum now needs tacplus 2.5; move the floor from 2.4 to 2.5	bug, approved	2026-10-29T09:51:53Z 7	CLOSED	Vulnerable dependencies: grpc v1.79.1, x/net v0.51.0, x/text v0.34.0 (10 reachable advisories, incl. GO-2026-4762 auth bypass)	bug, approved	2026-10-28T10:10:49Z 6	OPE...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Reading the issue's context: no seed or export path exists yet in letsencrypt or the operator. Next I'm checking letsencrypt's code and the roadmaps.
+> Bash mkdir -p /tmp/src && cd /tmp/src && for r in letsencrypt roadmap; do gh repo clone tacplus-dev/$r -- -q --depth 1 2>&1 | tail -1; done; cd letsencrypt && ls; cat ROADMAP.md 2>/dev/null; grep -rn "restoreState\|seed" --include=*.go . | head -20; ls ../roadmap ../roadmap/items | head -50
+< Dockerfile HISTORY.md LICENSE PROPOSALS.md PROVENANCE.md README.md ROADMAP.md STATE.md go.mod go.sum internal justfile logger_guard_test.go main.go proto tacplus.yaml # Roadmap: letsencrypt  Owned by Jody; changed only by an agent at Jody's request. Loopers propose in PROPOSALS.md.  ## Now Obtains a...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/src/roadmap && grep -n -i "letsencrypt\|let's encrypt\|seatrials\|tacplus cluster" ROADMAP.md | head -30; sed -n '1,200p' decisions/issue-flow-2026-10-27.md
+< 13:- **fleet-seatrials is live** (GKE `seatrials`, https://seatrials.tacplus.dev): kernel, gateway, oauth, opa, 14:  eventbus, stratum, letsencrypt, kmaker, llmproxy, doppelganger, tenantecho, coop, pigeonhost. Sign-in works with 34:   tacplus-dev/kernel#2 (the identity graph moves to the people ser...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/src && for r in kernel stratum; do gh repo clone tacplus-dev/$r -- -q --depth 1 2>&1|tail -1; done; grep -rln "LetsEncryptState" kernel --include=*.go | head; grep -rn "badger\|bbolt\|pebble\|sqlite\|leveldb\|rocksdb" kernel/go.mod stratum/go.mod stratum/Cargo.toml 2>/dev/null | head; ls str...
+< Dockerfile HISTORY.md LICENSE PROPOSALS.md PROVENANCE.md QUESTIONS.md README.md RECORD_EVENT_ARCHITECTURE.md ROADMAP.md STATE.md STRATUM_MIGRATION.md codegen decisions design.md docs justfile model pom.xml proto server tacplus.yaml 	if _, err := cm.certData.Set(ctx, certData); err != nil { 		return ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/src && ls kernel; grep -rli "LetsEncrypt" kernel | head; grep -rn -i "persist\|disk\|snapshot\|wal" kernel/README.md kernel/STATE.md 2>/dev/null | head -20; grep -n -i "storage\|persist\|disk\|rocks\|postgres\|volume" stratum/README.md stratum/STATE.md | head -20
+< DOWNSTREAM_PROGRESS.md Dockerfile HISTORY.md IDENTITY.md LICENSE PROPOSALS.md PROVENANCE.md QUESTIONS.md README.md ROADMAP.md STATE.md codegen decisions dependency-reduced-pom.xml justfile pom.xml proto server tacplus tacplus.yaml kernel/tacplus/AGENT.md kernel/IDENTITY.md kernel/proto/services/kern...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n -B1 -A3 "kernel\|stratum\|letsencrypt" fleet.lock | grep -i "name\|commit\|rev" | head; cd /tmp/src/kernel && grep -rln -i "hazelcast.*persist\|PersistenceConfig\|setPersistence\|base-dir\|/data" server/src/main | head; grep -rn -i "persist" README.md STATE.md | head
+< 7:    - name: kernel 10-      commit: 77f7c2414675659870a67e11930815eb7d017d0b 12-      contract_commit: 77f7c2414675659870a67e11930815eb7d017d0b 30:    - name: letsencrypt 33-      commit: 2c60a0d510eccc9982bff7f00fd81a627e7ea97d 35-      contract_commit: 2c60a0d510eccc9982bff7f00fd81a627e7ea97d 41...
+> Bash sed -n 1,60p fleet.lock; grep -rn -i "persist\|data\b\|volume" deploy/bootstrap/services/kernel.yaml | head
+< # Written by tacplus fleet build. The exact commits this fleet was resolved to; regenerate, do not edit. tacplus: "2.2" registries:     - repo: https://github.com/tacplus-dev/registry.git       commit: c63d4259624d784eed0172aa2cad64f548547d78 services:     - name: kernel       id: 8       repo: http...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/src && for p in "kernel 77f7c2414675659870a67e11930815eb7d017d0b" "stratum d4c08e1fba841ccb744b7e49b36f157bf08fffab"; do set -- $p; (cd $1 && git fetch -q --depth 1 origin $2 && git checkout -q $2 && echo "$1 ok"); done; grep -rn -i "persistence\|getPersistenceConfig\|baseDir\|rocksdb\|mapdb...
+< kernel ok stratum ok kernel/server/src/main/java/com/gitlab/seabeam/controlplane/schematic/services/kernel/cluster/IdentitySnapshot.java:82:                (diskDir != null && !diskDir.isEmpty()) ? diskDir : "/var/lib/kernel"); kernel/server/src/main/java/com/gitlab/seabeam/controlplane/schematic/se...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Investigating whether the saved disk snapshots actually contain the certificate, and in what format; it decides where the export tool must live.
+> Bash cd /tmp/src/kernel && sed -n 60,100p server/src/main/java/com/gitlab/seabeam/controlplane/schematic/services/kernel/cluster/IdentitySnapshot.java; sed -n 430,460p server/src/main/java/com/gitlab/seabeam/controlplane/schematic/services/kernel/cluster/ClusterStatePublisher.java; grep -rn -i "persisten...
+<     /**      * @param diskDir              the kernel disk directory (Config.disk_dir — kernel's      *                             one on-disk artifact is this snapshot); the diskstore base path      * @param keyRotator           source of the active signing-key records      * @param verifyingKeysR...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -rn -i "disk_persistence\|stratum" deploy/bootstrap docs/deploy-pipeline.md | head -20; cd /tmp/src/stratum && sed -n 470,500p server/src/main/java/com/gitlab/seabeam/controlplane/schematic/services/stratum/EventStore.java; grep -rln "LetsEncryptCert" . | head
+< deploy/bootstrap/services/kernel.yaml:42:    - name: stratum deploy/bootstrap/services/kernel.yaml:46:        - stratum deploy/bootstrap/services/kernel.yaml:49:          kubernetes_service_account: stratum deploy/bootstrap/services/kernel.yaml:94:        - stratum deploy/bootstrap/services/kernel.y...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp/src/stratum/server/src/main/java/com/gitlab/seabeam/controlplane/schematic/services/stratum && ls; ls disk hot 2>/dev/null; grep -n "class\|Codec\|\.log\|\.idx\|checkpoint" disk/*.java 2>/dev/null | head -40
+< ColdStartRebuilder.java EventStore.java Main.java StratumHandler.java checkpoint disk hazelcast hot disk: ClassNameMigration.java RecordDisk.java RecordDiskLoader.java RecordIndex.java  hot: EpochMergeProcessor.java HotArchive.java HotDataset.java HotRedoLogs.java HotRestore.java HotWrites.java Reco...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cat > /tmp/c24.md <<'EOF' ## Looper: needs a decision before anything is built here  This is on ROADMAP.md (Next) and I started building it. I stopped before committing because what's left lives in other repositories, and one of its inputs isn't where the 2026-10-29 update expects it.  ### What I fo...
+= task_started
+= task_notification
+< https://github.com/tacplus-dev/fleet-seatrials/issues/24#issuecomment-6511543774 https://github.com/tacplus-dev/fleet-seatrials/issues/24 remote:  [2026-10-30T00:08:19Z] checkpoint of #24 (a step) pushed to looper/fleet-seatrials-24:  2 files changed, 171 insertions(+)
+I didn't build #24 or commit anything. I posted a decision request on the issue (https://github.com/tacplus-dev/fleet-seatrials/issues/24#issuecomment-6511543774), added the `needs-decision` label and left the issue open.
+
+**Why I stopped:**
+- **The kernel-0 snapshot doesn't hold the certificate.** At the deployed kernel (77f7c24), the only thing kernel writes to disk is its identity snapshot. The certificate data that Jody's update expects to find there only ever lived in memory. The only saved copy is the `LetsEncryptCert` record in the three Stratum snapshots.
+- **Only Stratum's code at the deployed version (d4c08e1) can read those snapshots.** They are in Stratum's own on-disk format, and Stratum's main branch no longer keeps data on disk, so the export tool has to reuse that version's reader.
+- **The rest of the work belongs to other repositories, and none of it exists yet.** Loading the saved state on start (the "seed") belongs in letsencrypt, and mounting it in the operator. Neither repository has an issue or a ROADMAP.md entry for it. Also, letsencrypt's main branch requires tacplus 2.4, so this fleet (on 2.2) probably can't use a seeded letsencrypt until #1 lands.
+
+**Decisions I asked Jody for, with my recommendation for each:**
+1. **Where the snapshot reader lives:** a read-only dump command in stratum, on a branch cut from d4c08e1, run as a manual GitLab job against a disk restored from the stratum-0 snapshot.
+2. **The seed:** go ahead with letsencrypt's `seed_file` and the operator's mount. With Jody's OK, an agent adds both to those repositories' ROADMAP.md files and opens the issues, and #24 then waits on them.
+3. **How the value reaches `LETSENCRYPT_STATE`:** the job writes it to Secret Manager and Jody copies it into GitLab. This also waits on tacplus-dev/looper#25 and #18.
+4. **Timing:** the certificate enters its renewal window around 2026-12-24 and expires 2027-01-23. If the move lands later, the seed still keeps the existing ACME account, but letsencrypt orders a new certificate straight away. Is that acceptable, or should this work be prioritised?
+
+The comment also lists what this repository does once those are settled: the export job, the variable's documentation, a check that the new gateway serves the same certificate serial, and the step in #4's runbook.
+
+The checkpoint is pushed to `looper/fleet-seatrials-24`; it reported 2 files changed although nothing in the checkout changed.
+= success: I didn't build #24 or commit anything. I posted a decision request on the issue (https://github.com/tacplus-dev/fleet-seatrials/issues/24#issuecomment-6511543774), added the `needs-decision` label and left the issue open.
+
+**Why I stopped:**
+- **The kernel-0 snapshot doesn't hold the certificate.** At the deployed kernel (77f7c24), the only thing kernel writes to disk is its identity snapshot. The certificate data that Jody's update expects to find there only ever lived in memory. The only saved copy is the `LetsEncryptCert` record in the three Stratum snapshots.
+- **Only Stratum's code at the deployed version (d4c08e1) can read those snapshots.** They are in Stratum's own on-disk format, and Stratum's main branch no longer keeps data on disk, so the export tool has to reuse that version's reader.
+- **The rest of the work belongs to other repositories, and none of it exists yet.** Loading the saved state on start (the "seed") belongs in letsencrypt, and mounting it in the operator. Neither repository has an issue or a ROADMAP.md entry for it. Also, letsencrypt's main branch requires tacplus 2.4, so this fleet (on 2.2) probably can't use a seeded letsencrypt until #1 lands.
+
+**Decisions I asked Jody for, with my recommendation for each:**
+1. **Where the snapshot reader lives:** a read-only dump command in stratum, on a branch cut from d4c08e1, run as a manual GitLab job against a disk restored from the stratum-0 snapshot.
+2. **The seed:** go ahead with letsencrypt's `seed_file` and the operator's mount. With Jody's OK, an agent adds both to those repositories' ROADMAP.md files and opens the issues, and #24 then waits on them.
+3. **How the value reaches `LETSENCRYPT_STATE`:** the job writes it to Secret Manager and Jody copies it into GitLab. This also waits on tacplus-dev/looper#25 and #18.
+4. **Timing:** the certificate enters its renewal window around 2026-12-24 and expires 2027-01-23. If the move lands later, the seed still keeps the existing ACME account, but letsencrypt orders a new certificate straight away. Is that acceptable, or should this work be prioritised?
+
+The comment also lists what this repository does once those are settled: the export job, the variable's documentation, a check that the new gateway serves the same certificate serial, and the step in #4's runbook.
+
+The checkpoint is pushed to `looper/fleet-seatrials-24`; it reported 2 files changed although nothing in the checkout changed.
