@@ -56,6 +56,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   adopted only when Stratum has no row, then written through the normal record path. A `cert-serial` check
   proves the same serial before DNS moves. The current certificate enters its renewal window around
   2026-12-24, so the move must be done by then.
+- **Set up the deploy pipeline on GitLab in two phases, the cluster part on `tacplus`** (2026-11-01, #18, design
+  in its comments): #18's setup (WIF, deploy runner, protected environments, variables) grants on and diffs
+  against the `seatrials` cluster, which ROADMAP.md says was deleted 2026-10-29. Proposal: the hub does now what
+  needs no cluster (the WIF pool and provider, `seatrials-deploy` with the Cloud Build, bucket and AR grants, the
+  runner, the environments, the variables, `.gitlab-ci.yml`), proven by a pipeline whose tools, checks, images
+  and generate are green. The cluster grants, the `diff` dry run and the letsencrypt guard proof follow on
+  `tacplus` after #4, with `ci_kube`'s defaults and the scripts' kube-context checks moved to it. #27 waits on
+  phase 1 only.
 
 ## Promoted / declined
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
