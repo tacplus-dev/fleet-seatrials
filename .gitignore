@@ -6,3 +6,4 @@ deploy/bootstrap/crypto.yaml
 deploy/bootstrap/ca.pem
 deploy/bootstrap/configs/
 images/launcher/
+__pycache__/

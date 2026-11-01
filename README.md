@@ -38,6 +38,9 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
   secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets
   scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks).
+- `test-idp/` — the test IdP at idp.test.tacplus.dev: a Keycloak whose realms emulate Google's, Microsoft's
+  and Apple's claim shapes, with test users and domains, applied and checked by the pipeline, so sign-in is tested
+  with no person: [test-idp/README.md](test-idp/README.md).
 - `client/` — `seatrials`, the local client: a tacplus client project generated against build/proto. It
   authenticates with a credential pair (keygen → the public half goes into the fleet config), gets a kernel
   token through the gateway, administers tenants with the root pair, and runs the two proofs (`ping`, `ask`).

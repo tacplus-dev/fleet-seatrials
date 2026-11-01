@@ -64,6 +64,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   and generate are green. The cluster grants, the `diff` dry run and the letsencrypt guard proof follow on
   `tacplus` after #4, with `ci_kube`'s defaults and the scripts' kube-context checks moved to it. #27 waits on
   phase 1 only.
+- **The test IdP's follow-ups** (2026-11-01, #27): (1) Apple's form post: oauth posts `response_mode=form_post`
+  only for a provider with `apple` set, which needs a .p8 key, so `Test Apple` is plain OIDC. Neither the form
+  post nor the name on first sign-in (the `user` field) is emulated. A Keycloak form-post realm, plus an oauth
+  `apple` mode with a client secret, would cover both. (2) The seeds are written with a Maintainer project access
+  token that can read every variable. A narrower writer (a GitLab feature, or a job in a separate project) would
+  remove it. Until then the hub revokes it after the first run. (3) Keycloak's signing keys rotate when a
+  realm's settings change (the realm is recreated). Importing fixed keys derived from the seed would keep them.
+  (4) `test-idp-signin` on a schedule, nightly beside the dry run, once it is green.
 
 ## Promoted / declined
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)

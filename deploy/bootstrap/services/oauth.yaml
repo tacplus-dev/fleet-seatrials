@@ -6,9 +6,9 @@ scopes:
   - openid
   - profile
   - email
-# Anyone with a Google, Microsoft or Apple account may sign in; whether
-# they are entitled to anything is tenant membership, not the provider, so no
-# provider lists domains. Client secrets are NOT here: Google's and
+# Anyone with a Google, Microsoft or Apple account may sign in, and the test
+# IdP's test users (below); whether they are entitled to anything is tenant
+# membership, not the provider, so no provider lists domains. Client secrets are NOT here: Google's and
 # Microsoft's ride the kernel-config-override ConfigMap (ConfigOverride path
 # configs.oauth_config.providers, which replaces this whole list, so every
 # provider must be in it — deploy/signin-secrets.sh keeps the two in step), and
@@ -62,3 +62,43 @@ providers:
       team_id: DQQPWV62P5
       key_id: D9JNT33239
       form_post_redirect_uri: https://seatrials.tacplus.dev/oauth/Auth/BrokerFormPostCallback
+
+  # The test IdP (#27, test-idp/README.md): one Keycloak at idp.test.tacplus.dev
+  # whose realms emulate the claim shapes of Google, Microsoft and Apple, with
+  # test users only, so sign-in is tested with no person. Plain OIDC, each
+  # with the client tacplus-dev; the client secrets are derived from the test
+  # IdP's seed by deploy/signin-secrets.sh, which turns a provider off while
+  # its realm does not answer.
+  - enable: true
+    name: Test Google
+    issuer: https://idp.test.tacplus.dev/realms/google
+    client_id: tacplus-dev
+    allowed_redirect_uri_prefixes:
+      - https://seatrials.tacplus.dev/
+    scopes:
+      - openid
+      - profile
+      - email
+  # As Microsoft above, xms_edov decides whether email reaches policy; the
+  # realm's issuer is one URL for every directory (no issuer_template).
+  - enable: true
+    name: Test Microsoft
+    issuer: https://idp.test.tacplus.dev/realms/microsoft
+    email_verified_claim: xms_edov
+    client_id: tacplus-dev
+    allowed_redirect_uri_prefixes:
+      - https://seatrials.tacplus.dev/
+    scopes:
+      - openid
+      - profile
+      - email
+  - enable: true
+    name: Test Apple
+    issuer: https://idp.test.tacplus.dev/realms/apple
+    client_id: tacplus-dev
+    allowed_redirect_uri_prefixes:
+      - https://seatrials.tacplus.dev/
+    scopes:
+      - openid
+      - name
+      - email

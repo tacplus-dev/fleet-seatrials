@@ -9,8 +9,9 @@
 #   deploy/checks.sh cert          # the gateway serves a publicly trusted certificate
 #                                  # for the host, valid for CERT_MIN_DAYS (14) more days
 #   deploy/checks.sh jwks          # OIDC discovery names the host as issuer; its JWKS has keys
-#   deploy/checks.sh signin        # every provider oauth.yaml enables is listed, and
-#                                  # Authorize sends each to its own IdP with its client id
+#   deploy/checks.sh signin        # every provider oauth.yaml enables is listed (the test
+#                                  # IdP's may be off), and Authorize sends each to its own
+#                                  # IdP with its client id
 #   deploy/checks.sh opa CONFIGS   # the rendered routing policy (CONFIGS: the configs/
 #                                  # directory `schematic-operator generate` writes) sends each
 #                                  # tenant's claim matcher to that tenant, and nothing else
@@ -73,7 +74,13 @@ check_signin() {
   while IFS=$'\t' read -r name issuer client; do
     # proto3 JSON omits a zero provider_index.
     index=$(jq -r --arg n "$name" 'first(.providers[] | select(.name == $n) | (.providerIndex // 0)) // empty' <<<"$listed")
-    [ -n "$index" ] || { bad "signin: $name is not listed (its credential is not in place?)"; continue; }
+    if [ -z "$index" ]; then
+      # deploy/signin-secrets.sh turns the test IdP's providers off while it is
+      # down; its own job checks it (test-idp/signin.sh).
+      case "$issuer" in https://idp.test.tacplus.dev/realms/*)
+        echo "skip signin: $name is off (the test IdP: test-idp/README.md)"; continue ;; esac
+      bad "signin: $name is not listed (its credential is not in place?)"; continue
+    fi
     redirect=$(curl -fsS -X POST -H 'Content-Type: application/json' \
       -d "{\"provider_index\":$index,\"callback_url\":\"https://$host/\"}" "https://$host/oauth/Auth/Authorize" |
       jq -r '.redirectUrl // empty') || true

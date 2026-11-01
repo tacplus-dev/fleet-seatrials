@@ -1,8 +1,13 @@
 # beta's OAuth slice (oauth.OAuthTenantConfig). A Microsoft sign-in from the
 # jodyseabeam.onmicrosoft.com directory (where jody@seabeam.net lives) is an
-# org proof for /tenants/beta; any other sign-in is a personal proof. The
+# org proof for /tenants/beta, and so is a sign-in with a verified beta.test
+# email at the test IdP's Microsoft-like realm (#27, test-idp/README.md: the
+# domain a tenant claims); any other sign-in is a personal proof. The
 # operator renders this into the OPA routing policy (tenants/namespace.rego).
 claim_matchers:
   - provider_issuer_url: https://login.microsoftonline.com/common/v2.0
     claim_key: tid
     claim_value: ec3604c3-01c7-4537-aa2b-c39874000664
+  - provider_issuer_url: https://idp.test.tacplus.dev/realms/microsoft
+    claim_key: email_domain
+    claim_value: beta.test

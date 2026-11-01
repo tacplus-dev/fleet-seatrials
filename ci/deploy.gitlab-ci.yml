@@ -17,6 +17,12 @@
 #   apply     manual, protected environment seatrials
 #   test      post-deploy checks
 #
+# and the test IdP (#27, test-idp/README.md), on the `tacplus` cluster:
+#
+#   test-idp         manual, protected environment test-idp: Keycloak, its realms, its DNS record
+#   test-idp-signin  every realm's discovery and claim shapes; one user per realm signs in
+#                    at tacplus.dev and gets a kernel session; the removed user is refused
+#
 # The fleet's key material and the sign-in secrets come from protected project
 # variables (never group variables: those reach the loopers' agents), GCP
 # through GitLab OIDC and Workload Identity Federation (no key file). Nothing
@@ -169,3 +175,33 @@ test:
       export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
       bin/schematic-operator generate >/dev/null
       deploy/checks.sh all deploy/bootstrap/configs
+
+# The test IdP's jobs run as test-idp-deploy, which reaches the namespace
+# test-idp of the tacplus cluster and the record idp.test.tacplus.dev only
+# (test-idp/rbac.yaml, docs/deploy-pipeline.md), in the protected environment
+# test-idp, whose variables are the test IdP's seeds.
+.test-idp:
+  <<: *gcp
+  resource_group: test-idp
+  variables:
+    GCP_DEPLOY_SA: test-idp-deploy@jody1-328023.iam.gserviceaccount.com
+    CLUSTER: tacplus
+    ZONE: us-central1-a
+
+test-idp:
+  extends: .test-idp
+  stage: apply
+  needs: [tools, checks]
+  environment: { name: test-idp, action: start }
+  when: manual
+  allow_failure: true
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_kube && test-idp/apply.sh
+
+test-idp-signin:
+  extends: .test-idp
+  stage: test
+  needs: [tools, checks]
+  environment: { name: test-idp, action: verify }
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_kube && test-idp/signin.sh

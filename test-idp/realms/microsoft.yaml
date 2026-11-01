@@ -1,0 +1,171 @@
+# The Microsoft-like realm of the test IdP (#27): its issuer is
+# https://idp.test.tacplus.dev/realms/microsoft, and its ID tokens have the shape
+# of Entra ID's v2.0 tokens (https://learn.microsoft.com/entra/identity-platform/id-token-claims-reference):
+#
+#   ver                 "2.0"
+#   tid                 the directory's GUID; 9188040d-6c67-4c5b-b112-36a304b66dad for a
+#                       personal (consumer) account
+#   oid                 the account's object GUID, the same for every app
+#   sub                 pairwise: per app (here per redirect host), neither the oid nor the id
+#   preferred_username  the UPN
+#   email               an optional claim, absent when the account has none; no email_verified
+#   xms_edov            whether the directory verified the email's domain, a boolean
+#   name
+#
+# Unlike Entra, the issuer is one URL for every directory (no {tid} in it).
+# No secret is here: test-idp/apply.sh adds the client secret, the pairwise
+# salt and each user's password in the job's memory (test-idp/secrets.sh).
+realm: microsoft
+displayName: "Test IdP: Microsoft-like"
+enabled: true
+sslRequired: external
+registrationAllowed: false
+resetPasswordAllowed: false
+rememberMe: false
+verifyEmail: false
+loginWithEmailAllowed: false
+duplicateEmailsAllowed: true
+bruteForceProtected: false
+accessTokenLifespan: 300
+defaultSignatureAlgorithm: RS256
+components:
+  org.keycloak.userprofile.UserProfileProvider:
+    - providerId: declarative-user-profile
+      config:
+        kc.user.profile.config:
+          - '{"unmanagedAttributePolicy":"ENABLED","attributes":[{"name":"username","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"email","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"firstName","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"lastName","permissions":{"view":["admin"],"edit":["admin"]}}]}'
+clientScopes:
+  - name: openid-shape
+    description: "Entra's v2.0 ID token claims, with scope openid alone"
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "false", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: ver
+        protocol: openid-connect
+        protocolMapper: oidc-hardcoded-claim-mapper
+        config: { claim.name: ver, claim.value: "2.0", jsonType.label: String, id.token.claim: "true", access.token.claim: "true", userinfo.token.claim: "false" }
+      - name: tid
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: tid, claim.name: tid, jsonType.label: String, id.token.claim: "true", access.token.claim: "true", userinfo.token.claim: "true" }
+      - name: oid
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: oid, claim.name: oid, jsonType.label: String, id.token.claim: "true", access.token.claim: "true", userinfo.token.claim: "true" }
+      - name: xms_edov
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: xms_edov, claim.name: xms_edov, jsonType.label: boolean, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "false" }
+  - name: profile
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: name
+        protocol: openid-connect
+        protocolMapper: oidc-full-name-mapper
+        config: { id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: preferred_username
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: upn, claim.name: preferred_username, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+  - name: email
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: email, claim.name: email, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+clients:
+  # tacplus.dev's client: oauth's "Test Microsoft" provider (deploy/bootstrap/services/oauth.yaml).
+  - clientId: tacplus-dev
+    name: tacplus.dev
+    protocol: openid-connect
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    serviceAccountsEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/*"]
+    webOrigins: []
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, profile]
+    protocolMappers:
+      - name: sub
+        protocol: openid-connect
+        protocolMapper: oidc-sha256-pairwise-sub-mapper
+        config: { sectorIdentifierUri: "" }
+  # The claim check's own client (test-idp/testidp.py claims): public, PKCE
+  # S256. Its redirect has tacplus.dev's host, so its pairwise sub is the same.
+  - clientId: claims-check
+    name: test-idp claim check
+    protocol: openid-connect
+    publicClient: true
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/test-idp/claims"]
+    webOrigins: []
+    attributes: { pkce.code.challenge.method: S256 }
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, profile]
+    protocolMappers:
+      - name: sub
+        protocol: openid-connect
+        protocolMapper: oidc-sha256-pairwise-sub-mapper
+        config: { sectorIdentifierUri: "" }
+users:
+  # Ada of alpha.test, the same person as ada@alpha.test in the google realm
+  # (linking): alpha.test's directory, a verified domain.
+  - id: 1f4871ea-e52b-5397-8ce2-9a7d78b63f76
+    username: ada@alpha.test
+    email: ada@alpha.test
+    emailVerified: true
+    firstName: Ada
+    lastName: Alpha
+    enabled: true
+    attributes:
+      tid: [67f14585-a4ff-5b12-a866-0d31837da18c]
+      oid: [1f4871ea-e52b-5397-8ce2-9a7d78b63f76]
+      upn: [ada@alpha.test]
+      xms_edov: ["true"]
+  # Bo of beta.test, the domain the tenant beta claims (deploy/bootstrap/tenants/beta/oauth.yaml).
+  - id: 3781c601-ada9-5c95-8346-85d7a500febd
+    username: bo@beta.test
+    email: bo@beta.test
+    emailVerified: true
+    firstName: Bo
+    lastName: Beta
+    enabled: true
+    attributes:
+      tid: [793d49df-e344-5cca-9783-2304f0ae94dc]
+      oid: [3781c601-ada9-5c95-8346-85d7a500febd]
+      upn: [bo@beta.test]
+      xms_edov: ["true"]
+  # An account of beta.test's directory with no email (Entra's email is optional).
+  - id: ce049696-240a-54f2-8e5d-9dea9849f27b
+    username: nomail@beta.test
+    firstName: No
+    lastName: Mail
+    enabled: true
+    attributes:
+      tid: [793d49df-e344-5cca-9783-2304f0ae94dc]
+      oid: [ce049696-240a-54f2-8e5d-9dea9849f27b]
+      upn: [nomail@beta.test]
+  # A personal Microsoft account: the consumers tid, and no xms_edov.
+  - id: f48728df-526e-5db6-9ee6-51073c2ea3fb
+    username: max@personal.test
+    email: max@personal.test
+    emailVerified: true
+    firstName: Max
+    lastName: Personal
+    enabled: true
+    attributes:
+      tid: [9188040d-6c67-4c5b-b112-36a304b66dad]
+      oid: [f48728df-526e-5db6-9ee6-51073c2ea3fb]
+      upn: [max@personal.test]

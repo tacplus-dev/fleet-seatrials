@@ -1,0 +1,147 @@
+# The Google-like realm of the test IdP (#27): its issuer is
+# https://idp.test.tacplus.dev/realms/google, and its ID tokens have the shape of
+# Google's (https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo):
+#
+#   sub             a decimal string (Google's account id); here the user's id
+#   email           with email_verified a JSON boolean
+#   hd              the Workspace domain; only for a Workspace account
+#   name, given_name, family_name, picture
+#
+# No secret is here: test-idp/apply.sh adds each client's secret and each user's
+# password, derived from the pipeline's seeds (test-idp/secrets.sh), in the job's
+# memory. Users are listed in test-idp/README.md; a user's id is fixed, so the
+# sub stays the same across applies.
+realm: google
+displayName: "Test IdP: Google-like"
+enabled: true
+sslRequired: external
+registrationAllowed: false
+resetPasswordAllowed: false
+rememberMe: false
+verifyEmail: false
+loginWithEmailAllowed: true
+duplicateEmailsAllowed: false
+bruteForceProtected: false
+accessTokenLifespan: 300
+defaultSignatureAlgorithm: RS256
+# Only the attributes below, none required past the username, so that a test
+# user without a name or an email never meets an "update your profile" page.
+components:
+  org.keycloak.userprofile.UserProfileProvider:
+    - providerId: declarative-user-profile
+      config:
+        kc.user.profile.config:
+          - '{"unmanagedAttributePolicy":"ENABLED","attributes":[{"name":"username","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"email","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"firstName","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"lastName","permissions":{"view":["admin"],"edit":["admin"]}}]}'
+clientScopes:
+  - name: openid-shape
+    description: "sub and hd, in every token (Google sends them with scope openid alone)"
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "false", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: sub
+        protocol: openid-connect
+        protocolMapper: oidc-sub-mapper
+        config: { id.token.claim: "true", access.token.claim: "true", userinfo.token.claim: "true" }
+      - name: hd
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: hd, claim.name: hd, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+  - name: email
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: email, claim.name: email, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: email_verified
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: emailVerified, claim.name: email_verified, jsonType.label: boolean, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+  - name: profile
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: name
+        protocol: openid-connect
+        protocolMapper: oidc-full-name-mapper
+        config: { id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: given_name
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: firstName, claim.name: given_name, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: family_name
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: lastName, claim.name: family_name, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: picture
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: picture, claim.name: picture, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+clients:
+  # tacplus.dev's client: oauth's "Test Google" provider (deploy/bootstrap/services/oauth.yaml).
+  - clientId: tacplus-dev
+    name: tacplus.dev
+    protocol: openid-connect
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    serviceAccountsEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/*"]
+    webOrigins: []
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, profile]
+  # The claim check's own client (test-idp/signin.py claims): a public client
+  # with PKCE (S256), whose code is never sent anywhere; the check reads the ID
+  # token the realm issues for the same user.
+  - clientId: claims-check
+    name: test-idp claim check
+    protocol: openid-connect
+    publicClient: true
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/test-idp/claims"]
+    webOrigins: []
+    attributes: { pkce.code.challenge.method: S256 }
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, profile]
+users:
+  # A Workspace account of alpha.test. The same person is ada@alpha.test in the
+  # microsoft realm too (linking).
+  - id: "104857600000000000001"
+    username: ada@alpha.test
+    email: ada@alpha.test
+    emailVerified: true
+    firstName: Ada
+    lastName: Alpha
+    enabled: true
+    attributes:
+      hd: [alpha.test]
+      picture: ["https://idp.test.tacplus.dev/avatars/ada.png"]
+  # A consumer account (no hd) whose email is not verified.
+  - id: "104857600000000000002"
+    username: una@personal.test
+    email: una@personal.test
+    emailVerified: false
+    firstName: Una
+    lastName: Unverified
+    enabled: true
+    attributes:
+      picture: ["https://idp.test.tacplus.dev/avatars/una.png"]
+  # The user removed at the IdP: the sign-in check signs in as gone, deletes the
+  # user, and checks that the next sign-in is refused; the next apply puts the
+  # user back.
+  - id: "104857600000000000003"
+    username: gone@personal.test
+    email: gone@personal.test
+    emailVerified: true
+    firstName: Gone
+    lastName: Removed
+    enabled: true

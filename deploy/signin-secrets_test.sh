@@ -8,7 +8,9 @@
 # secret with whitespace in it, is refused (non-zero, saying why, never echoing
 # it) and nothing is written to the cluster; well-formed ones are written; an
 # unset one keeps the cluster's current secret; the Apple key restarts oauth
-# only when it differs from the one in place. Needs bash and jq.
+# only when it differs from the one in place; the test IdP's providers get the
+# secrets derived from their seed and are on only while their realm answers.
+# Needs bash, jq and python3.
 #
 #   deploy/signin-secrets_test.sh
 set -uo pipefail
@@ -35,7 +37,15 @@ esac
 EOF
 cat > "$work/bin/yq" <<'EOF'
 #!/usr/bin/env bash
-echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}}]'
+echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev/realms/google","client_id":"tacplus-dev","enable":true}]'
+EOF
+# The test IdP's discovery: up unless STUB_TEST_IDP=down.
+cat > "$work/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl $*" >> "$STUB_LOG"
+[ "${STUB_TEST_IDP:-up}" = up ] || exit 22
+for a in "$@"; do case "$a" in https://*/.well-known/openid-configuration)
+  echo "{\"issuer\":\"${a%/.well-known/openid-configuration}\"}" ;; esac; done
 EOF
 chmod +x "$work/bin/"*
 
@@ -48,7 +58,7 @@ run() {
   local name=$1 want=$2 out status
   shift 2
   : > "$work/log"; rm -f "$work/override.json"
-  out=$(env -u FLEET_MICROSOFT_CLIENT_SECRET -u FLEET_GOOGLE_CLIENT_SECRET -u FLEET_APPLE_KEY_P8 \
+  out=$(env -u FLEET_MICROSOFT_CLIENT_SECRET -u FLEET_GOOGLE_CLIENT_SECRET -u FLEET_APPLE_KEY_P8 -u TEST_IDP_CLIENT_SEED \
     PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_OVERRIDE="$work/override.json" "$@" \
     "$here/signin-secrets.sh" 2>&1)
   status=$?
@@ -56,7 +66,7 @@ run() {
   grep -q WRITE "$work/log" && wrote=true
   for secret in "$@"; do
     case "$secret" in
-      FLEET_*=*) secret=${secret#*=}
+      FLEET_*=* | TEST_IDP_*=*) secret=${secret#*=}
         if [ -n "$secret" ] && [[ "$out" == *"$secret"* ]]; then
           fail "$name: echoed a secret: out=[$out]"; return 1
         fi ;;
@@ -103,6 +113,23 @@ run "the Google variable is written" write FLEET_GOOGLE_CLIENT_SECRET=GOCSPX-abc
   check "the Google value is the variable's" "$(provider Google client_secret)" GOCSPX-abcdefghijklmnopqrstuvwxyz12 &&
   check "Microsoft still kept" "$(provider Microsoft client_secret)" kept-microsoft
 run "a Google value with whitespace is refused" refuse FLEET_GOOGLE_CLIENT_SECRET="GOCSPX-abc def"
+
+# The test IdP's providers (test-idp/README.md): each client secret is derived
+# from TEST_IDP_CLIENT_SEED, and a provider is on only with its secret and
+# while its realm's discovery answers, since oauth refuses its whole config
+# over one provider it cannot use.
+seed=cccccccccccccccccccccccccccccccccccccccc
+test_secret=$(TEST_IDP_CLIENT_SEED=$seed python3 "$here/../test-idp/testidp.py" secret client/google/tacplus-dev)
+run "the test IdP's client secret is derived from its seed" write TEST_IDP_CLIENT_SEED=$seed &&
+  check "Test Google's secret" "$(provider 'Test Google' client_secret)" "$test_secret" &&
+  check "Test Google on" "$(provider 'Test Google' enable)" true &&
+  check "the derived secret is in no command line" "$(grep -c -- "$test_secret" "$work/log")" 0
+run "without the seed, Test Google is off" write &&
+  check "Test Google off" "$(provider 'Test Google' enable)" false
+run "with its realm down, Test Google is off" write TEST_IDP_CLIENT_SEED=$seed STUB_TEST_IDP=down &&
+  check "Test Google off" "$(provider 'Test Google' enable)" false &&
+  check "Google still on" "$(provider Google enable)" true
+run "a seed too short is refused" refuse TEST_IDP_CLIENT_SEED=tooshort1
 
 printf -- '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n' > "$work/AuthKey.p8"
 run "a new Apple key is written and oauth restarted" write FLEET_APPLE_KEY_P8="$work/AuthKey.p8" \

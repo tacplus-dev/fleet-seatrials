@@ -1,0 +1,125 @@
+# The Apple-like realm of the test IdP (#27): its issuer is
+# https://idp.test.tacplus.dev/realms/apple, and its ID tokens have the shape of
+# Sign in with Apple's (https://developer.apple.com/documentation/signinwithapple/authenticating-users-with-sign-in-with-apple):
+#
+#   sub               the team-scoped user id, 000000.<32 hex>.0000
+#   email             the account's address, or its private relay address
+#   email_verified    a boolean, always true
+#   is_private_email  a boolean, true for a relay address (@privaterelay.appleid.test here)
+#   real_user_status  an integer: 0 unsupported, 1 unknown, 2 likely real
+#   no name           Apple sends the name once, in the form post's `user`, never in a token
+#
+# Unlike Apple, the client authenticates with a client secret (not an ES256 JWT
+# from a .p8 key) and the response comes back in the query (not a form post):
+# oauth's "Test Apple" provider is plain OIDC. No secret is here
+# (test-idp/secrets.sh).
+realm: apple
+displayName: "Test IdP: Apple-like"
+enabled: true
+sslRequired: external
+registrationAllowed: false
+resetPasswordAllowed: false
+rememberMe: false
+verifyEmail: false
+loginWithEmailAllowed: false
+duplicateEmailsAllowed: true
+bruteForceProtected: false
+accessTokenLifespan: 300
+defaultSignatureAlgorithm: RS256
+components:
+  org.keycloak.userprofile.UserProfileProvider:
+    - providerId: declarative-user-profile
+      config:
+        kc.user.profile.config:
+          - '{"unmanagedAttributePolicy":"ENABLED","attributes":[{"name":"username","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"email","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"firstName","permissions":{"view":["admin"],"edit":["admin"]}},{"name":"lastName","permissions":{"view":["admin"],"edit":["admin"]}}]}'
+clientScopes:
+  - name: openid-shape
+    description: "Apple's sub, from the user's apple_sub attribute"
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "false", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: sub
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: apple_sub, claim.name: sub, jsonType.label: String, id.token.claim: "true", access.token.claim: "true", userinfo.token.claim: "true" }
+  - name: email
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+    protocolMappers:
+      - name: email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-property-mapper
+        config: { user.attribute: email, claim.name: email, jsonType.label: String, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "true" }
+      - name: email_verified
+        protocol: openid-connect
+        protocolMapper: oidc-hardcoded-claim-mapper
+        config: { claim.name: email_verified, claim.value: "true", jsonType.label: boolean, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "false" }
+      - name: is_private_email
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: is_private_email, claim.name: is_private_email, jsonType.label: boolean, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "false" }
+      - name: real_user_status
+        protocol: openid-connect
+        protocolMapper: oidc-usermodel-attribute-mapper
+        config: { user.attribute: real_user_status, claim.name: real_user_status, jsonType.label: int, id.token.claim: "true", access.token.claim: "false", userinfo.token.claim: "false" }
+  # Apple's scope `name` puts nothing in the token.
+  - name: name
+    protocol: openid-connect
+    attributes: { include.in.token.scope: "true", display.on.consent.screen: "false" }
+clients:
+  # tacplus.dev's client: oauth's "Test Apple" provider (deploy/bootstrap/services/oauth.yaml).
+  - clientId: tacplus-dev
+    name: tacplus.dev
+    protocol: openid-connect
+    publicClient: false
+    clientAuthenticatorType: client-secret
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    serviceAccountsEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/*"]
+    webOrigins: []
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, name]
+  # The claim check's own client (test-idp/testidp.py claims): public, PKCE S256.
+  - clientId: claims-check
+    name: test-idp claim check
+    protocol: openid-connect
+    publicClient: true
+    standardFlowEnabled: true
+    directAccessGrantsEnabled: false
+    implicitFlowEnabled: false
+    frontchannelLogout: false
+    consentRequired: false
+    redirectUris: ["https://seatrials.tacplus.dev/test-idp/claims"]
+    webOrigins: []
+    attributes: { pkce.code.challenge.method: S256 }
+    defaultClientScopes: [openid-shape]
+    optionalClientScopes: [email, name]
+users:
+  # Cy shares their real address.
+  - id: 5c0e8a1e-3c64-5d1a-9a37-6a43b0c9a001
+    username: cy@personal.test
+    email: cy@personal.test
+    emailVerified: true
+    firstName: Cy
+    lastName: Shared
+    enabled: true
+    attributes:
+      apple_sub: [001979.5fc8f7f4a7fce4caa2e67cc472e3d3e1.0245]
+      is_private_email: ["false"]
+      real_user_status: ["2"]
+  # Rae hides their address behind a private relay address.
+  - id: 5c0e8a1e-3c64-5d1a-9a37-6a43b0c9a002
+    username: rae@personal.test
+    email: k7q2xw9mzp@privaterelay.appleid.test
+    emailVerified: true
+    firstName: Rae
+    lastName: Relay
+    enabled: true
+    attributes:
+      apple_sub: [001666.e0b16139f6b1d1d084c8a63e4d8e99bf.4026]
+      is_private_email: ["true"]
+      real_user_status: ["1"]

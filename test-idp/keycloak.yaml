@@ -1,0 +1,168 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The test IdP (#27): one Keycloak in the namespace test-idp of the `tacplus`
+# GKE cluster, at https://idp.test.tacplus.dev. Applied by the pipeline's
+# test-idp job (test-idp/apply.sh) only; the namespace and the job's rights in
+# it are test-idp/rbac.yaml, which the hub applies once. Nothing here is shared
+# with the fleet's namespaces, and nothing here is secret: the admin credential
+# is the Secret keycloak-admin, which apply.sh writes from the pipeline's seed.
+#
+# Exposure: a GKE Ingress with its own external load balancer, on the reserved
+# global address `test-idp`, with a Google-managed certificate for its own
+# name only (never the fleet's letsencrypt). It forwards only the three test
+# realms and the login pages' static files: the master realm and the admin
+# console and API are not on the internet; apply.sh reaches them through a
+# port-forward.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-idp
+  labels:
+    app.kubernetes.io/part-of: test-idp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak
+  namespace: test-idp
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: test-idp
+spec:
+  replicas: 1
+  serviceName: keycloak
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/part-of: test-idp
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 0
+        fsGroup: 0
+        seccompProfile: { type: RuntimeDefault }
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: keycloak
+          # 26.8.1-2, the multi-arch index (arm64 among its images).
+          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          args: [start]
+          env:
+            # The file-backed database (H2) on the volume below: one replica,
+            # test data only.
+            - { name: KC_DB, value: dev-file }
+            - { name: KC_CACHE, value: local }
+            - { name: KC_HOSTNAME, value: "https://idp.test.tacplus.dev" }
+            # TLS ends at the load balancer, which sets X-Forwarded-*.
+            - { name: KC_HTTP_ENABLED, value: "true" }
+            - { name: KC_PROXY_HEADERS, value: xforwarded }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=50" }
+            # Read on the first start only, when the database is empty.
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: management, containerPort: 9000 }
+          startupProbe:
+            httpGet: { path: /health/started, port: management }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health/ready, port: management }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health/live, port: management }
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /opt/keycloak/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: standard-rwo
+        resources:
+          requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: test-idp
+  labels:
+    app.kubernetes.io/part-of: test-idp
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "keycloak"}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+# The load balancer's health check: the master realm's page answers on the
+# serving port once Keycloak is up (the LB reaches the pod directly; the
+# Ingress below does not forward /realms/master).
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: keycloak
+  namespace: test-idp
+spec:
+  healthCheck:
+    type: HTTP
+    port: 8080
+    requestPath: /realms/master
+    checkIntervalSec: 15
+    timeoutSec: 5
+  timeoutSec: 30
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: test-idp
+  namespace: test-idp
+spec:
+  domains: [idp.test.tacplus.dev]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  namespace: test-idp
+  labels:
+    app.kubernetes.io/part-of: test-idp
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: test-idp
+    networking.gke.io/managed-certificates: test-idp
+    kubernetes.io/ingress.allow-http: "false"
+spec:
+  rules:
+    - host: idp.test.tacplus.dev
+      http:
+        paths:
+          - { path: /realms/google, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
+          - { path: /realms/microsoft, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
+          - { path: /realms/apple, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
+          - { path: /resources, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }

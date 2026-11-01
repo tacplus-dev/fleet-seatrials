@@ -4,14 +4,14 @@
 #
 # The repository's script tests, every *_test.sh, and the secrets scan
 # (ci/secrets.sh): the deploy pipeline's checks stage and the local gate. Need
-# bash, git, jq, yq, opa and gitleaks (ci/tools.sh builds the last three into
-# bin/).
+# bash, git, jq, yq, opa, gitleaks (ci/tools.sh builds these three into bin/),
+# python3 and openssl.
 #
 #   ci/checks.sh
 set -uo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 failed=0
-for t in "$here"/ci/*_test.sh "$here"/deploy/*_test.sh "$here"/images/*_test.sh; do
+for t in "$here"/ci/*_test.sh "$here"/deploy/*_test.sh "$here"/images/*_test.sh "$here"/test-idp/*_test.sh; do
   echo "== ${t#"$here"/}"
   "$t" || failed=1
 done

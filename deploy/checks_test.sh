@@ -56,8 +56,13 @@ h=$work/http
 echo '{"issuer":"https://seatrials.tacplus.dev","jwks_uri":"https://seatrials.tacplus.dev/.well-known/jwks.json"}' \
   > "$h/.well-known_openid-configuration"
 echo '{"keys":[{"kty":"EC","kid":"k1"}]}' > "$h/.well-known_jwks.json"
-echo '{"providers":[{"name":"Google"},{"name":"Microsoft","providerIndex":1},{"name":"Apple","providerIndex":2}]}' \
+echo '{"providers":[{"name":"Google"},{"name":"Microsoft","providerIndex":1},{"name":"Apple","providerIndex":2},
+  {"name":"Test Google","providerIndex":3},{"name":"Test Microsoft","providerIndex":4},{"name":"Test Apple","providerIndex":5}]}' \
   > "$h/oauth_Auth_ListProviders"
+for i in 3:google 4:microsoft 5:apple; do
+  echo "{\"redirectUrl\":\"https://idp.test.tacplus.dev/realms/${i#*:}/protocol/openid-connect/auth?client_id=tacplus-dev&state=s\"}" \
+    > "$h/oauth_Auth_Authorize-${i%%:*}"
+done
 echo '{"redirectUrl":"https://accounts.google.com/o/oauth2/v2/auth?client_id=23279701427-3nm40dmid06nd3niqufrq88sbl90p0n3.apps.googleusercontent.com&state=s"}' \
   > "$h/oauth_Auth_Authorize-0"
 echo '{"redirectUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=deee63f8-1d3b-46c8-aa3a-f7b2d7eb3f85&state=s"}' \
@@ -80,6 +85,11 @@ namespace := "/tenants/alpha" if {
 namespace := "/tenants/beta" if {
 	input.claims.provider_iss == "https://login.microsoftonline.com/common/v2.0"
 	input.claims["tid"] == "ec3604c3-01c7-4537-aa2b-c39874000664"
+}
+
+namespace := "/tenants/beta" if {
+	input.claims.provider_iss == "https://idp.test.tacplus.dev/realms/microsoft"
+	input.claims["email_domain"] == "beta.test"
 }
 EOF
 }
@@ -124,6 +134,11 @@ run "signin: every provider to its IdP" pass "Apple -> appleid.apple.com" signin
 mkdir -p "$work/http4"; cp -a "$h/." "$work/http4/"
 echo '{"providers":[{"name":"Google"},{"name":"Microsoft","providerIndex":1}]}' > "$work/http4/oauth_Auth_ListProviders"
 run "signin: a provider not listed" fail "Apple is not listed" signin -- STUB_HTTP="$work/http4"
+mkdir -p "$work/http6"; cp -a "$h/." "$work/http6/"
+echo '{"providers":[{"name":"Google"},{"name":"Microsoft","providerIndex":1},{"name":"Apple","providerIndex":2}]}' > "$work/http6/oauth_Auth_ListProviders"
+run "signin: the test IdP's providers off are no failure" pass "Test Google is off" signin -- STUB_HTTP="$work/http6"
+run "signin: the test IdP's providers to its realms" pass "Test Apple -> idp.test.tacplus.dev" signin
+run "opa: the test IdP's domain claimed by beta" pass "email_domain=beta.test -> /tenants/beta" opa "$work/configs-text"
 mkdir -p "$work/http5"; cp -a "$h/." "$work/http5/"
 echo '{"redirectUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=other&state=s"}' > "$work/http5/oauth_Auth_Authorize-1"
 run "signin: a provider with another client id" fail "Microsoft's Authorize does not send" signin -- STUB_HTTP="$work/http5"
