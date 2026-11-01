@@ -8,6 +8,7 @@ tacplus floor 2.2, services pinned by commit in `fleet.lock`, images built per f
 Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, Microsoft (jodyseabeam) to beta (#2).
 
 ## Next
+- Assemble and apply the uni-config in memory; validate it in diff; checks.sh fails on confi (#28) (Jody, 2026-11-01)
 - Test IdP: a tiny Keycloak at idp.test.tacplus.dev emulating Google, Microsoft and Apple claim shapes, with test users and domains, managed from GitLab (#27) (Jody, 2026-11-01)
 - Chaos monkey: scheduled failure injection against the live fleet from GitLab, self-checking, letsencrypt excluded (#26, after #4) (Jody, 2026-10-31)
 - Move tacplus.dev onto the single arm64 cluster `tacplus` (seatrials and cavalier deleted 2026-10-29): arm64 service images (#23), the Let's Encrypt state seeded from the snapshots with no new order (#24), then the move (#4)
