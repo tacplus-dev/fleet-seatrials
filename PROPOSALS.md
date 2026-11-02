@@ -72,6 +72,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   remove it. Until then the hub revokes it after the first run. (3) Keycloak's signing keys rotate when a
   realm's settings change (the realm is recreated). Importing fixed keys derived from the seed would keep them.
   (4) `test-idp-signin` on a schedule, nightly beside the dry run, once it is green.
+- **One signing path for the reader token** (2026-11-02, #30): `.github-reader` asks Cloud KMS as the job's
+  federated principal, then, on a 401 or 403, as `fleet-seatrials-reader@`. Because the first dry run's error was
+  dropped, nobody knew which path KMS accepts, so both are there. Once a dry run's log shows which one signs,
+  keep that one: drop the other path from the block, and drop its binding (the key's principalSet binding, or the
+  service account and its two bindings). Then every job makes one KMS call and has one binding fewer.
+  If it is the service account, tacplus-dev/build and tacplus-dev/looper probably need the same change.
 
 ## Promoted / declined
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)

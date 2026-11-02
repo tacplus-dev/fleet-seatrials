@@ -20,6 +20,9 @@ stages: [plan, deploy]
 variables:
   # The tacplus-reader app's key, in Cloud KMS (.github-reader).
   TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
+  # The service account the block signs as when KMS does not accept the job's
+  # federated principal (#30; docs/deploy-pipeline.md, GitHub).
+  TACPLUS_READER_SA: fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com
 
 workflow:
   rules:
@@ -30,7 +33,10 @@ workflow:
 # tacplus-reader GitHub App, minted for the job (#29; tacplus-dev/looper
 # README, Credentials). The job's GitLab id_token (GCP_ID_TOKEN) is exchanged
 # through Workload Identity Federation, as the job itself; Cloud KMS signs the
-# app's JWT with the app's key, which never leaves KMS; GitHub answers with a
+# app's JWT with the app's key, which never leaves KMS (if KMS refuses the
+# federated principal, the job signs as the service account TACPLUS_READER_SA,
+# which it may impersonate, #30; either refusal is logged with KMS's HTTP
+# status and error, never a token); GitHub answers with a
 # one-hour installation token, contents: read on this repository alone, which
 # only the fetch's git sees. No GitHub credential is stored anywhere. The same
 # block is in ci/gitlab-project.gitlab-ci.yml and ci/deploy.gitlab-ci.yml
@@ -39,7 +45,8 @@ workflow:
   # github_reader_token: the app's installation token, on stdout.
   github_reader_token() (
     set -uo pipefail
-    die() { echo "github_reader_token: $*" >&2; exit 1; }
+    say() { echo "github_reader_token: $*" >&2; }
+    die() { say "$@"; exit 1; }
     for v in $(compgen -e); do
       case "${!v}" in ghp_*|github_pat_*|gho_*|ghu_*|ghs_*|ghr_*)
         die "the job holds a stored GitHub token in $v: delete that variable, nothing reads one (docs/deploy-pipeline.md)" ;;
@@ -51,25 +58,53 @@ workflow:
     : "${TACPLUS_READER_APP_ID:?the GitLab project variable TACPLUS_READER_APP_ID is not set (docs/deploy-pipeline.md)}"
     : "${TACPLUS_READER_INSTALLATION_ID:?the GitLab project variable TACPLUS_READER_INSTALLATION_ID is not set (docs/deploy-pipeline.md)}"
     t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT || die "no temporary directory"
-    export CLOUDSDK_CONFIG=$t/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    export CLOUDSDK_CORE_DISABLE_PROMPTS=1
     b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-    ( umask 077; printf '%s' "$GCP_ID_TOKEN" > "$t/oidc-token" ) &&
-      gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" \
-        --credential-source-file="$t/oidc-token" --output-file="$t/federation.json" >/dev/null &&
-      gcloud auth login --cred-file="$t/federation.json" --quiet >/dev/null 2>&1 ||
-      die "Workload Identity Federation refused this job ($GCP_WIF_PROVIDER)"
+    # error FILE: the error in an answer, its status and message (a JSON
+    # error, or the start of the answer as is), never a request.
+    error() { jq -er '(.error // .) | select(.message) | [(.status | strings | select(test("^[A-Z_]+$"))), .message] | join(": ")' "$1" 2>/dev/null ||
+      head -c 300 "$1" | tr '\n' ' '; }
+    ( umask 077; printf '%s' "$GCP_ID_TOKEN" > "$t/oidc-token" ) || die "no temporary directory"
     now=$(date +%s)
     jwt=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url).$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' \
       "$((now - 60))" "$((now + 540))" "$TACPLUS_READER_APP_ID" | b64url)
-    printf '%s' "$jwt" > "$t/jwt" &&
-      gcloud kms asymmetric-sign --key="$TACPLUS_READER_KMS_KEY" --version=1 --digest-algorithm=sha256 \
-        --input-file="$t/jwt" --signature-file="$t/jwt-sig" >/dev/null 2>&1 ||
-      die "Cloud KMS refused to sign with $TACPLUS_READER_KMS_KEY"
-    curl -fsS -X POST -H "Authorization: Bearer $jwt.$(b64url < "$t/jwt-sig")" -H 'Accept: application/vnd.github+json' \
+    # kms_sign AS WHO [create-cred-config FLAG...]: Cloud KMS's signature of the
+    # JWT's digest, in $t/jwt-sig, asked with a Google token for the job's
+    # id_token, through WIF, as WHO. A refusal says KMS's HTTP status and
+    # error; it returns 3 when KMS refused the caller (401, 403).
+    kms_sign() {
+      local as=$1 who=$2 token code=; shift 2
+      export CLOUDSDK_CONFIG=$t/gcloud-$as
+      gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" "$@" \
+          --credential-source-file="$t/oidc-token" --output-file="$t/federation-$as.json" >/dev/null &&
+        gcloud auth login --cred-file="$t/federation-$as.json" --quiet >/dev/null 2>"$t/gcloud-err" &&
+        token=$(gcloud auth print-access-token 2>"$t/gcloud-err") ||
+        { say "Workload Identity Federation refused this job ($GCP_WIF_PROVIDER) as $who: $(grep -m1 '^ERROR' "$t/gcloud-err" || head -c 300 "$t/gcloud-err")"; return 1; }
+      ( umask 077; printf 'Authorization: Bearer %s\n' "$token" > "$t/kms-auth" ) || return 1
+      code=$(curl -sS -o "$t/kms" -w '%{http_code}' -X POST -H @"$t/kms-auth" -H 'Content-Type: application/json' \
+        -d "{\"digest\":{\"sha256\":\"$(printf '%s' "$jwt" | openssl dgst -sha256 -binary | openssl base64 -A)\"}}" \
+        "https://cloudkms.googleapis.com/v1/$TACPLUS_READER_KMS_KEY/cryptoKeyVersions/1:asymmetricSign")
+      rm -f "$t/kms-auth"
+      [ "$code" = 200 ] && jq -er '.signature' "$t/kms" | openssl base64 -d -A > "$t/jwt-sig" && [ -s "$t/jwt-sig" ] && return 0
+      say "Cloud KMS refused to sign with $TACPLUS_READER_KMS_KEY as $who: HTTP ${code:-none} $(error "$t/kms")"
+      case $code in 401|403) return 3 ;; *) return 1 ;; esac
+    }
+    # As the job itself; if KMS does not accept the federated principal,
+    # as the service account TACPLUS_READER_SA (#30, docs/deploy-pipeline.md).
+    rc=0
+    kms_sign direct "the job itself" || rc=$?
+    if [ "$rc" = 3 ] && [ -n "${TACPLUS_READER_SA:-}" ]; then
+      say "signing as the service account $TACPLUS_READER_SA instead"
+      rc=0
+      kms_sign sa "$TACPLUS_READER_SA" --service-account="$TACPLUS_READER_SA" || rc=$?
+    fi
+    [ "$rc" = 0 ] || die "no signature from Cloud KMS, so no token (docs/deploy-pipeline.md, GitHub)"
+    ( umask 077; printf 'Authorization: Bearer %s.%s\n' "$jwt" "$(b64url < "$t/jwt-sig")" > "$t/github-auth" ) || die "no temporary directory"
+    code=$(curl -sS -o "$t/answer" -w '%{http_code}' -X POST -H @"$t/github-auth" -H 'Accept: application/vnd.github+json' \
         -d '{"permissions":{"contents":"read"},"repositories":["fleet-seatrials"]}' \
-        "https://api.github.com/app/installations/$TACPLUS_READER_INSTALLATION_ID/access_tokens" > "$t/answer" &&
-      jq -er '.token // empty' "$t/answer" ||
-      die "GitHub refused the tacplus-reader app a token for fleet-seatrials"
+        "https://api.github.com/app/installations/$TACPLUS_READER_INSTALLATION_ID/access_tokens")
+    [[ $code == 2?? ]] && jq -er '.token // empty' "$t/answer" ||
+      die "GitHub refused the tacplus-reader app a token for fleet-seatrials: HTTP ${code:-none} $(error "$t/answer")"
   )
   # github_fetch DIR REF: this repository at REF (main's head, or a full
   # commit hash) checked out in the new repository DIR.
