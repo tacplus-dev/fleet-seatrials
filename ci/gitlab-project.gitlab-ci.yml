@@ -7,8 +7,9 @@
 # the pipeline, this repository holds its definition. As tacplus-dev/looper
 # does, `fleet-plan` resolves the commit to deploy (main's head, or the
 # commit the project variable FLEET_DEPLOY_COMMIT names), fetches this
-# repository's ci/deploy.gitlab-ci.yml at that commit with the project's
-# read-only GitHub token, and `fleet-deploy` runs it as the child pipeline,
+# repository's ci/deploy.gitlab-ci.yml at that commit with a token of the
+# keyless tacplus-reader GitHub App (.github-reader below: no GitHub token is
+# stored), and `fleet-deploy` runs it as the child pipeline,
 # with FLEET_COMMIT set. Runbook: docs/deploy-pipeline.md there.
 #
 # Runs when started from the web or the API, or on a schedule (a nightly dry
@@ -16,9 +17,71 @@
 # file. Nothing is passed as a pipeline variable.
 stages: [plan, deploy]
 
+variables:
+  # The tacplus-reader app's key, in Cloud KMS (.github-reader).
+  TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
+
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(web|api|schedule|trigger)$/
+
+# This repository is private: every job that fetches it (fleet-plan, and each
+# job of the child pipeline) reads it with a token of the keyless
+# tacplus-reader GitHub App, minted for the job (#29; tacplus-dev/looper
+# README, Credentials). The job's GitLab id_token (GCP_ID_TOKEN) is exchanged
+# through Workload Identity Federation, as the job itself; Cloud KMS signs the
+# app's JWT with the app's key, which never leaves KMS; GitHub answers with a
+# one-hour installation token, contents: read on this repository alone, which
+# only the fetch's git sees. No GitHub credential is stored anywhere. The same
+# block is in ci/gitlab-project.gitlab-ci.yml and ci/deploy.gitlab-ci.yml
+# (ci/github_reader_test.sh checks both).
+.github-reader: &github-reader |
+  # github_reader_token: the app's installation token, on stdout.
+  github_reader_token() (
+    set -uo pipefail
+    die() { echo "github_reader_token: $*" >&2; exit 1; }
+    for v in $(compgen -e); do
+      case "${!v}" in ghp_*|github_pat_*|gho_*|ghu_*|ghs_*|ghr_*)
+        die "the job holds a stored GitHub token in $v: delete that variable, nothing reads one (docs/deploy-pipeline.md)" ;;
+      esac
+    done
+    : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
+    : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (docs/deploy-pipeline.md)}"
+    : "${TACPLUS_READER_KMS_KEY:?TACPLUS_READER_KMS_KEY is not set}"
+    : "${TACPLUS_READER_APP_ID:?the GitLab project variable TACPLUS_READER_APP_ID is not set (docs/deploy-pipeline.md)}"
+    : "${TACPLUS_READER_INSTALLATION_ID:?the GitLab project variable TACPLUS_READER_INSTALLATION_ID is not set (docs/deploy-pipeline.md)}"
+    t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT || die "no temporary directory"
+    export CLOUDSDK_CONFIG=$t/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+    ( umask 077; printf '%s' "$GCP_ID_TOKEN" > "$t/oidc-token" ) &&
+      gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" \
+        --credential-source-file="$t/oidc-token" --output-file="$t/federation.json" >/dev/null &&
+      gcloud auth login --cred-file="$t/federation.json" --quiet >/dev/null 2>&1 ||
+      die "Workload Identity Federation refused this job ($GCP_WIF_PROVIDER)"
+    now=$(date +%s)
+    jwt=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url).$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' \
+      "$((now - 60))" "$((now + 540))" "$TACPLUS_READER_APP_ID" | b64url)
+    printf '%s' "$jwt" > "$t/jwt" &&
+      gcloud kms asymmetric-sign --key="$TACPLUS_READER_KMS_KEY" --version=1 --digest-algorithm=sha256 \
+        --input-file="$t/jwt" --signature-file="$t/jwt-sig" >/dev/null 2>&1 ||
+      die "Cloud KMS refused to sign with $TACPLUS_READER_KMS_KEY"
+    curl -fsS -X POST -H "Authorization: Bearer $jwt.$(b64url < "$t/jwt-sig")" -H 'Accept: application/vnd.github+json' \
+        -d '{"permissions":{"contents":"read"},"repositories":["fleet-seatrials"]}' \
+        "https://api.github.com/app/installations/$TACPLUS_READER_INSTALLATION_ID/access_tokens" > "$t/answer" &&
+      jq -er '.token // empty' "$t/answer" ||
+      die "GitHub refused the tacplus-reader app a token for fleet-seatrials"
+  )
+  # github_fetch DIR REF: this repository at REF (main's head, or a full
+  # commit hash) checked out in the new repository DIR.
+  github_fetch() {
+    local token
+    token=$(github_reader_token) || return 1
+    git init -q "$1" &&
+      TACPLUS_READER_TOKEN=$token git -C "$1" -c credential.helper= \
+        -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$TACPLUS_READER_TOKEN"; }; f' \
+        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
+      git -C "$1" checkout -q FETCH_HEAD
+  }
 
 fleet-plan:
   stage: plan
@@ -26,19 +89,17 @@ fleet-plan:
   tags: [deploy]
   variables:
     GIT_STRATEGY: none
+  id_tokens:
+    GCP_ID_TOKEN:
+      aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
   script:
+    - *github-reader
     - |
       set -euo pipefail
-      : "${FLEET_GITHUB_READ_TOKEN:?the project variable FLEET_GITHUB_READ_TOKEN is not set}"
-      helper='!f() { test "$1" = get && echo username=x-access-token && echo "password=$FLEET_GITHUB_READ_TOKEN"; }; f'
-      repo=https://github.com/tacplus-dev/fleet-seatrials.git
-      commit=${FLEET_DEPLOY_COMMIT:-$(git -c credential.helper= -c "credential.https://github.com.helper=$helper" \
-        ls-remote "$repo" refs/heads/main | cut -f1)}
-      [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "not a full commit hash: [$commit]" >&2; exit 1; }
-      git init -q src
-      git -C src -c credential.helper= -c "credential.https://github.com.helper=$helper" \
-        fetch -q --depth 1 "$repo" "$commit"
-      git -C src checkout -q FETCH_HEAD
+      [[ -z "${FLEET_DEPLOY_COMMIT:-}" || "$FLEET_DEPLOY_COMMIT" =~ ^[0-9a-f]{40}$ ]] ||
+        { echo "FLEET_DEPLOY_COMMIT is not a full commit hash: [$FLEET_DEPLOY_COMMIT]" >&2; exit 1; }
+      github_fetch src "${FLEET_DEPLOY_COMMIT:-refs/heads/main}"
+      commit=$(git -C src rev-parse HEAD)
       sed "s/^  FLEET_COMMIT: \"\"\$/  FLEET_COMMIT: \"$commit\"/" src/ci/deploy.gitlab-ci.yml > deploy.yml
       grep -q "^  FLEET_COMMIT: \"$commit\"\$" deploy.yml || { echo "ci/deploy.gitlab-ci.yml has no FLEET_COMMIT to set" >&2; exit 1; }
       echo "deploying fleet-seatrials $commit: $(git -C src log -1 --format=%s)"

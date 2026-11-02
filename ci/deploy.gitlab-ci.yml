@@ -25,7 +25,9 @@
 #
 # The fleet's key material and the sign-in secrets come from protected project
 # variables (never group variables: those reach the loopers' agents), GCP
-# through GitLab OIDC and Workload Identity Federation (no key file). Nothing
+# through GitLab OIDC and Workload Identity Federation (no key file), this
+# repository through the keyless tacplus-reader GitHub App (.github-reader: no
+# stored GitHub token). Nothing
 # secret is written to the repository, an artifact or a job log: no job runs
 # with `set -x`, the diff prints object names only, and the only artifact is
 # bin/ (tools built from public and pinned sources).
@@ -39,32 +41,87 @@ variables:
   GIT_STRATEGY: none
   GCP_PROJECT: jody1-328023
   GCP_DEPLOY_SA: seatrials-deploy@jody1-328023.iam.gserviceaccount.com
+  # The tacplus-reader app's key, in Cloud KMS (.github-reader).
+  TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
   # The commit being deployed: the parent pipeline writes it here (pipeline
   # variables are forbidden in the group).
   FLEET_COMMIT: ""
+
+# This repository is private: every job that fetches it (fleet-plan, and each
+# job of the child pipeline) reads it with a token of the keyless
+# tacplus-reader GitHub App, minted for the job (#29; tacplus-dev/looper
+# README, Credentials). The job's GitLab id_token (GCP_ID_TOKEN) is exchanged
+# through Workload Identity Federation, as the job itself; Cloud KMS signs the
+# app's JWT with the app's key, which never leaves KMS; GitHub answers with a
+# one-hour installation token, contents: read on this repository alone, which
+# only the fetch's git sees. No GitHub credential is stored anywhere. The same
+# block is in ci/gitlab-project.gitlab-ci.yml and ci/deploy.gitlab-ci.yml
+# (ci/github_reader_test.sh checks both).
+.github-reader: &github-reader |
+  # github_reader_token: the app's installation token, on stdout.
+  github_reader_token() (
+    set -uo pipefail
+    die() { echo "github_reader_token: $*" >&2; exit 1; }
+    for v in $(compgen -e); do
+      case "${!v}" in ghp_*|github_pat_*|gho_*|ghu_*|ghs_*|ghr_*)
+        die "the job holds a stored GitHub token in $v: delete that variable, nothing reads one (docs/deploy-pipeline.md)" ;;
+      esac
+    done
+    : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
+    : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (docs/deploy-pipeline.md)}"
+    : "${TACPLUS_READER_KMS_KEY:?TACPLUS_READER_KMS_KEY is not set}"
+    : "${TACPLUS_READER_APP_ID:?the GitLab project variable TACPLUS_READER_APP_ID is not set (docs/deploy-pipeline.md)}"
+    : "${TACPLUS_READER_INSTALLATION_ID:?the GitLab project variable TACPLUS_READER_INSTALLATION_ID is not set (docs/deploy-pipeline.md)}"
+    t=$(mktemp -d) && trap 'rm -rf "$t"' EXIT || die "no temporary directory"
+    export CLOUDSDK_CONFIG=$t/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+    ( umask 077; printf '%s' "$GCP_ID_TOKEN" > "$t/oidc-token" ) &&
+      gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" \
+        --credential-source-file="$t/oidc-token" --output-file="$t/federation.json" >/dev/null &&
+      gcloud auth login --cred-file="$t/federation.json" --quiet >/dev/null 2>&1 ||
+      die "Workload Identity Federation refused this job ($GCP_WIF_PROVIDER)"
+    now=$(date +%s)
+    jwt=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url).$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' \
+      "$((now - 60))" "$((now + 540))" "$TACPLUS_READER_APP_ID" | b64url)
+    printf '%s' "$jwt" > "$t/jwt" &&
+      gcloud kms asymmetric-sign --key="$TACPLUS_READER_KMS_KEY" --version=1 --digest-algorithm=sha256 \
+        --input-file="$t/jwt" --signature-file="$t/jwt-sig" >/dev/null 2>&1 ||
+      die "Cloud KMS refused to sign with $TACPLUS_READER_KMS_KEY"
+    curl -fsS -X POST -H "Authorization: Bearer $jwt.$(b64url < "$t/jwt-sig")" -H 'Accept: application/vnd.github+json' \
+        -d '{"permissions":{"contents":"read"},"repositories":["fleet-seatrials"]}' \
+        "https://api.github.com/app/installations/$TACPLUS_READER_INSTALLATION_ID/access_tokens" > "$t/answer" &&
+      jq -er '.token // empty' "$t/answer" ||
+      die "GitHub refused the tacplus-reader app a token for fleet-seatrials"
+  )
+  # github_fetch DIR REF: this repository at REF (main's head, or a full
+  # commit hash) checked out in the new repository DIR.
+  github_fetch() {
+    local token
+    token=$(github_reader_token) || return 1
+    git init -q "$1" &&
+      TACPLUS_READER_TOKEN=$token git -C "$1" -c credential.helper= \
+        -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$TACPLUS_READER_TOKEN"; }; f' \
+        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
+      git -C "$1" checkout -q FETCH_HEAD
+  }
 
 default:
   image: ghcr.io/tacplus-dev/tacplus/build:2.3
   tags: [deploy]
   interruptible: false
-  before_script:
-    # This repository at the commit being deployed, in src/ (where the tools
-    # job's bin/ artifact lands), fetched with the project's read-only token.
-    - |
-      set -euo pipefail
-      : "${FLEET_COMMIT:?no FLEET_COMMIT: this file runs as the child pipeline of ci/gitlab-project.gitlab-ci.yml}"
-      : "${FLEET_GITHUB_READ_TOKEN:?the GitLab project variable FLEET_GITHUB_READ_TOKEN is not set}"
-      git init -q src
-      git -C src -c credential.helper= \
-        -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$FLEET_GITHUB_READ_TOKEN"; }; f' \
-        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$FLEET_COMMIT"
-      git -C src checkout -q FETCH_HEAD
-      echo "fleet-seatrials at $(git -C src rev-parse --short=12 HEAD)"
-
-.gcp: &gcp
+  # Every job: the reader token (.github-reader), and GCP (ci_gcp in ci/lib.sh).
   id_tokens:
     GCP_ID_TOKEN:
       aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
+  before_script:
+    # This repository at the commit being deployed, in src/ (where the tools
+    # job's bin/ artifact lands).
+    - *github-reader
+    - |
+      set -euo pipefail
+      : "${FLEET_COMMIT:?no FLEET_COMMIT: this file runs as the child pipeline of ci/gitlab-project.gitlab-ci.yml}"
+      github_fetch src "$FLEET_COMMIT"
+      echo "fleet-seatrials at $(git -C src rev-parse --short=12 HEAD)"
 
 tools:
   stage: tools
@@ -84,7 +141,6 @@ checks:
 images:
   stage: images
   needs: [checks]
-  <<: *gcp
   script:
     - cd src && source ci/lib.sh && ci_github && ci_gcp && WAIT=1 images/build.sh changed
   timeout: 2h
@@ -104,7 +160,6 @@ generate:
 diff:
   stage: diff
   needs: [tools, images, generate]
-  <<: *gcp
   environment: { name: seatrials, action: prepare }
   script:
     - cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube && deploy/diff.sh
@@ -115,7 +170,6 @@ diff:
 apply:
   stage: apply
   needs: [tools, diff]
-  <<: *gcp
   environment: { name: seatrials, action: start }
   resource_group: seatrials
   when: manual
@@ -134,7 +188,6 @@ apply:
 apply-letsencrypt:
   stage: apply
   needs: [tools, images, generate]
-  <<: *gcp
   environment: { name: seatrials-letsencrypt, action: start }
   resource_group: seatrials
   when: manual
@@ -155,7 +208,6 @@ apply-letsencrypt:
 signin-secrets:
   stage: apply
   needs: [tools]
-  <<: *gcp
   environment: { name: seatrials, action: start }
   resource_group: seatrials
   when: manual
@@ -166,7 +218,6 @@ signin-secrets:
 test:
   stage: test
   needs: [tools, apply]
-  <<: *gcp
   environment: { name: seatrials, action: verify }
   script:
     - |
@@ -181,7 +232,6 @@ test:
 # (test-idp/rbac.yaml, docs/deploy-pipeline.md), in the protected environment
 # test-idp, whose variables are the test IdP's seeds.
 .test-idp:
-  <<: *gcp
   resource_group: test-idp
   variables:
     GCP_DEPLOY_SA: test-idp-deploy@jody1-328023.iam.gserviceaccount.com

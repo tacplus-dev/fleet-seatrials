@@ -11,7 +11,7 @@
 #   bin/gitleaks
 #
 #   ci/tools.sh              # needs go and protoc (ghcr.io/tacplus-dev/tacplus/build) and
-#                            # git access to the private operator repo (ci_github)
+#                            # git access to github.com, with no credential (ci_github)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 yq_version=v4.54.1

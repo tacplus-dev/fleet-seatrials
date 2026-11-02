@@ -12,16 +12,14 @@ fleet=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 ci_tmp=$(mktemp -d)
 export PATH="$fleet/bin:$PATH"
 
-# ci_github: git reaches https://github.com, and only there, with the
-# project's read-only token. The token is read from the environment when git
-# asks for it, so it is on no command line and in no file.
+# ci_github: git reaches https://github.com with no credential. What the tools
+# and images jobs fetch there (tacplus, operator, launcher and every service
+# repository in fleet.lock) is public; this repository, the only private one,
+# is fetched before any job's script, with a token only that fetch held
+# (.github-reader in ci/deploy.gitlab-ci.yml, #29). No GitHub token is stored.
 ci_github() {
-  : "${FLEET_GITHUB_READ_TOKEN:?the GitLab project variable FLEET_GITHUB_READ_TOKEN is not set}"
-  export GIT_CONFIG_COUNT=2
+  export GIT_CONFIG_COUNT=1
   export GIT_CONFIG_KEY_0=credential.https://github.com.helper GIT_CONFIG_VALUE_0=
-  export GIT_CONFIG_KEY_1=credential.https://github.com.helper
-  # shellcheck disable=SC2016 # expanded by git's helper shell, when git asks
-  export GIT_CONFIG_VALUE_1='!f() { test "$1" = get && echo username=x-access-token && echo "password=$FLEET_GITHUB_READ_TOKEN"; }; f'
   # tacplus sends CI_JOB_TOKEN to every https host it fetches from, github.com
   # included, where the clone then fails (#14).
   unset CI_JOB_TOKEN

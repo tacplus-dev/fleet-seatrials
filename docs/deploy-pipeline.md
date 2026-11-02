@@ -64,7 +64,8 @@ includes them.
 
 | Variable | Type | Scope | What |
 | --- | --- | --- | --- |
-| `FLEET_GITHUB_READ_TOKEN` | masked | all | A fine-grained GitHub token with read-only Contents on tacplus-dev/fleet-seatrials, tacplus-dev/operator and every service repository in `fleet.lock`. Fetches the source. |
+| `TACPLUS_READER_APP_ID` | plain | all | The `tacplus-reader` GitHub App's id. Not a secret ([below](#github-the-tacplus-reader-app-no-stored-token)). |
+| `TACPLUS_READER_INSTALLATION_ID` | plain | all | Its installation on tacplus-dev. Not a secret. |
 | `GCP_WIF_PROVIDER` | plain | all | `projects/<number>/locations/global/workloadIdentityPools/gitlab-tacplus-dev/providers/gitlab-com`. |
 | `FLEET_CRYPTO_YAML` | file | `seatrials*` | `deploy/bootstrap/crypto.yaml`, the fleet's CA and cluster PKI (already stored; its scope widens from `seatrials` to `seatrials*`). |
 | `FLEET_CA_PEM` | file | `seatrials*` | `deploy/bootstrap/ca.pem` (already stored; scope as above). |
@@ -93,6 +94,47 @@ Doing all of this inside the pipeline is the next step (PROPOSALS.md).
 and the API. Before any secret is stored there, no token an agent holds may have Maintainer or higher on
 this project. Today the loopers' `GITLAB_TOKEN` is a group Owner token with `api` scope, so it can read these
 variables and start the protected jobs (tacplus-dev/looper#25).
+
+There is **no GitHub token** among them ([below](#github-the-tacplus-reader-app-no-stored-token)). A job
+that holds a variable shaped like one (`ghp_`, `github_pat_`, `gho_`, `ghu_`, `ghs_`, `ghr_`) refuses to run,
+so the read-only GitHub token stored before #29 must be deleted from the project.
+
+## GitHub: the tacplus-reader app, no stored token
+
+This repository is private, so the jobs need a credential to fetch it, and none is stored (#29). Every job
+that fetches it, `fleet-plan` and each job of the child pipeline, mints its own token of the keyless
+`tacplus-reader` GitHub App first, as tacplus-dev/build does (tacplus-dev/looper README, Credentials). The
+code is the `.github-reader` block, the same in both pipeline files:
+
+1. The job's GitLab ID token (`GCP_ID_TOKEN`) is exchanged through Workload Identity Federation, in the pool
+   below, as the job itself (no service account).
+2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us`), which never leaves
+   KMS.
+3. GitHub answers with a one-hour installation token, `contents: read` on tacplus-dev/fleet-seatrials alone.
+   Only the fetch's `git` holds it, through a credential helper. It is in no file, no command line and
+   no job script's environment.
+
+Everything else the jobs fetch from GitHub (tacplus, operator, launcher and every service repository in
+`fleet.lock`) is public, and `ci_github` gives git no credential for it. `ci/github_reader_test.sh` checks
+that no pipeline file references a static GitHub token, and runs the block against a stub WIF, KMS and
+GitHub.
+
+**What the hub sets up** (once; the key and the app already exist for tacplus-dev/build):
+
+- The `tacplus-reader` app installed on tacplus-dev/fleet-seatrials, if its installation selects repositories.
+- The key's binding for this project's protected main. The pool `gitlab-tacplus-dev` already admits only
+  tacplus-dev/fleet-seatrials on protected `main` (its condition, below):
+
+  ```sh
+  project=jody1-328023
+  number=$(gcloud projects describe $project --format='value(projectNumber)')
+  gcloud kms keys add-iam-policy-binding tacplus-reader --keyring=looper --location=us --project=$project \
+    --role=roles/cloudkms.signer \
+    --member="principalSet://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/gitlab-tacplus-dev/attribute.project_path/tacplus-dev/fleet-seatrials"
+  ```
+
+- `TACPLUS_READER_APP_ID` and `TACPLUS_READER_INSTALLATION_ID` in the project (the table above): the same
+  values tacplus-dev/build holds.
 
 ## GCP: Workload Identity Federation, no key files
 
@@ -145,11 +187,13 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 
 ## One-time setup (the hub, #18)
 
-1. Make the GCP side above (Jody's OK). Set `GCP_WIF_PROVIDER` in the project.
+1. Make the GCP side above (Jody's OK). Set `GCP_WIF_PROVIDER` in the project. Then the GitHub side: the
+   `tacplus-reader` key's binding and the app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
 2. Register the deploy runner and turn off group runners on the project.
 3. Create the protected environments: `seatrials`, deployable by Maintainers, and `seatrials-letsencrypt`,
    deployable by Jody only. Keep `main` protected.
-4. Store the variables in the table above, once tacplus-dev/looper#25 is fixed. Jody pastes the sign-in
+4. Store the variables in the table above, once tacplus-dev/looper#25 is fixed. There is no GitHub token
+   to store. Jody pastes the sign-in
    secrets into the GitLab UI directly: not through a chat, a terminal or a file.
 5. Commit `ci/gitlab-project.gitlab-ci.yml` to the project as `.gitlab-ci.yml`.
 6. **Dry run:** Build → Pipelines → Run pipeline on `main`. tools, checks, images, generate and diff must be
