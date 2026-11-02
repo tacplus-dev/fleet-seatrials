@@ -9,3 +9,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-02 looper issue fleet-plan reads the private fleet-seatrials repo through the keyless tacplus-reader GitHub App, not a stored FLEET_GITHUB_READ_TOKEN (#29, c2ccdc9)
 - 2026-11-02 looper issue First dry run: Cloud KMS refused to sign with tacplus-reader; the job hides the error. Surface it, and fall back to SA impersonation if direct federation isn't accepted (#30, ab67a8c)
 - 2026-11-02 looper issue test-idp-signin runs (and fails the dry run) before the test IdP exists: skip it when the test-idp environment isn't set up (#31, 9489656)
+- 2026-11-02 looper issue images: gcloud builds submit fails the default-bucket ownership check; stage in a dedicated bucket (#32, 3537124)
