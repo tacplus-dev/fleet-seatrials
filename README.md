@@ -29,7 +29,9 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
   `schematic/<service>:<fleet commit>` and `:local`). Every image runs under the launcher. Images are built for
   `images/pins.yaml`'s `platforms`: `[arm64]`, what the fleet runs on; `[arm64, amd64]` builds both. Each
   platform's image is `fp-<fingerprint>-<arch>`, and the tags above name one multi-arch index over them. The
-  fingerprint covers the platforms, so changing them rebuilds every service.
+  fingerprint covers the platforms, so changing them rebuilds every service. The build image the services build
+  in is `ci/tacplus-build:fp-<fingerprint>` over its pinned commits, Dockerfile and Cloud Build config; every
+  service build first builds it when that tag is missing.
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
   (CA and cluster PKI, once), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
   variables), `diff.sh` (what an apply would change, by name; fails if it touches letsencrypt), `apply.sh`

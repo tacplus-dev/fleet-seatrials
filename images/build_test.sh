@@ -27,7 +27,9 @@ cat > "$work/bin/gcloud" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
 case "$*" in
-  "artifacts docker tags list "*) ;;   # nothing built yet
+  # Nothing built yet, but the build image tags STUB_BUILD_TAGS lists.
+  "artifacts docker tags list "*/ci/tacplus-build" "*) for t in ${STUB_BUILD_TAGS:-}; do echo "$t"; done ;;
+  "artifacts docker tags list "*) ;;
   "builds submit "*)
     for a in "$@"; do case "$a" in --substitutions=*|_REGISTRY=*) s=$a ;; esac; done
     svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
@@ -69,7 +71,8 @@ out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" WAIT_INTERVAL=0 WAIT=1 STU
 platforms_run() { # PLATFORMS_LINE ARGS... -> build.sh's output; the gcloud calls in $work/log
   local tree=$work/tree; rm -rf "$tree"
   mkdir -p "$tree/images" "$tree/build/proto"
-  cp "$here/build.sh" "$here/service.cloudbuild.yaml" "$tree/images/"
+  cp "$here/build.sh" "$here/service.cloudbuild.yaml" "$here/tacplus.cloudbuild.yaml" \
+    "$here/tacplus-build.cloudbuild.yaml" "$here/tacplus-build.Dockerfile" "$tree/images/"
   cp "$here/../fleet.lock" "$tree/"
   grep -v '^platforms:' "$here/pins.yaml" > "$tree/images/pins.yaml"
   [ -z "$1" ] || echo "$1" >> "$tree/images/pins.yaml"
@@ -77,8 +80,8 @@ platforms_run() { # PLATFORMS_LINE ARGS... -> build.sh's output; the gcloud call
   : > "$work/log"
   env PATH="$work/bin:$PATH" STUB_LOG="$work/log" "$tree/images/build.sh" "$@" 2>&1
 }
-substitution() { # NAME -> its value in the first build submitted
-  grep -m1 '^builds submit ' "$work/log" | tr ',' '\n' | sed -n "s/^.*$1=//p"
+substitution() { # NAME -> its value in the first service build submitted
+  grep -m1 '^builds submit .*service.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n "s/^.*$1=//p"
 }
 check "pins.yaml builds arm64 only" "$(grep '^platforms:' "$here/pins.yaml")" "platforms: [arm64]"
 platforms_run "platforms: [arm64]" kernel > /dev/null
@@ -118,6 +121,54 @@ check "tacplus: both images submitted" "$(grep -c '^builds submit ' "$work/log")
 staging_checked "tacplus"
 platforms_run "platforms: [arm64]" all > /dev/null
 staging_checked "all services"
+
+# The build image every service step runs in is tagged by a fingerprint of its
+# inputs: the tacplus and launcher commits, its Dockerfile and its Cloud Build
+# config. A service build runs in that tag, and the build image is built first
+# whenever the registry has no image with it; tagged by the tacplus commit
+# alone, an image built before the launcher stage was reused forever (#33).
+build_fp() { # ARGS... -> the build image's fingerprint, from `fingerprint`
+  platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "tacplus-build" { print $2 }'
+}
+edit_tree() { # FILE SED-EXPR -> build.sh's fingerprint after editing a copy of the tree's FILE
+  local tree=$work/tree2; rm -rf "$tree"; cp -R "$work/tree" "$tree"
+  sed -i.bak "$2" "$tree/images/$1" && rm -f "$tree/images/$1.bak"
+  env PATH="$work/bin:$PATH" STUB_LOG=/dev/null "$tree/images/build.sh" fingerprint 2>&1 |
+    awk '$1 == "tacplus-build" { print $2 }'
+}
+fp_build=$(build_fp)
+[[ "$fp_build" =~ ^[0-9a-f]{12}$ ]] && echo "ok   fingerprint prints the build image's" ||
+  { echo "FAIL fingerprint prints no build image fingerprint: [$fp_build]"; failures=$((failures + 1)); }
+check "the build image fingerprint is stable" "$(build_fp)" "$fp_build"
+for change in "tacplus-build.Dockerfile|\$a # changed" "tacplus-build.cloudbuild.yaml|\$a # changed" \
+              "pins.yaml|s/^launcher_commit: .*/launcher_commit: 0000000000000000000000000000000000000000/" \
+              "pins.yaml|s/^tacplus_commit: .*/tacplus_commit: 0000000000000000000000000000000000000000/"; do
+  fp=$(edit_tree "${change%%|*}" "${change#*|}")
+  [ -n "$fp" ] && [ "$fp" != "$fp_build" ] && echo "ok   ${change%%|*} (${change#*|}) changes the build image fingerprint" ||
+    { echo "FAIL ${change%%|*} (${change#*|}) leaves the build image fingerprint [$fp]"; failures=$((failures + 1)); }
+done
+fp_kernel=$(platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "kernel" { print $2 }')
+check "a platforms change leaves the build image fingerprint" \
+  "$(platforms_run "platforms: [arm64, amd64]" fingerprint | awk '$1 == "tacplus-build" { print $2 }')" "$fp_build"
+
+submits() { grep '^builds submit ' "$work/log" | sed -n 's/.*--config [^ ]*\/\([^ /]*\.cloudbuild\.yaml\).*/\1/p' | uniq | xargs; }
+for cmd in changed all kernel; do
+  platforms_run "platforms: [arm64]" "$cmd" > /dev/null
+  check "$cmd, no build image with its fingerprint: it is built first" \
+    "$(submits)" "tacplus.cloudbuild.yaml tacplus-build.cloudbuild.yaml service.cloudbuild.yaml"
+  check "$cmd: the build image is tagged by its fingerprint" \
+    "$(grep -m1 'tacplus-build.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^.*_FINGERPRINT=//p' | cut -d' ' -f1)" "$fp_build"
+  check "$cmd: services run in the fingerprint's build image" \
+    "$(grep 'service.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^_TACPLUS_IMAGE=//p' | cut -d' ' -f1 | sort -u)" \
+    "us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:fp-$fp_build"
+done
+STUB_BUILD_TAGS="seatrials fp-$fp_build" platforms_run "platforms: [arm64]" changed > /dev/null
+check "changed, the build image built: it is reused" "$(submits)" "service.cloudbuild.yaml"
+STUB_BUILD_TAGS="seatrials fp-$fp_build" platforms_run "platforms: [arm64]" fingerprint > /dev/null
+check "fingerprint builds nothing" "$(submits)" ""
+check "fingerprint says the build image is built" \
+  "$(STUB_BUILD_TAGS="fp-$fp_build" platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "tacplus-build" { print $3 }')" built
+check "the service fingerprint is unchanged by the build image" "$fp_kernel" "$fp_arm64"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1

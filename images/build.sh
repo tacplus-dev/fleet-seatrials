@@ -5,7 +5,7 @@
 # Builds the fleet's images on Cloud Build, one per service in fleet.lock, from
 # the exact commits the lock names, against this checkout's build/proto.
 #
-#   images/build.sh tacplus            # the tacplus image (once per tacplus commit)
+#   images/build.sh tacplus            # the tacplus and build images, whatever the registry holds
 #   images/build.sh all                # every service in fleet.lock
 #   images/build.sh kernel gateway     # some services
 #   images/build.sh changed            # only the services whose fingerprint has no image yet
@@ -32,6 +32,14 @@
 # fp-<hash>; `changed` builds a service only when the registry has no image
 # with its current fingerprint.
 #
+# The image the service builds run in, ci/tacplus-build, is tagged the same
+# way: fp-<hash> over the tacplus and launcher commits (images/pins.yaml) and
+# the content of tacplus-build.Dockerfile and tacplus-build.cloudbuild.yaml.
+# Every command that builds a service first builds it (as `tacplus` does) when
+# the registry has no build image with its current fingerprint, and the
+# services run in that tag: tagged by the tacplus commit alone, an image built
+# before the Dockerfile gained the launcher was reused forever (#33).
+#
 # Each service's repo is cloned here at the locked commit and submitted as the
 # build source, with build/proto copied in at .fleet/proto; Cloud Build clones
 # nothing (the repos are private). Images land at
@@ -41,6 +49,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 registry=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
 tacplus_repo=https://github.com/tacplus-dev/tacplus.git
 tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
+launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
 fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
 # Every submit stages its source and writes its logs in this bucket. Staged in
 # the project's default bucket, gcloud first lists the project's buckets to
@@ -76,10 +85,18 @@ fingerprint() {
   printf 'tacplus %s\nself %s\ninputs %s\nplatforms %s\n' "$minor" "$(lock_field "$1" commit)" "$digest" "$platforms" | shasum -a 256 | cut -c1-12
 }
 
-# built SERVICE FINGERPRINT -> 0 when the registry already holds an image built
+# build_fingerprint -> sha256 (12 hex) over the build image's inputs: the
+# tacplus and launcher commits and the files it is built from, one per line.
+build_fingerprint() {
+  printf 'tacplus %s\nlauncher %s\ndockerfile %s\ncloudbuild %s\n' "$tacplus_commit" "$launcher_commit" \
+    "$(shasum -a 256 < "$here/images/tacplus-build.Dockerfile" | cut -c1-64)" \
+    "$(shasum -a 256 < "$here/images/tacplus-build.cloudbuild.yaml" | cut -c1-64)" | shasum -a 256 | cut -c1-12
+}
+
+# built IMAGE FINGERPRINT -> 0 when the registry already holds an image built
 # from exactly these inputs.
 built() {
-  gcloud artifacts docker tags list "$registry/schematic/$1" --format 'value(tag)' 2>/dev/null | grep -qx "fp-$2"
+  gcloud artifacts docker tags list "$1" --format 'value(tag)' 2>/dev/null | grep -qx "fp-$2"
 }
 
 build_tacplus() {
@@ -90,12 +107,17 @@ build_tacplus() {
   rm -rf "$src"
   # The build image the service steps run in: toolchains + this tacplus + the
   # Java launcher, built from its pinned source placed beside the Dockerfile.
-  local launcher_commit; launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
   rm -rf "$here/images/launcher" && git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
     && git -C "$here/images/launcher" checkout -q "$launcher_commit" && rm -rf "$here/images/launcher/.git"
   gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" "${staging[@]}" \
-    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
+    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit,_FINGERPRINT=$build_fp" --quiet
   rm -rf "$here/images/launcher"
+}
+
+# ensure_tacplus: builds the build image unless the registry has one with its
+# fingerprint, before any service build is submitted.
+ensure_tacplus() {
+  if built "$build_image" "$build_fp"; then echo "== tacplus-build unchanged ($build_fp)"; else build_tacplus; fi
 }
 
 # language and go main package, read from the service checkout itself.
@@ -117,7 +139,7 @@ build_service() {
   local fp; fp=$(fingerprint "$name")
   local id
   id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit")
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$build_image:fp-$build_fp")
   echo "$id"
   echo "$name $id" >> "$submitted"
   rm -rf "$src"
@@ -138,23 +160,27 @@ wait_builds() {
   done < "$submitted"
   [ "$failed" = 0 ] || { echo "image builds failed: see the builds above in Cloud Build" >&2; exit 1; }
 }
+build_image=$registry/ci/tacplus-build
+build_fp=$(build_fingerprint)
 submitted=$(mktemp)
 trap 'rm -f "$submitted"' EXIT
 
 case "${1:-}" in
   tacplus) build_tacplus ;;
-  all) for s in $(services); do build_service "$s"; done ;;
+  all) ensure_tacplus; for s in $(services); do build_service "$s"; done ;;
   fingerprint)
+    if built "$build_image" "$build_fp"; then echo "tacplus-build $build_fp built"; else echo "tacplus-build $build_fp NEEDS BUILD"; fi
     for s in $(services); do
       fp=$(fingerprint "$s")
-      if built "$s" "$fp"; then echo "$s $fp built"; else echo "$s $fp NEEDS BUILD"; fi
+      if built "$registry/schematic/$s" "$fp"; then echo "$s $fp built"; else echo "$s $fp NEEDS BUILD"; fi
     done ;;
   changed)
+    ensure_tacplus
     for s in $(services); do
       fp=$(fingerprint "$s")
-      if built "$s" "$fp"; then echo "== $s unchanged ($fp)"; else build_service "$s"; fi
+      if built "$registry/schematic/$s" "$fp"; then echo "== $s unchanged ($fp)"; else build_service "$s"; fi
     done ;;
   "") echo "usage: images/build.sh tacplus | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
-  *) for s in "$@"; do build_service "$s"; done ;;
+  *) ensure_tacplus; for s in "$@"; do build_service "$s"; done ;;
 esac
 wait_builds
