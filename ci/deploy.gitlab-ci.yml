@@ -288,5 +288,8 @@ test-idp-signin:
   stage: test
   needs: [tools, checks]
   environment: { name: test-idp, action: verify }
+  # Until the test-idp job has set the test IdP up, a skip, not a failure (#31).
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_kube && test-idp/signin.sh
+    - |
+      cd src && source ci/lib.sh
+      if ci_test_idp_set_up; then ci_gcp && ci_kube && test-idp/signin.sh; fi

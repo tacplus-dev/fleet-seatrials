@@ -81,3 +81,8 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Promoted / declined
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
+- **`ci_gcp` fails silently too** (2026-11-02, #31): every job calls `ci/lib.sh`'s helpers in an `&&` list, where
+  bash turns errexit off inside the functions, so a failed step inside one is ignored unless the function returns
+  on it. #31 made `ci_kube` do so (dry run 2 ran `test-idp/signin.sh` with no kube context). `ci_gcp` still
+  ignores a failed `create-cred-config` or `gcloud auth login` and goes on as no one: it should return on each,
+  with gcloud's error, as `ci_kube` now does, with a stub test in `ci/lib_test.sh`.

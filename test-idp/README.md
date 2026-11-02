@@ -91,7 +91,7 @@ A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), 
 | --- | --- | --- |
 | [`testidp_test.sh`](testidp_test.sh) | `ci/checks.sh` (every pipeline) | Secret derivation, the render (secrets in, none in the files), the claim shapes, the login form, RS256, and that this README lists every user. |
 | [`local.sh`](local.sh) | by hand, before landing a realm change (needs docker) | Starts the pinned Keycloak locally and runs `signin.sh`'s IdP checks. A second sync must change nothing, and a recreated realm must keep every `sub`. |
-| [`signin.sh`](signin.sh) | the `test-idp-signin` job | Every realm's discovery answers. Every user signs in (code + PKCE) with its shape. `ada@alpha.test` (google), `bo@beta.test` (microsoft) and `cy@personal.test` (apple) sign in at tacplus.dev, get a kernel session, and the session names the realm and the user's `sub`. `gone@personal.test` is refused once removed. |
+| [`signin.sh`](signin.sh) | the `test-idp-signin` job | Every realm's discovery answers. Every user signs in (code + PKCE) with its shape. `ada@alpha.test` (google), `bo@beta.test` (microsoft) and `cy@personal.test` (apple) sign in at tacplus.dev, get a kernel session, and the session names the realm and the user's `sub`. `gone@personal.test` is refused once removed. Before the first `test-idp` apply (no `TEST_IDP_SEED`), the job skips: the test IdP is not set up yet. |
 
 The sign-in is a headless browser in Python's standard library. It follows tacplus.dev's `Authorize` to the
 realm, posts the login form, captures the redirect back without loading it, and completes with

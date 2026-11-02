@@ -43,13 +43,30 @@ ci_gcp() {
   echo "gcp: $(gcloud config get account 2>/dev/null) through workload identity federation"
 }
 
-# ci_kube: kubectl on the seatrials cluster, as the deploy service account.
+# ci_kube: kubectl on the seatrials cluster (CLUSTER in ZONE), as the deploy
+# service account. Every job calls it in an && list, where errexit is off, so
+# it returns on its own failures: no credentials for the cluster (gcloud's
+# error), or no current context (#31).
 ci_kube() {
-  gcloud components install kubectl gke-gcloud-auth-plugin --quiet >/dev/null 2>&1
+  local cluster=${CLUSTER:-seatrials} zone=${ZONE:-us-central1-a} context
+  gcloud components install kubectl gke-gcloud-auth-plugin --quiet >/dev/null 2>&1 || true
   export KUBECONFIG=$ci_tmp/kubeconfig USE_GKE_GCLOUD_AUTH_PLUGIN=True
-  gcloud container clusters get-credentials "${CLUSTER:-seatrials}" --zone "${ZONE:-us-central1-a}" \
-    --project "${GCP_PROJECT:-jody1-328023}" >/dev/null 2>&1
-  echo "kube: $(kubectl config current-context)"
+  gcloud container clusters get-credentials "$cluster" --zone "$zone" \
+      --project "${GCP_PROJECT:-jody1-328023}" >/dev/null 2>"$ci_tmp/kube-err" ||
+    { echo "kube: no credentials for the cluster $cluster ($zone) as $(gcloud config get account 2>/dev/null): $(grep -m1 '^ERROR' "$ci_tmp/kube-err" || head -c 300 "$ci_tmp/kube-err")" >&2
+      return 1; }
+  context=$(kubectl config current-context 2>/dev/null) && [ -n "$context" ] ||
+    { echo "kube: no current context after get-credentials for the cluster $cluster ($zone)" >&2; return 1; }
+  echo "kube: $context"
+}
+
+# ci_test_idp_set_up: whether the environment test-idp has its seed, which the
+# manual test-idp job generates on its first run. Without it the test IdP is
+# not set up yet (a dry run before that apply), and this says so (#31).
+ci_test_idp_set_up() {
+  [ -n "${TEST_IDP_SEED:-}" ] && return 0
+  echo "skip: the test IdP is not set up yet (no TEST_IDP_SEED in the environment test-idp); run the manual test-idp job first (test-idp/README.md)"
+  return 1
 }
 
 # ci_crypto: the fleet's key material into deploy/bootstrap, where

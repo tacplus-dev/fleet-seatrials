@@ -26,10 +26,10 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | apply | `apply-letsencrypt` | Manual, in the protected environment `seatrials-letsencrypt`, whose only deployer is Jody. The same apply, with the letsencrypt guard lifted. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else. |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `tacplus` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
-| test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. |
+| test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: [`deploy/checks.sh all`](../deploy/checks.sh). Every pod Ready; the gateway serves a publicly trusted certificate for seatrials.tacplus.dev, valid for 14 more days; OIDC discovery names the host and its JWKS has keys; the sign-in smoke test; the routing check. |
 
-Without `apply`, a pipeline is a **dry run**: tools, checks, images, generate and diff.
+Without `apply`, a pipeline is a **dry run**: tools, checks, images, generate and diff, and `test-idp-signin` once the test IdP is set up.
 
 ### The letsencrypt guard
 
