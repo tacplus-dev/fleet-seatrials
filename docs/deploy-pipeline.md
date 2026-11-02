@@ -194,8 +194,14 @@ gcloud iam service-accounts add-iam-policy-binding $sa --project $project --role
 What the account may do, and nothing more:
 
 - **Cloud Build** (images): `roles/cloudbuild.builds.editor` and `roles/serviceusage.serviceUsageConsumer` on
-  the project. `roles/storage.admin` on the bucket `gs://jody1-328023_cloudbuild` only, where
-  `gcloud builds submit` uploads the source. `roles/iam.serviceAccountUser` on the service account the builds
+  the project. `roles/storage.admin` on the bucket `gs://jody1-328023-seatrials-build` only (us-central1,
+  uniform access, public access prevented, objects deleted after 7 days), where `images/build.sh` has
+  `gcloud builds submit` stage the source (`--gcs-source-staging-dir .../source`) and write the build logs
+  (`--gcs-log-dir .../logs`); the account the builds run as has `roles/storage.objectAdmin` on it. Not the
+  project's default bucket `gs://jody1-328023_cloudbuild`: staging there, gcloud first checks that the bucket
+  belongs to the project by listing the project's buckets, which needs `storage.buckets.list` on the whole
+  project, and the synchronous submits stream their logs from the default logs bucket, which needs project
+  Viewer. `roles/iam.serviceAccountUser` on the service account the builds
   run as, which already pushes to Artifact Registry. `roles/artifactregistry.reader` on the repository
   `seabeam`, so `images/build.sh` can read the `fp-` tags.
 - **The seatrials cluster:** `roles/container.clusterViewer` with the IAM condition

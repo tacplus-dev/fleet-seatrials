@@ -42,6 +42,13 @@ registry=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
 tacplus_repo=https://github.com/tacplus-dev/tacplus.git
 tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
+# Every submit stages its source and writes its logs in this bucket. Staged in
+# the project's default bucket, gcloud first lists the project's buckets to
+# check it owns it, which needs storage.buckets.list on the project; the
+# synchronous submits stream their logs, and the default logs bucket needs
+# project Viewer. The deploy account has neither (docs/deploy-pipeline.md).
+build_bucket=gs://jody1-328023-seatrials-build
+staging=(--gcs-source-staging-dir "$build_bucket/source" --gcs-log-dir "$build_bucket/logs")
 # platforms: [arm64, amd64] -> "amd64 arm64", sorted, so the order in pins.yaml
 # changes neither the build nor its fingerprint.
 platforms=$(sed -n 's/^platforms: *\[\(.*\)\] *$/\1/p' "$here/images/pins.yaml" | tr ', ' '\n\n' | sed '/^$/d' | sort -u | xargs)
@@ -78,7 +85,7 @@ built() {
 build_tacplus() {
   local src; src=$(mktemp -d)
   git clone -q "$tacplus_repo" "$src" && git -C "$src" checkout -q "$tacplus_commit"
-  gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" \
+  gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" "${staging[@]}" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
   rm -rf "$src"
   # The build image the service steps run in: toolchains + this tacplus + the
@@ -86,7 +93,7 @@ build_tacplus() {
   local launcher_commit; launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
   rm -rf "$here/images/launcher" && git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
     && git -C "$here/images/launcher" checkout -q "$launcher_commit" && rm -rf "$here/images/launcher/.git"
-  gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" \
+  gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" "${staging[@]}" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
   rm -rf "$here/images/launcher"
 }
@@ -109,7 +116,7 @@ build_service() {
   echo "== $name ($lang) @ ${commit:0:12}"
   local fp; fp=$(fingerprint "$name")
   local id
-  id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" --async --quiet --format 'value(id)' \
+  id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
     --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$registry/ci/tacplus-build:$tacplus_commit")
   echo "$id"
   echo "$name $id" >> "$submitted"

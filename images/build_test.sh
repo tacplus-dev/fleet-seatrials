@@ -100,6 +100,25 @@ for bad in "platforms: [arm64, x86]" "platforms: []" ""; do
       { echo "FAIL [$bad] submitted a build"; failures=$((failures + 1)); }; }
 done
 
+# Every submit stages its source and logs in the dedicated bucket: given the
+# default bucket, gcloud lists the project's buckets to check it owns it, which
+# the deploy account may not (docs/deploy-pipeline.md).
+staging_checked() { # NAME -> checks every builds submit in $work/log
+  local n bad
+  n=$(grep -c '^builds submit ' "$work/log")
+  bad=$(grep '^builds submit ' "$work/log" | while read -r line; do
+    [[ "$line" == *"--gcs-source-staging-dir gs://jody1-328023-seatrials-build/source"* &&
+       "$line" == *"--gcs-log-dir gs://jody1-328023-seatrials-build/logs"* ]] || echo "$line"
+  done)
+  if [ "$n" -gt 0 ] && [ -z "$bad" ]; then echo "ok   $1: $n submits stage in the build bucket"
+  else echo "FAIL $1: $n submits, without the build bucket: [$bad]"; failures=$((failures + 1)); fi
+}
+platforms_run "platforms: [arm64]" tacplus > /dev/null
+check "tacplus: both images submitted" "$(grep -c '^builds submit ' "$work/log")" 2
+staging_checked "tacplus"
+platforms_run "platforms: [arm64]" all > /dev/null
+staging_checked "all services"
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1
 fi
