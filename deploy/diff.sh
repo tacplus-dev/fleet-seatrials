@@ -11,6 +11,13 @@
 # is never restarted without Jody's explicit OK, which is the pipeline's
 # separate manual job, the one that sets SEATRIALS_ALLOW_LETSENCRYPT=1.
 #
+# It prints the render's digest (sha256:<hex> of the manifest, nothing of its
+# content) and writes it as RENDER_DIGEST=... to RENDER_DIGEST_OUT, the diff
+# job's dotenv artifact: deploy/apply.sh applies only the render with that
+# digest, so what diff showed is what is applied (#34; the uni-config record's
+# digest once #28 lands). With RENDER_DIGEST set (the apply jobs), it fails on
+# any other render.
+#
 #   deploy/diff.sh     # exit 0: nothing touches letsencrypt (changes or not)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,6 +31,13 @@ case "$ctx" in *seatrials*) ;; *) echo "kube context is $ctx, not the seatrials 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 (cd "$here" && "$operator" apply --dry-run) > "$tmp/manifest.yaml"
+digest=sha256:$(sha256sum < "$tmp/manifest.yaml" | cut -d' ' -f1)
+echo "render $digest"
+if [ -n "${RENDER_DIGEST:-}" ] && [ "$digest" != "$RENDER_DIGEST" ]; then
+  echo "refused: this render is $digest, not $RENDER_DIGEST, the one diff showed; run the pipeline again" >&2
+  exit 1
+fi
+[ -z "${RENDER_DIGEST_OUT:-}" ] || echo "RENDER_DIGEST=$digest" > "$RENDER_DIGEST_OUT"
 
 touched=$tmp/touched
 : > "$touched"

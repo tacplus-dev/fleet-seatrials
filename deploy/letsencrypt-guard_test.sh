@@ -171,6 +171,64 @@ out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FI
 [[ "$out" == *letsencrypt* && "$out" == *"Jody"* ]] && ok "diff.sh says why it fails, and whose OK it needs" ||
   fail "diff.sh failure does not say why: [$out]"
 
+# ---- The render digest (#34): the render diff.sh showed is the one deploy/apply.sh applies.
+# other.yaml: the same render but for kernel's config, which the guard passes.
+le_deploy letsencrypt:a > "$work/other.yaml"; printf -- '---\n' >> "$work/other.yaml"; cm kernel-config two >> "$work/other.yaml"
+want=sha256:$(sha256sum < "$work/with-le.yaml" | cut -d' ' -f1)
+out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/same" \
+  STUB_MANIFEST="$work/with-le.yaml" STUB_LIVE_DEPLOYMENTS="" RENDER_DIGEST_OUT="$work/render.env" "$here/diff.sh" 2>&1)
+[ "$(cat "$work/render.env" 2>/dev/null)" = "RENDER_DIGEST=$want" ] && [[ "$out" == *"$want"* ]] &&
+  ok "diff.sh records and prints its render's digest" || fail "diff.sh digest: [$(cat "$work/render.env" 2>/dev/null)] out=[$out]"
+diffsh "the render diff showed passes" pass same "$work/with-le.yaml" RENDER_DIGEST="$want"
+diffsh "another render passes without a digest" pass same "$work/other.yaml"
+diffsh "a render other than the one diff showed fails" fail same "$work/other.yaml" RENDER_DIGEST="$want"
+
+# apply.sh against a stub operator that logs what it runs.
+cat > "$work/bin/schematic-operator" <<'EOF'
+#!/usr/bin/env bash
+echo "operator $*" >> "$STUB_LOG"
+case "$*" in
+  generate) ;;
+  "apply --dry-run") cat "$STUB_MANIFEST" ;;
+  apply) echo "applied" ;;
+  *) echo "unexpected operator $*" >&2; exit 3 ;;
+esac
+EOF
+cat > "$work/bin/kubectl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  "config current-context") echo "${STUB_CONTEXT:-gke_jody1-328023_us-central1-a_seatrials}" ;;
+  "get pods -n schematic") ;;
+  *) echo "unexpected kubectl $*" >&2; exit 3 ;;
+esac
+EOF
+mkdir -p "$work/tree/deploy" "$work/tree/bin"
+cp "$here/apply.sh" "$work/tree/deploy/apply.sh"
+cp "$work/bin/schematic-operator" "$work/tree/bin/schematic-operator"
+# applysh NAME WANT(applied|refused) MANIFEST [ENV=VALUE...]
+applysh() {
+  local name=$1 want=$2 manifest=$3 out status
+  shift 3
+  : > "$work/log"
+  out=$(env -u RENDER_DIGEST PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_MANIFEST="$manifest" "$@" \
+    "$work/tree/deploy/apply.sh" 2>&1)
+  status=$?
+  case "$want" in
+    applied) [ "$status" -eq 0 ] && grep -qx "operator apply" "$work/log" ||
+      { fail "apply.sh $name: status $status; out=[$out]"; return; } ;;
+    refused) [ "$status" -ne 0 ] && ! grep -qx "operator apply" "$work/log" ||
+      { fail "apply.sh $name: applied; out=[$out]"; return; } ;;
+  esac
+  ok "apply.sh $name"
+}
+applysh "applies the render diff showed" applied "$work/with-le.yaml" RENDER_DIGEST="$want"
+applysh "refuses a render other than the one diff showed" refused "$work/other.yaml" RENDER_DIGEST="$want"
+applysh "refuses with no render digest" refused "$work/with-le.yaml"
+out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_MANIFEST="$work/other.yaml" RENDER_DIGEST="$want" \
+  "$work/tree/deploy/apply.sh" 2>&1)
+[[ "$out" == *"$want"* && "$out" == *diff* ]] && ok "apply.sh says which render diff showed" ||
+  fail "apply.sh refusal does not say why: [$out]"
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1
 fi

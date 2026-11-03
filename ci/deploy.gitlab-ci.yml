@@ -13,9 +13,15 @@
 #   checks    the repository's script tests (the letsencrypt guard among them)
 #   images    images/build.sh changed on Cloud Build, waiting for every build
 #   generate  schematic-operator generate with the fleet's key material; the routing policy checked
-#   diff      what an apply would change, by object name; fails if it touches letsencrypt
-#   apply     manual, protected environment seatrials
+#   diff      what an apply would change, by object name; fails if it touches letsencrypt;
+#             records the render's digest
+#   apply     once diff succeeds, by itself (seatrials is not production), the render diff
+#             showed, by digest; protected environment seatrials
 #   test      post-deploy checks
+#
+# Manual, because none of them is approval of the fleet: apply-letsencrypt (Jody's standing
+# never-restart-letsencrypt rule; only Jody plays it), signin-secrets (a rotated secret),
+# test-idp (the test IdP's one-time setup).
 #
 # and the test IdP (#27, test-idp/README.md), on the `tacplus` cluster:
 #
@@ -29,8 +35,8 @@
 # repository through the keyless tacplus-reader GitHub App (.github-reader: no
 # stored GitHub token). Nothing
 # secret is written to the repository, an artifact or a job log: no job runs
-# with `set -x`, the diff prints object names only, and the only artifact is
-# bin/ (tools built from public and pinned sources).
+# with `set -x`, the diff prints object names only, and the only artifacts are
+# bin/ (tools built from public and pinned sources) and the render's digest.
 #
 # Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
 # once, max_use_count = 1), never on the agents' runner.
@@ -197,18 +203,25 @@ diff:
   needs: [tools, images, generate]
   environment: { name: seatrials, action: prepare }
   script:
-    - cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube && deploy/diff.sh
+    - |
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
+  # RENDER_DIGEST, the digest of the render diff showed, for apply.
+  artifacts:
+    reports:
+      dotenv: render.env
 
-# The apply. Manual, in the protected environment seatrials (only maintainers
-# may start it); the letsencrypt guard runs again first, on the cluster as it
-# is now. Without it the pipeline is a dry run: images, generate, diff.
+# The apply, by itself once diff succeeds: seatrials is not production, and
+# only production waits for Jody (tacplus-dev/roadmap
+# decisions/deterministic-deployments-2026-11-02.md, addendum; #34). In the
+# protected environment seatrials. It applies the render diff showed, by its
+# digest (RENDER_DIGEST, diff's dotenv), and the letsencrypt guard runs again
+# first, on the cluster as it is now.
 apply:
   stage: apply
   needs: [tools, diff]
   environment: { name: seatrials, action: start }
   resource_group: seatrials
-  when: manual
-  allow_failure: true
   script:
     - |
       cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
@@ -219,7 +232,9 @@ apply:
 
 # The apply when it touches letsencrypt, which is never restarted without
 # Jody's explicit OK: its own protected environment, seatrials-letsencrypt,
-# whose only deployer is Jody (docs/deploy-pipeline.md).
+# whose only deployer is Jody (docs/deploy-pipeline.md). Manual: playing it is
+# that OK, not approval of the fleet. It applies the render its own diff, in
+# this job's log, showed.
 apply-letsencrypt:
   stage: apply
   needs: [tools, images, generate]
@@ -232,7 +247,8 @@ apply-letsencrypt:
   script:
     - |
       cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
-      deploy/diff.sh
+      RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
+      export "$(cat "$CI_PROJECT_DIR/render.env")"
       deploy/secrets.sh
       deploy/apply.sh
       deploy/signin-secrets.sh

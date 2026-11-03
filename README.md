@@ -50,11 +50,26 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
 ## The proofs, end to end
 
 Deploys run from the GitLab pipeline, never from a laptop (docs/deploy-pipeline.md): images, generate and
-diff, then a manual apply, then the post-deploy checks. The first time, on a new cluster:
+diff, then apply, then the post-deploy checks.
+
+**Apply is automatic on main.** seatrials isn't production, so `apply` starts by itself once `diff` succeeds,
+and it applies the render `diff` showed, by its digest (Jody, 2026-11-02; tacplus-dev/roadmap
+`decisions/deterministic-deployments-2026-11-02.md`, addendum; #34). A production fleet keeps a manual apply
+that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Three
+jobs stay manual, because none of them approves the fleet:
+
+- `apply-letsencrypt`: letsencrypt is never restarted without Jody's explicit OK, Jody's standing rule.
+  `diff` and `apply` fail on any change that touches it. This job applies such a change, only Jody can play
+  it, and playing it is that OK.
+- `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables. `apply`
+  installs them anyway.
+- `test-idp`: the test IdP's one-time setup, which generates and stores its seeds.
+
+`ci/pipeline_test.sh` checks this on the rendered pipeline. The first time, on a new cluster:
 
 ```
 cluster/create.sh && deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project
-# the pipeline: images, generate, diff, apply, test
+# the pipeline: images, generate, diff, apply (by itself), test
 cd client && tacplus build && go build -o seatrials ./cmd/seatrials   # generate, then build; public TLS: no SEATRIALS_CA needed
 ./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again
 ./seatrials keygen --tenant /tenants/alpha alpha; ./seatrials keygen --tenant /tenants/beta beta

@@ -21,15 +21,43 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)), which include the letsencrypt guard's, and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
-| diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only. It **fails if the change touches letsencrypt** (see below). |
-| apply | `apply` | Manual, in the protected environment `seatrials`. Runs the guard again, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
-| apply | `apply-letsencrypt` | Manual, in the protected environment `seatrials-letsencrypt`, whose only deployer is Jody. The same apply, with the letsencrypt guard lifted. |
-| apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else. |
+| diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). It **fails if the change touches letsencrypt** (see below). |
+| apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Runs the guard again and checks the render's digest, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
+| apply | `apply-letsencrypt` | Manual, in the protected environment `seatrials-letsencrypt`, whose only deployer is Jody. The same apply, with the letsencrypt guard lifted. Playing it is Jody's explicit OK to restart letsencrypt. |
+| apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else, after a secret is rotated. |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `tacplus` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: [`deploy/checks.sh all`](../deploy/checks.sh). Every pod Ready; the gateway serves a publicly trusted certificate for seatrials.tacplus.dev, valid for 14 more days; OIDC discovery names the host and its JWKS has keys; the sign-in smoke test; the routing check. |
 
-Without `apply`, a pipeline is a **dry run**: tools, checks, images, generate and diff, and `test-idp-signin` once the test IdP is set up.
+Every pipeline deploys: tools, checks, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails (a change touching letsencrypt, say) stops it before `apply`.
+
+### Apply is automatic: seatrials isn't production
+
+`apply` starts by itself on `main` once `diff` succeeds, with nobody's approval. Only production waits for Jody,
+and seatrials isn't production (Jody, 2026-11-02; tacplus-dev/roadmap
+`decisions/deterministic-deployments-2026-11-02.md`, addendum; #34). A production fleet keeps a manual apply
+that only Jody plays: [tacplus-dev/roadmap `PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md).
+
+Three jobs stay manual, because none of them approves the fleet:
+
+- `apply-letsencrypt`: Jody's standing rule that letsencrypt is never restarted without his explicit OK. Only
+  he can play it, and playing it is that OK.
+- `signin-secrets`: run after a sign-in secret is rotated in the variables. `apply` installs them anyway.
+- `test-idp`: the test IdP's one-time setup. It generates and stores its seeds, so it runs on purpose.
+
+[`ci/pipeline_test.sh`](../ci/pipeline_test.sh), run by `checks`, renders the pipeline as GitLab does (anchors
+expanded, `default` and `extends` merged). It checks that `apply` isn't manual on `main` and fails the
+pipeline when it fails, and that these three are the only manual jobs.
+
+### The render diff showed is the one applied
+
+`diff` prints the SHA-256 digest of the render it compared, `render sha256:…`. It hands the digest to `apply` as
+`RENDER_DIGEST`, through a dotenv artifact. A digest of the manifest says nothing of its content. `apply`
+renders again twice, in `deploy/diff.sh` with the guard, and in `deploy/apply.sh` just before the apply. It
+refuses, applying nothing, if either render's digest isn't the one `diff` showed: the commit, the variables
+or the images changed in between. Run the pipeline again. `apply-letsencrypt` applies the render its own
+`diff.sh`, earlier in the same job, showed. Once the uni-config lands (#28), the digest becomes the uni-config
+record's.
 
 ### The letsencrypt guard
 
@@ -45,7 +73,7 @@ object that differs, never its content. An object **touches letsencrypt** when:
   sources, `envFrom`, `env.valueFrom`), as its Deployment is now or will be;
 - it is letsencrypt's Deployment and the render no longer holds it: the helm upgrade would remove it.
 
-`diff` and `apply` fail on any such object. Once Jody has said yes, a change to letsencrypt is applied by
+`diff` and `apply` fail on any such object, so an automatic `apply` never restarts letsencrypt. Once Jody has said yes, a change to letsencrypt is applied by
 `apply-letsencrypt`, which only Jody can start. The guard's tests are
 [`deploy/letsencrypt-guard_test.sh`](../deploy/letsencrypt-guard_test.sh), run by `checks`. To prove the
 guard on the cluster, push a test commit to a branch that changes something letsencrypt reads, for example
@@ -60,7 +88,7 @@ the deploy pipeline's `checks` and on every push to GitHub (`.github/workflows/s
 TLS keys are the cluster PKI in `FLEET_CRYPTO_YAML`; `services/kernel.yaml` has no `tls` block (the one
 `schematic-operator init` writes is a placeholder the operator never renders). Masked variables are also *hidden*. The jobs place the file variables
 under `deploy/bootstrap/` (git-ignored) with mode 600. They remove them when the job ends, and no artifact
-includes them.
+includes them: the artifacts are `bin/` and the render's digest.
 
 | Variable | Type | Scope | What |
 | --- | --- | --- | --- |
@@ -227,15 +255,16 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
    `tacplus-reader` key's binding and the app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
 2. Register the deploy runner and turn off group runners on the project.
 3. Create the protected environments: `seatrials`, deployable by Maintainers, and `seatrials-letsencrypt`,
-   deployable by Jody only. Keep `main` protected.
+   deployable by Jody only. Keep `main` protected. `apply` runs by itself as whoever started the pipeline (or owns its
+   schedule), so that user must be able to deploy to `seatrials`.
 4. Store the variables in the table above, once tacplus-dev/looper#25 is fixed. There is no GitHub token
    to store. Jody pastes the sign-in
    secrets into the GitLab UI directly: not through a chat, a terminal or a file.
 5. Commit `ci/gitlab-project.gitlab-ci.yml` to the project as `.gitlab-ci.yml`.
-6. **Dry run:** Build → Pipelines → Run pipeline on `main`. tools, checks, images, generate and diff must be
-   green; `apply` waits. Optionally add a nightly schedule: its dry run shows drift.
+6. **First run:** Build → Pipelines → Run pipeline on `main`. tools, checks, images, generate and diff must be
+   green, and `apply` then deploys by itself. Optionally add a nightly schedule: its `diff` shows drift, and
+   its `apply` puts main back.
 7. Prove the guard on the cluster (above).
-8. The first real `apply` is the hub's, with Jody.
 
 ## The test IdP
 
@@ -296,8 +325,8 @@ off as skipped, not failed.
 
 ## Running it
 
-- **Dry run or deploy:** run the pipeline on `main` (web or API). It deploys main's head, or
-  `FLEET_DEPLOY_COMMIT`. Read the `diff` job's list, then start `apply`; `test` follows.
+- **Deploy:** run the pipeline on `main` (web or API). It deploys main's head, or `FLEET_DEPLOY_COMMIT`.
+  `diff` lists what changes, `apply` follows by itself, then `test`.
 - **A change touching letsencrypt:** `diff` fails and names the objects. With Jody's OK, Jody starts
   `apply-letsencrypt`. `test` follows `apply` only, so after `apply-letsencrypt` the checks run with the next
   pipeline's `apply`.

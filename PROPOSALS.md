@@ -5,6 +5,13 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **The applied render's digest is the uni-config record's** (2026-11-03, #34, #28): `apply` now runs by
+  itself and applies only the render whose digest `diff` recorded. Until #28, that digest is a SHA-256 of
+  `schematic-operator apply --dry-run`, recomputed in `apply` before the operator renders again for the real
+  apply. When #28 lands, `diff` should record the uni-config record's digest, and `apply` should apply that
+  record by digest (the operator's `--bundle`, say), so the check and the apply read one artifact and don't
+  render twice. That record holds secrets, so it can't be a job artifact as the digest is: the design must
+  say where it lives between the jobs.
 - **A service's fingerprint covers the build image it is built in** (2026-11-02, #33): a service image's
   `fp-` tag covers the compiler's MAJOR.MINOR, its own commit, its inputs_digest and the platforms, but not the
   build image's fingerprint (`ci/tacplus-build:fp-<hash>`, #33). A new toolchain, launcher or tacplus patch
