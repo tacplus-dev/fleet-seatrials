@@ -14,6 +14,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - Move tacplus.dev onto the single arm64 cluster `tacplus` (seatrials and cavalier deleted 2026-10-29): arm64 service images (#23), the Let's Encrypt state seeded from the snapshots with no new order (#24), then the move (#4)
 - Deploy and test from GitLab: the pipeline in gitlab.com/tacplus-dev/fleet-seatrials, secrets in GitLab, nothing on a laptop (#17)
 - Nothing unblocked: every approved issue is blocked (see Later).
+- Apply automatically on main after a successful diff; outside production nothing waits for a person (#). Agent, at Jody's request, 2026-11-02 (`tacplus-dev/roadmap:decisions/deterministic-deployments-2026-11-02.md`).
 
 ## Later
 - Move the fleet to tacplus 2.4 (#1): blocked on the 2.4 floor in blobstore#1, coop#1, doppelganger#1, kmaker#1, letsencrypt#1, opa#1, operator#1, pigeon#1, tenantecho#1.
