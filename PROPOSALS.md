@@ -5,6 +5,29 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **The functional suite's RPC items without waiting for the client** (2026-11-03, #17, #14): most of
+  `deploy/e2e.yaml`'s items (tenants, public RPCs, records, streams, kernel restart) wait on #14, because they
+  would call the fleet through its generated client. The gateway already answers JSON over HTTP (oauth's
+  `Auth/*` calls in `deploy/checks.sh` and `test-idp/testidp.py`), and the test IdP's sign-ins give a kernel
+  session with no person. Proposal: write those items in `testidp.py`'s style, as JSON calls with that session
+  (tenantecho's `Ping` names `served_by` and `caller_namespace`, for routing and cross-tenant refusal). They
+  could then run as soon as #27 and #4 are done, not after #14. It needs the gateway's JSON route for a
+  tenant-owned service and the records API's JSON shape confirmed, which nothing here records yet.
+- **A login-continuity gate around every deploy** (2026-11-03, #17; Jody, 2026-11-01, "later"): before the
+  deploy, a fixed set of long-lived test identities on the test IdP are signed in, linked and members of
+  tenants. Their XIDs, links, memberships and live sessions and refresh tokens are recorded. After the deploy,
+  each signs in again and must land on the same account. Its existing sessions and refresh tokens must still
+  work, unless the deploy declares itself session-breaking (a trust-domain change, #16), in the deploy, not
+  discovered. A failure is a failed deploy. Design questions: where the recorded state lives between the two
+  jobs (it holds refresh tokens, so not an artifact), how a deploy declares itself session-breaking, and the
+  identities' setup through `PersonalIdentity`/`TenantAdmin`, which waits on the same client as the suite. It
+  isn't needed for the SeaBeam gate.
+- **Microsoft sign-in without a client secret** (2026-11-03, #17, #6): Jody wants Entra federated credentials,
+  so the Microsoft provider has no secret to rotate. That needs oauth to authenticate to Entra with a client
+  assertion (a JWT that oauth, or kernel's issuer, signs, and that a federated credential on `seatrials-web`
+  trusts) in place of `client_secret`. It's an oauth change (tacplus-dev/oauth), with a design for the
+  assertion's issuer and subject. The issuer must be publicly discoverable, which seatrials.tacplus.dev is.
+  Until then, the secret is rotated by hand (docs/deploy-pipeline.md).
 - **The applied render's digest is the uni-config record's** (2026-11-03, #34, #28): `apply` now runs by
   itself and applies only the render whose digest `diff` recorded. Until #28, that digest is a SHA-256 of
   `schematic-operator apply --dry-run`, recomputed in `apply` before the operator renders again for the real
