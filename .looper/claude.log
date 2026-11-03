@@ -1,0 +1,126 @@
+= init
+> Bash gh issue view 27 --repo tacplus-dev/fleet-seatrials --comments | tail -40; git log --oneline -25; cat STATE.md | head -80; ls test-idp ci deploy docs
+<   - On the kernel session, it requires that the token verify with the host's JWKS, and that one claim equal the realm's issuer and one the user's `sub` (the `origin_*` claims kernel.proto describes). Its first live run is the proof. - Not emulated, as PROPOSALS.md records:   - Apple's `response_mode...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; dig +short NS tacplus.dev; dig +short A idp.test.tacplus.dev; curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://idp.test.tacplus.dev/realms/google/.well-known/openid-configuration; which gcloud glab kubectl; env | grep -iE 'gitlab|google|cloudsdk...
+< ns-cloud-a1.googledomains.com. ns-cloud-a4.googledomains.com. ns-cloud-a2.googledomains.com. ns-cloud-a3.googledomains.com. curl: (6) Could not resolve host: idp.test.tacplus.dev 000 /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/glab GITLAB_USER_ID=… CI_SERVER_NAME=… CI_RUNNER_DESCRIPTION=… GITLAB...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; glab auth status 2>&1 | head; gcloud auth list 2>&1 | head; glab api projects/tacplus-dev%2Ffleet-seatrials 2>&1 | head -c 400; echo; glab api "projects/tacplus-dev%2Ffleet-seatrials/pipelines?per_page=8" 2>&1 | python3 -c 'import json,sys;[print(p["id...
+= task_started
+= task_notification
+< Exit code 1 gitlab.com   x gitlab.com: API call failed: GET https://gitlab.com/api/v4/user: 401 {message: 401 Unauthorized}   ✓ Git operations for gitlab.com configured to use ssh protocol.   ✓ API calls for gitlab.com are made over https protocol.   ✓ REST API Endpoint: https://gitlab.com/api/v4/  ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp; gcloud dns record-sets list --zone tacplus-dev --project jody1-328023 2>&1 | head -20; gcloud compute addresses list --global --project jody1-328023 2>&1 | head; gcloud iam service-accounts list --project jody1-328023 2>&1 | grep -i idp; gcloud container clusters list --project jody1-328023...
+= task_started
+= task_notification
+< ERROR: (gcloud.dns.record-sets.list) HTTPError 403: Forbidden. This command is authenticated as looper-runner@jody1-328023.iam.gserviceaccount.com which is the active account specified by the [core/account] property WARNING: Some requests did not succeed.  - Required 'compute.globalAddresses.list' p...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; gh issue view 17 --repo tacplus-dev/fleet-seatrials --comments | tail -40; gh issue view 18 --repo tacplus-dev/fleet-seatrials --comments | tail -30
+< - **`deploy/e2e.sh`** runs them and reports each one as `PASS`, `FAIL` or `WAITING` (with the issues it waits on and why). Nothing is left out. It also writes a JUnit report, which the `test` job publishes even when it fails, so it shows in GitLab's test report. - **What runs today:**   - the platfo...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; grep -n -i -A3 'test-idp' ci/deploy.gitlab-ci.yml | head -80; grep -n '## The test IdP' -A60 docs/deploy-pipeline.md | head -90
+< 24:# test-idp (the test IdP's one-time setup). 25-# 26:# and the test IdP (#27, test-idp/README.md), on the `tacplus` cluster: 27-# 28:#   test-idp         manual, protected environment test-idp: Keycloak, its realms, its DNS record 29:#   test-idp-signin  every realm's discovery and claim shapes; o...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; cat ROADMAP.md; grep -n -i 'idp' PROPOSALS.md | head -30
+< # Roadmap: fleet-seatrials  Owned by Jody; changed only by an agent at Jody's request. Loopers propose in PROPOSALS.md.  ## Now The deployment of the `seatrials` GKE cluster, live at https://seatrials.tacplus.dev: the proof fleet for tacplus-dev (tacplus-dev/roadmap:decisions/tacplus-dev-stable-gate...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; git show 186abb6 --stat --format=%B | head -40; grep -n -i 'idp\|manual' ci/pipeline_test.sh | head -30; gh issue view 34 --repo tacplus-dev/fleet-seatrials | head -40
+< Deploy automatically on main once diff succeeds, applying the render diff showed (#34)  seatrials isn't production, and only production waits for Jody (Jody, 2026-11-02; tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md, addendum). So `apply` loses `when: manual` and `allow_failu...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp; gcloud iam service-accounts describe test-idp-deploy@jody1-328023.iam.gserviceaccount.com --project jody1-328023 2>&1 | head -5; curl -sS -m 10 https://gitlab.com/api/v4/projects/tacplus-dev%2Ffleet-seatrials 2>&1 | head -c 200; echo; dig +short A seatrials.tacplus.dev; dig +short test.tacp...
+< ERROR: (gcloud.iam.service-accounts.describe) NOT_FOUND: Unknown service account. This command is authenticated as looper-runner@jody1-328023.iam.gserviceaccount.com which is the active account specified by the [core/account] property {"message":"404 Project Not Found"} 146.148.80.132 Shell cwd was ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; gh issue list --repo tacplus-dev/fleet-seatrials --state open --json number,title,labels --jq '.[]|"\(.number) \(.title) [\([.labels[].name]|join(","))]"'
+< 35 The pipeline owns the certificate: check, obtain once by DNS-01 when due, reference the secret version in the uni-config; retire the in-cluster letsencrypt [approved,feature,priority:high] 28 Assemble and apply the uni-config in memory; validate it in diff; checks.sh fails on config env vars (ope...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; grep -n 'ci_gcp()' -A45 ci/lib.sh; grep -n 'ci_test_idp_set_up' -A15 ci/lib.sh | head -25; grep -n -B2 -A12 'seatrials-deploy\|workload-identity' docs/deploy-pipeline.md | head -80
+< 31:ci_gcp() { 32-  : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}" 33-  : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (docs/deploy-pipeline.md)}" 34-  : "${GCP_DEPLOY_SA:?GCP_DEPLOY_SA is not set}" 35-  export CLOUDSDK_CONFIG=$ci_tmp/gcloud CLOUDSDK_CORE_D...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/fleet-seatrials/worktrees/27; cat > /tmp/c27.md <<'EOF' Looper run, 2026-11-03: **nothing more to change in this repository. What's left is the hub's one-time setup**, which a looper may not do (IAM, the cluster, GitLab's variables). I made no commit.  ### Checked this run - **DNS ...
+< https://github.com/tacplus-dev/fleet-seatrials/issues/27#issuecomment-6616551040 https://github.com/tacplus-dev/fleet-seatrials/issues/27
+I stopped #27 without a commit: what's left is setup only the hub can do. I labelled the issue `needs-decision` and left a comment saying exactly what to do.
+
+**What I checked:**
+- **Code:** everything #27 needs is already on main (dc1067d). It still matches the changes landed since (#17, #31, #34). `test-idp` stays a manual job because Jody decided that in #34.
+- **DNS:** tacplus.dev's nameservers now point to Cloud DNS.
+- **`idp.test.tacplus.dev`:** it doesn't resolve yet, because the `test-idp` job that creates its DNS record has never run.
+- **The hub's one-time setup:** not done. The account `test-idp-deploy@` returns `NOT_FOUND`. My account can't see the cluster, the DNS zone, IAM bindings or the GitLab project, so I couldn't check the rest.
+
+**What the hub does next** (`docs/deploy-pipeline.md` § The test IdP):
+1. With Jody's OK, the IAM: the `test-idp-deploy` account, its access bindings, and its rights on the `tacplus` cluster and the `tacplus-dev` DNS zone.
+2. Create the global address `test-idp` and apply `test-idp/rbac.yaml` on the cluster.
+3. In GitLab, set `TEST_IDP_GITLAB_TOKEN`, run the manual `test-idp` job on main, then revoke the token and delete the variable.
+
+After that, the first acceptance check (each realm's `.well-known/openid-configuration` answering) can be run. The sign-in check at tacplus.dev also needs #4 deployed, then the `signin-secrets` job run. The README item is already done.
+
+I didn't use `Blocked-by`, because no open issue covers this setup. The next looper run checks it live once the hub says it's done.
+= success: I stopped #27 without a commit: what's left is setup only the hub can do. I labelled the issue `needs-decision` and left a comment saying exactly what to do.
+
+**What I checked:**
+- **Code:** everything #27 needs is already on main (dc1067d). It still matches the changes landed since (#17, #31, #34). `test-idp` stays a manual job because Jody decided that in #34.
+- **DNS:** tacplus.dev's nameservers now point to Cloud DNS.
+- **`idp.test.tacplus.dev`:** it doesn't resolve yet, because the `test-idp` job that creates its DNS record has never run.
+- **The hub's one-time setup:** not done. The account `test-idp-deploy@` returns `NOT_FOUND`. My account can't see the cluster, the DNS zone, IAM bindings or the GitLab project, so I couldn't check the rest.
+
+**What the hub does next** (`docs/deploy-pipeline.md` § The test IdP):
+1. With Jody's OK, the IAM: the `test-idp-deploy` account, its access bindings, and its rights on the `tacplus` cluster and the `tacplus-dev` DNS zone.
+2. Create the global address `test-idp` and apply `test-idp/rbac.yaml` on the cluster.
+3. In GitLab, set `TEST_IDP_GITLAB_TOKEN`, run the manual `test-idp` job on main, then revoke the token and delete the variable.
+
+After that, the first acceptance check (each realm's `.well-known/openid-configuration` answering) can be run. The sign-in check at tacplus.dev also needs #4 deployed, then the `signin-secrets` job run. The README item is already done.
+
+I didn't use `Blocked-by`, because no open issue covers this setup. The next looper run checks it live once the hub says it's done.
