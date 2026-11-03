@@ -5,6 +5,17 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **The pipeline owns the certificate** (2026-11-03, #35, design in its comments; tacplus-dev/roadmap
+  `decisions/certificates-by-pipeline-2026-11-03.md`): a `cert` stage before `generate` checks the current Secret
+  Manager version (`ci/cert-check.sh`, openssl: valid, due, expired, wrong hostname). If it's missing, expired or
+  wrong, it runs `lego run`, otherwise `lego renew` (ARI, falling back to the last third). lego is pinned in
+  `ci/tools.sh` and does DNS-01 through a delegated `_acme-challenge` zone, apex plus wildcard. A new certificate
+  becomes a new version, passed on by number. The gateway gets it in `cert_chain` mode with no restart, and a
+  daily schedule deploys a renewal. Then the in-cluster letsencrypt, its guard, `apply-letsencrypt` and
+  `seatrials-letsencrypt` retire, after #4's first deploy. Why: no resident, stateful service whose restarts
+  spend an order budget. It waits on #28 / operator#17, unless Jody takes an interim route (the certificate into
+  crypto.yaml's `edge_tls` in memory). The operator has no input for a supplied public certificate yet, and the
+  gateway's `LetsEncryptState` import keeps letsencrypt in the fleet's closure.
 - **The functional suite's RPC items without waiting for the client** (2026-11-03, #17, #14): most of
   `deploy/e2e.yaml`'s items (tenants, public RPCs, records, streams, kernel restart) wait on #14, because they
   would call the fleet through its generated client. The gateway already answers JSON over HTTP (oauth's
