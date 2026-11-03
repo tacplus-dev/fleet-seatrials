@@ -1,0 +1,113 @@
+# The functional end-to-end suite (#17; deploy/e2e.sh runs it): every platform
+# capability SeaBeam relies on, each a named test with a clear pass or fail,
+# run against the deployed fleet after every deploy. SeaBeam starts once it is
+# green on the `tacplus` cluster (Jody, 2026-10-31).
+#
+# Each item: name (capability/test), what it proves, and either run (a bash
+# script at the checkout's root that fails, saying why, when the fleet does not
+# do it) or waits_on (the open issues it waits on; #N is this repository). An
+# item with both runs once its ready check passes, and waits, saying why, until
+# then. A waiting item is reported as such, never left out. When an issue it
+# waits on closes, the item gets its run.
+#
+# Most items wait on #14: the suite calls the fleet's RPCs through the fleet's
+# own client (client/), which does not generate on main. Sign-in uses the test
+# IdP only (#27; Jody, 2026-11-01: no real-provider test accounts).
+tests:
+  # The fleet is up.
+  - name: platform/pods-ready
+    what: every pod of the fleet's namespaces is Ready
+    run: deploy/checks.sh pods
+  - name: platform/gateway-cert
+    what: the gateway serves a publicly trusted certificate for the host, valid 14 more days
+    run: deploy/checks.sh cert
+  - name: platform/kernel-jwks
+    what: OIDC discovery names the host as issuer, and its JWKS has keys
+    run: deploy/checks.sh jwks
+  - name: platform/routing-policy
+    what: the rendered OPA routing policy sends each tenant's claim matcher to that tenant, and nothing else
+    run: deploy/checks.sh opa "${E2E_CONFIGS:?E2E_CONFIGS is not set (the configs/ directory schematic-operator generate wrote)}"
+
+  # Sign-in through the gateway, session and token issuance.
+  - name: signin/providers-listed
+    what: oauth lists every enabled provider, and Authorize sends each to its own IdP with its client id
+    run: deploy/checks.sh signin
+  - name: signin/google-session
+    what: a Google-shaped user signs in through the gateway (test IdP) and gets a kernel session whose access token verifies with the host's JWKS
+    waits_on: ["#27"]
+    ready: &test-idp-seeds |
+      [ -n "${TEST_IDP_SEED:-}" ] && [ -n "${TEST_IDP_CLIENT_SEED:-}" ] ||
+        { echo "the test IdP's seeds are not in this job's environment (docs/deploy-pipeline.md, the test IdP)"; false; }
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/google <(yq -o=json . test-idp/realms/google.yaml) ada@alpha.test
+  - name: signin/microsoft-session
+    what: a Microsoft-shaped user signs in through the gateway (test IdP) and gets a kernel session
+    waits_on: ["#27"]
+    ready: *test-idp-seeds
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/microsoft <(yq -o=json . test-idp/realms/microsoft.yaml) bo@beta.test
+  - name: signin/oidc-session
+    what: a user of a plain OIDC provider (the test IdP's Apple-like realm) signs in through the gateway and gets a kernel session
+    waits_on: ["#27"]
+    ready: *test-idp-seeds
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/apple <(yq -o=json . test-idp/realms/apple.yaml) cy@personal.test
+
+  # Tenants.
+  - name: tenants/create
+    what: a root user creates a tenant (TenantAdmin.CreateTenant), lists it, and deletes it
+    waits_on: ["#14"]
+  - name: tenants/routing-by-route-field
+    what: a beta.test user's call to tenantecho is served by beta's instance (served_by), an alpha user's by alpha's
+    waits_on: ["#14", "#27"]
+  - name: tenants/cross-tenant-user-refused
+    what: a beta user's call addressed to alpha is refused
+    waits_on: ["#14", "#27"]
+  - name: tenants/cross-tenant-service-refused
+    what: a tenant's service token is refused by another tenant's service, even on ANY_TENANT
+    waits_on: ["#14", tacplus-dev/tacplus#258]
+
+  # Each service's public RPCs.
+  - name: rpcs/through-gateway
+    what: every service's external RPCs answer through the gateway with a user's token
+    waits_on: ["#14"]
+  - name: rpcs/s2s
+    what: every service's S2S RPCs answer a workload of the fleet (tenantecho to coop, PingPigeon)
+    waits_on: ["#14"]
+
+  # Records.
+  - name: records/get
+    what: a written record reads back with Get
+    waits_on: ["#14"]
+  - name: records/insert-if-absent
+    what: InsertIfAbsent writes once and refuses a second insert of the same key
+    waits_on: ["#14"]
+  - name: records/replace-if-unchanged
+    what: ReplaceIfUnchanged applies on the current version and refuses a stale one
+    waits_on: ["#14"]
+  - name: records/apply-across-maps
+    what: Apply writes across maps all or nothing
+    waits_on: ["#14"]
+  - name: records/watch-resume
+    what: a Watch resumed from its last version misses no change and repeats none
+    waits_on: ["#14"]
+
+  # Members and streams.
+  - name: members/two-tenants
+    what: the member port serves two tenants' members, each seeing its own
+    waits_on: ["#3", "#14"]
+  - name: streams/end-at-token-expiry
+    what: a stream is ended by the server when its token expires
+    waits_on: ["#14"]
+
+  # Durability.
+  - name: redo/durability-levels
+    what: each redo durability level keeps what it promises
+    waits_on: ["#3", "#14"]
+  - name: kernel/restart-keeps-data
+    what: records written before a kernel restart read back after it
+    waits_on: ["#14"]
+
+  # The event trace (tacplus#265): start a trace with the fleet CLI, log in with
+  # --trace through the test IdP, and see gateway, kernel and oauth events in
+  # order; another user's trace_id is ignored; nothing is retained after expiry.
+  - name: trace/two-terminal
+    what: a login with --trace shows gateway, kernel and oauth events in order, ignores another user's trace_id, and keeps nothing after expiry
+    waits_on: [tacplus-dev/tacplus#265, "#14", "#27"]

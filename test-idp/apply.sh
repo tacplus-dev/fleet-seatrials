@@ -14,7 +14,9 @@
 # The secrets: every password and client secret is derived from two seeds
 # (test-idp/testidp.py), protected and masked variables of the GitLab project:
 #
-#   TEST_IDP_SEED          scope test-idp: the users' passwords, the admin's
+#   TEST_IDP_SEED          scopes test-idp and seatrials*: the users' passwords,
+#                          the admin's (the functional suite, deploy/e2e.yaml,
+#                          signs the users in)
 #   TEST_IDP_CLIENT_SEED   scopes test-idp and seatrials*: the tacplus-dev
 #                          clients' secrets (deploy/signin-secrets.sh reads it)
 #
@@ -63,7 +65,7 @@ ensure_seed() { # NAME SCOPE...
   export "$name=$(cat "$tmp/seed")"
   rm -f "$tmp/seed"
 }
-ensure_seed TEST_IDP_SEED test-idp
+ensure_seed TEST_IDP_SEED test-idp 'seatrials*'
 ensure_seed TEST_IDP_CLIENT_SEED test-idp 'seatrials*'
 
 mkdir "$tmp/realms"

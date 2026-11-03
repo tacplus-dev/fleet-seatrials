@@ -52,6 +52,9 @@ check "diff hands its render digest to apply" '.diff.artifacts.reports.dotenv !=
 check "apply applies the render diff showed (RENDER_DIGEST)" \
   '[.apply.needs[] | select(type == "object" and .job == "diff") | .artifacts] | all(. != false)'
 check "test follows apply" '.test.needs | index("apply") != null'
+check "test runs the functional suite, deploy/e2e.sh (#17)" '.test.script | join("\n") | test("deploy/e2e.sh")'
+check "test publishes the suite's JUnit report, failed or not" \
+  '.test.artifacts.when == "always" and (.test.artifacts.reports.junit | tostring | test("e2e"))'
 
 for j in apply-letsencrypt test-idp signin-secrets; do
   check "$j stays manual" ".[\"$j\"].when == \"manual\""

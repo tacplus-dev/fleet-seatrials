@@ -17,7 +17,7 @@
 #             records the render's digest
 #   apply     once diff succeeds, by itself (seatrials is not production), the render diff
 #             showed, by digest; protected environment seatrials
-#   test      post-deploy checks
+#   test      the functional end-to-end suite (deploy/e2e.yaml), its report as the job's JUnit report
 #
 # Manual, because none of them is approval of the fleet: apply-letsencrypt (Jody's standing
 # never-restart-letsencrypt rule; only Jody plays it), signin-secrets (a rotated secret),
@@ -36,7 +36,9 @@
 # stored GitHub token). Nothing
 # secret is written to the repository, an artifact or a job log: no job runs
 # with `set -x`, the diff prints object names only, and the only artifacts are
-# bin/ (tools built from public and pinned sources) and the render's digest.
+# bin/ (tools built from public and pinned sources), the render's digest and the
+# suite's report (pass, fail or waiting per item, with checks' output that holds
+# no secret).
 #
 # Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
 # once, max_use_count = 1), never on the agents' runner.
@@ -276,7 +278,13 @@ test:
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
       bin/schematic-operator generate >/dev/null
-      deploy/checks.sh all deploy/bootstrap/configs
+      E2E_CONFIGS=$PWD/deploy/bootstrap/configs E2E_JUNIT=$CI_PROJECT_DIR/e2e.xml deploy/e2e.sh
+  # The functional suite's report (deploy/e2e.yaml), the evidence: GitLab's
+  # test report, every item by name, a waiting one as skipped.
+  artifacts:
+    when: always
+    reports:
+      junit: e2e.xml
 
 # The test IdP's jobs run as test-idp-deploy, which reaches the namespace
 # test-idp of the tacplus cluster and the record idp.test.tacplus.dev only

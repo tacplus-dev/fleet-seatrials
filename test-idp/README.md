@@ -70,15 +70,17 @@ Two seeds are protected, masked and hidden variables of the GitLab project tacpl
 
 | Variable | Scope | Derives |
 | --- | --- | --- |
-| `TEST_IDP_SEED` | `test-idp` | every user's password (`user/<realm>/<username>`), the Keycloak admin's (`admin`) |
+| `TEST_IDP_SEED` | `test-idp` and `seatrials*` | every user's password (`user/<realm>/<username>`), the Keycloak admin's (`admin`) |
 | `TEST_IDP_CLIENT_SEED` | `test-idp` and `seatrials*` | the `tacplus-dev` clients' secrets (`client/<realm>/tacplus-dev`), the pairwise salt (`pairwise-salt/<realm>`) |
 
 A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), with no padding.
 
 - **Where they come from:** the `test-idp` job generates each seed the first time and stores it in the project
   itself (`TEST_IDP_GITLAB_TOKEN`, docs/deploy-pipeline.md). No person ever sees it.
-- **Who uses them:** the e2e checks and `deploy/signin-secrets.sh` (the `seatrials` environment) derive what
-  they need.
+- **Who uses them:** the functional suite's sign-in items (`deploy/e2e.yaml`, the `test` job) and
+  `deploy/signin-secrets.sh`, in the `seatrials` environment, derive what they need. That environment's jobs
+  can therefore derive the Keycloak admin's password too; they run for Maintainers only. A seed stored before
+  this needs its `seatrials*` copy added once, by the hub.
 - **The hub's manual checks:** the hub, a Maintainer, reads `TEST_IDP_SEED` from the project's settings into its
   environment. Then `test-idp/testidp.py secret user/<realm>/<username>` prints that user's password. This is
   never done in a job, whose log would keep it.
