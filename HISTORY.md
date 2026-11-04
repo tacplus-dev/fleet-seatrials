@@ -12,3 +12,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-02 looper issue images: gcloud builds submit fails the default-bucket ownership check; stage in a dedicated bucket (#32, 3537124)
 - 2026-11-02 looper issue images: the build image is keyed by tacplus commit only, so a stale 10-26 image without the launcher is reused; every service build fails (#33, 2f1d309)
 - 2026-11-03 looper issue Deploy automatically on main after a successful diff (not production): no manual apply (#34, 186abb6)
+- 2026-11-04 looper issue Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, with an enforced security-exceptions.yaml (#36, 76698ca)
