@@ -1,0 +1,127 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The known findings this repository accepts, each until its expiry, in the form looper-scan reads
+# (tacplus-dev/looper#49: exactly id, reason, decided_by and expires, YYYY-MM-DD). ci/security.sh enforces it
+# (#36): an entry that has expired fails the security job, so does one with any other field. Each was found by the
+# job's first run, 2026-11-04, with no fix this repository can take: `govulncheck -mode=binary` in the pinned tool
+# binaries (ci/tools.sh), each at its latest release or pin. Each expires after 30 days; by then move the pin past
+# the fix and remove its entry, or decide again (PROPOSALS.md). By binary:
+#
+#   schematic-operator (#11)    GO-2025-3528 3829 3887 3888 4100 4108, GO-2026-4762 4918 4958 5026 5475 5506 5758
+#                               5932 6061 6348 6443 6444 6597 6603 6610 6611 6612 6617 6796
+#   trivy 0.76.1                GO-2026-5932 6860 6866
+#   gitleaks v8.30.1 (#25)      GO-2025-3922
+exceptions:
+  - id: GO-2025-3528
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-3829
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; docker's API types through helm; no Docker daemon or firewalld runs on the VM it uses. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-3887
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; helm validates only the charts and values this repository renders, never an outside chart. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-3888
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; helm loads no chart repository index; the charts are rendered from this repository. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-4100
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-4108
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-4762
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-4918
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; its HTTP/2 client talks only to the seatrials API server and Google APIs over TLS, never to a server it does not trust. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-4958
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; its SPDY client (kubectl-style streams) talks only to the seatrials API server over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-5026
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; the names it resolves are this repository's and Google's, not an attacker's. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-5475
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-5506
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; no inbound request carries baggage to it: it serves nothing. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-5758
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-5932
+    reason: "x/crypto/openpgp, in schematic-operator (#11) and Trivy 0.76.1 (ci/tools.sh, its latest release): neither handles an OpenPGP key or message from outside (Trivy reads the CI image from ghcr.io). The fix is an untagged x/crypto pseudo-version; no operator pin or Trivy release carries it yet."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6061
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6348
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6443
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6444
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6597
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6603
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6610
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; its HTTP/2 client talks only to the seatrials API server and Google APIs over TLS, never to a server it does not trust. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6611
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; its HTTP/2 client talks only to the seatrials API server and Google APIs over TLS, never to a server it does not trust. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6612
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it runs no gRPC or HTTP/2 server, and calls only the seatrials API server and Google APIs over TLS. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6617
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; its HTTP/2 client talks only to the seatrials API server and Google APIs over TLS, never to a server it does not trust. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6796
+    reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6860
+    reason: "x/net/html in Trivy 0.76.1 (ci/tools.sh, its latest release, x/net v0.60.0): Trivy parses no HTML from outside in the security job, which scans the CI image only. Fixed in x/net v0.62.0; no Trivy release with it yet."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2026-6866
+    reason: "x/net/html rendering in Trivy 0.76.1 (ci/tools.sh, its latest release): the security job writes JSON only, no HTML. Fixed in x/net v0.62.0; no Trivy release with it yet."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: GO-2025-3922
+    reason: "ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (ci/tools.sh, its latest release; #25): gitleaks scans this repository's own history and tree, never an outside xz archive. Fixed in xz v0.5.15; no gitleaks release with it yet."
+    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04

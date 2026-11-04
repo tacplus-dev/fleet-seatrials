@@ -39,7 +39,9 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
   committed; crypto.yaml, ca.pem and configs/ are not).
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
   secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets
-  scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks).
+  scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks). `ci/security.sh` is the security job: OSV-Scanner,
+  govulncheck on the pinned binaries, gitleaks and Trivy on the CI image, with `security-exceptions.yaml` enforced
+  ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-security-job)).
 - `test-idp/` — the test IdP at idp.test.tacplus.dev: a Keycloak whose realms emulate Google's, Microsoft's
   and Apple's claim shapes, with test users and domains, applied and checked by the pipeline, so sign-in is tested
   with no person: [test-idp/README.md](test-idp/README.md).

@@ -7,3 +7,4 @@ deploy/bootstrap/ca.pem
 deploy/bootstrap/configs/
 images/launcher/
 __pycache__/
+security/

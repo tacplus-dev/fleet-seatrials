@@ -1,8 +1,8 @@
 # gitleaks configuration (ci/secrets.sh, #22). The paths below are test
 # fixtures: made-up values shaped like the secrets the scripts must accept or
-# refuse, and the secrets scan's own test, which plants keys it makes up. Real
-# key material is never committed: it is in the deploy pipeline's protected
-# variables (docs/deploy-pipeline.md).
+# refuse, and the secrets scan's and the security job's own tests, which plant
+# keys they make up. Real key material is never committed: it is in the deploy
+# pipeline's protected variables (docs/deploy-pipeline.md).
 [extend]
 useDefault = true
 
@@ -11,4 +11,5 @@ description = "Made-up secret values in the script tests"
 paths = [
   '''(^|/)deploy/signin-secrets_test\.sh$''',
   '''(^|/)ci/secrets_test\.sh$''',
+  '''(^|/)ci/security_test\.sh$''',
 ]

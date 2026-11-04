@@ -11,6 +11,9 @@
 #
 #   tools     tacplus, schematic-operator, yq and opa, built from pinned sources
 #   checks    the repository's script tests (the letsencrypt guard among them)
+#   security  OSV-Scanner on the tree, govulncheck on the pinned binaries, gitleaks on the tree
+#             and its history, Trivy on the CI image; security-exceptions.yaml enforced (#36).
+#             Nothing is built or applied until it passes
 #   images    images/build.sh changed on Cloud Build, waiting for every build
 #   generate  schematic-operator generate with the fleet's key material; the routing policy checked
 #   diff      what an apply would change, by object name; fails if it touches letsencrypt;
@@ -36,9 +39,9 @@
 # stored GitHub token). Nothing
 # secret is written to the repository, an artifact or a job log: no job runs
 # with `set -x`, the diff prints object names only, and the only artifacts are
-# bin/ (tools built from public and pinned sources), the render's digest and the
+# bin/ (tools built from public and pinned sources), the render's digest, the
 # suite's report (pass, fail or waiting per item, with checks' output that holds
-# no secret).
+# no secret) and the security report (gitleaks' findings redacted).
 #
 # Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
 # once, max_use_count = 1), never on the agents' runner.
@@ -137,14 +140,16 @@ variables:
       die "GitHub refused the tacplus-reader app a token for fleet-seatrials: HTTP ${code:-none} $(error "$t/answer")"
   )
   # github_fetch DIR REF: this repository at REF (main's head, or a full
-  # commit hash) checked out in the new repository DIR.
+  # commit hash) checked out in the new repository DIR: that commit alone, or
+  # its whole history when FLEET_FETCH_HISTORY is 1 (the security job's gitleaks).
   github_fetch() {
-    local token
+    local token depth=--depth=1
+    [ "${FLEET_FETCH_HISTORY:-}" != 1 ] || depth=
     token=$(github_reader_token) || return 1
     git init -q "$1" &&
       TACPLUS_READER_TOKEN=$token git -C "$1" -c credential.helper= \
         -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$TACPLUS_READER_TOKEN"; }; f' \
-        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
+        fetch -q $depth https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
       git -C "$1" checkout -q FETCH_HEAD
   }
 
@@ -181,16 +186,34 @@ checks:
   script:
     - cd src && PATH=$PWD/bin:$PATH ci/checks.sh
 
+# The security job (#36, ci/security.sh): this pipeline applies with
+# seatrials' deploy secrets, and tacplus-dev/build's checks never reach it. It
+# fails on any secret, and on a HIGH or CRITICAL finding with a fix that no
+# unexpired entry of security-exceptions.yaml accepts; images and generate
+# wait for it, so nothing is applied past it. Its JSON report is the artifact.
+security:
+  stage: checks
+  needs: [tools]
+  variables:
+    # gitleaks reads the whole history, not the commit alone (.github-reader).
+    FLEET_FETCH_HISTORY: "1"
+  script:
+    - cd src && PATH=$PWD/bin:$PATH ci/security.sh
+  artifacts:
+    when: always
+    paths: [src/security/]
+    expire_in: 30 days
+
 images:
   stage: images
-  needs: [checks]
+  needs: [checks, security]
   script:
     - cd src && source ci/lib.sh && ci_github && ci_gcp && WAIT=1 images/build.sh changed
   timeout: 2h
 
 generate:
   stage: generate
-  needs: [checks, tools]
+  needs: [checks, tools, security]
   environment: { name: seatrials, action: prepare }
   script:
     - |

@@ -213,6 +213,11 @@ fi
 
 job -- "github_fetch src $first" && [ "$("$real_git" -C "$work/job/src" rev-parse HEAD)" = "$first" ] &&
   ok "github_fetch checks out an exact commit" || fail "github_fetch a commit: $(cat "$work/out")"
+job -- "github_fetch src refs/heads/main" && [ "$("$real_git" -C "$work/job/src" rev-list --count HEAD)" = 1 ] &&
+  ok "github_fetch fetches that commit alone" || fail "github_fetch, its depth: $(cat "$work/out")"
+job FLEET_FETCH_HISTORY=1 -- "github_fetch src refs/heads/main" && [ "$("$real_git" -C "$work/job/src" rev-list --count HEAD)" = 2 ] &&
+  ok "with FLEET_FETCH_HISTORY=1, its whole history (the security job's gitleaks)" ||
+  fail "github_fetch FLEET_FETCH_HISTORY=1: $(cat "$work/out")"
 
 # KMS's refusals (#30): its HTTP status and error are in the log, never a
 # token or the request.

@@ -19,6 +19,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | --- | --- | --- |
 | tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa and gitleaks ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)), which include the letsencrypt guard's, and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
+| checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image ([below](#the-security-job)). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). It **fails if the change touches letsencrypt** (see below). |
@@ -30,6 +31,36 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
 
 Every pipeline deploys: tools, checks, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails (a change touching letsencrypt, say) stops it before `apply`.
+
+### The security job
+
+This pipeline applies with seatrials' deploy secrets, and tacplus-dev/build's checks never reach it, so it
+runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
+`suggestions/2026-11-04-the-deterministic-security-checks-in-the-pipelines-that-apply-infrastructure.md`):
+
+- **OSV-Scanner** on the tree's dependency manifests and lock files (`client/go.mod`), at the deployed commit;
+- **`govulncheck -mode=binary`** on every pinned tool binary in `bin/`: tacplus, schematic-operator, yq, opa,
+  gitleaks, and the scanners themselves;
+- **gitleaks** on the whole history and on the tree (the job fetches the history: `FLEET_FETCH_HISTORY=1`);
+- **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform.
+
+The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): Trivy by version and the SHA-256 of its release
+download, the others by module version and module hash (osv-scanner built with a pinned Go toolchain, because
+its release's standard library has fixed vulnerabilities). **It fails** on any secret, and on any HIGH or
+CRITICAL finding with a fixed version, unless an unexpired entry of
+[`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias. It also fails on a
+tool that cannot run, and on an entry that has expired or has any field other than `id`, `reason`,
+`decided_by` and `expires` (YYYY-MM-DD), the form looper-scan reads. Its tests are
+[`ci/security_test.sh`](../ci/security_test.sh), run by `checks`: a planted secret fails, an expired exception
+fails, a clean tree passes.
+
+It runs on every pipeline here, a scheduled one included. Pushes and pull requests happen on GitHub, so the
+same job runs there too, on every push to main, every pull request and nightly
+([`.github/workflows/security.yml`](../.github/workflows/security.yml)).
+
+**A new finding** fails every pipeline until it is fixed or accepted. Fix it if this repository can: bump the
+pin or the dependency. Otherwise add an entry with the reason it is acceptable here, who decided, and an expiry
+30 days out. Run it locally after `ci/tools.sh`: `PATH=$PWD/bin:$PATH ci/security.sh` (needs the network).
 
 ### Apply is automatic: seatrials isn't production
 
@@ -88,7 +119,8 @@ the deploy pipeline's `checks` and on every push to GitHub (`.github/workflows/s
 TLS keys are the cluster PKI in `FLEET_CRYPTO_YAML`; `services/kernel.yaml` has no `tls` block (the one
 `schematic-operator init` writes is a placeholder the operator never renders). Masked variables are also *hidden*. The jobs place the file variables
 under `deploy/bootstrap/` (git-ignored) with mode 600. They remove them when the job ends, and no artifact
-includes them: the artifacts are `bin/` and the render's digest.
+includes them: the artifacts are `bin/`, the render's digest, the suite's report and the security report
+(gitleaks' findings redacted).
 
 | Variable | Type | Scope | What |
 | --- | --- | --- | --- |

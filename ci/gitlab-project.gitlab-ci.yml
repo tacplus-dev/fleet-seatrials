@@ -107,14 +107,16 @@ workflow:
       die "GitHub refused the tacplus-reader app a token for fleet-seatrials: HTTP ${code:-none} $(error "$t/answer")"
   )
   # github_fetch DIR REF: this repository at REF (main's head, or a full
-  # commit hash) checked out in the new repository DIR.
+  # commit hash) checked out in the new repository DIR: that commit alone, or
+  # its whole history when FLEET_FETCH_HISTORY is 1 (the security job's gitleaks).
   github_fetch() {
-    local token
+    local token depth=--depth=1
+    [ "${FLEET_FETCH_HISTORY:-}" != 1 ] || depth=
     token=$(github_reader_token) || return 1
     git init -q "$1" &&
       TACPLUS_READER_TOKEN=$token git -C "$1" -c credential.helper= \
         -c 'credential.https://github.com.helper=!f() { test "$1" = get && echo username=x-access-token && echo "password=$TACPLUS_READER_TOKEN"; }; f' \
-        fetch -q --depth 1 https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
+        fetch -q $depth https://github.com/tacplus-dev/fleet-seatrials.git "$2" &&
       git -C "$1" checkout -q FETCH_HEAD
   }
 

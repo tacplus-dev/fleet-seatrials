@@ -56,6 +56,15 @@ check "test runs the functional suite, deploy/e2e.sh (#17)" '.test.script | join
 check "test publishes the suite's JUnit report, failed or not" \
   '.test.artifacts.when == "always" and (.test.artifacts.reports.junit | tostring | test("e2e"))'
 
+check "the security job runs ci/security.sh with the pinned tools (#36)" \
+  '.security.script | join("\n") | test("ci/security.sh")'
+check "a failed security job fails the pipeline" '.security.when == "on_success" and .security.allow_failure == false'
+check "the security job keeps its JSON report, failed or not" \
+  '.security.artifacts.when == "always" and (.security.artifacts.paths | index("src/security/") != null)'
+check "nothing is built or applied before the security job passes" \
+  '([.images.needs[], .generate.needs[]] | map(if type == "object" then .job else . end)) as $n
+   | ($n | map(select(. == "security")) | length) == 2'
+
 for j in apply-letsencrypt test-idp signin-secrets; do
   check "$j stays manual" ".[\"$j\"].when == \"manual\""
 done

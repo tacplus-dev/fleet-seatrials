@@ -5,6 +5,26 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
+  run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
+  operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
+  them. Trivy 0.76.1 carries GO-2026-5932 (x/crypto openpgp), 6860 and 6866 (x/net v0.60.0), and gitleaks v8.30.1
+  carries GO-2025-3922 (#25): bump each in `ci/tools.sh` to the first release with the fix and drop its entries.
+  On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
+  job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
+- **Trivy scans the CI image by tag** (2026-11-04, #36): the security job scans
+  `ghcr.io/tacplus-dev/tacplus/build:2.3`, the tag the jobs run, which moves with each 2.3 patch. Pinning the
+  jobs' `image:` by digest would make the scanned image and the one the jobs run provably the same, and fit
+  `decisions/deterministic-deployments-2026-11-02.md`. Each tacplus build image patch would then be a commit
+  here.
+- **The checks job's secrets scan reads one commit** (2026-11-04, #36): every child job fetches this repository
+  at depth 1, so `ci/secrets.sh` in `checks` sees only the deployed commit's history, not the whole history it
+  says it scans. The security job fetches the whole history (`FLEET_FETCH_HISTORY=1`) and runs gitleaks on it.
+  Either drop `ci/secrets.sh` from `checks` in the pipeline (GitHub's `secrets` workflow still runs it, with the
+  full history) or set the same variable there.
+- **Compare each security run with the last** (2026-11-04, #36): looper-scan publishes each run's findings as
+  the next run's baseline and lists the new ones. `ci/security.sh` reports every finding each time. A baseline
+  in the GitLab project's package registry, as looper-scan's `report` does, would show what changed overnight.
 - **The pipeline owns the certificate** (2026-11-03, #35, design in its comments; tacplus-dev/roadmap
   `decisions/certificates-by-pipeline-2026-11-03.md`): a `cert` stage before `generate` checks the current Secret
   Manager version (`ci/cert-check.sh`, openssl: valid, due, expired, wrong hostname). If it's missing, expired or
