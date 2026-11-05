@@ -17,6 +17,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - Apply automatically on main after a successful diff; outside production nothing waits for a person (#34). Agent, at Jody's request, 2026-11-02 (`tacplus-dev/roadmap:decisions/deterministic-deployments-2026-11-02.md`).
 - The pipeline owns the certificate: check, obtain once by DNS-01 when due, reference the secret version in the uni-config; retire the in-cluster letsencrypt (#35). Agent, at Jody's request, 2026-11-03 (`tacplus-dev/roadmap:decisions/certificates-by-pipeline-2026-11-03.md`).
 - Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, an enforced security-exceptions.yaml (#36). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:suggestions/2026-11-04-the-deterministic-security-checks-in-the-pipelines-that-apply-infrastructure.md`).
+- Retarget to the new cluster in seabeam.net: project tacplus-dev, cluster dev, deploy accounts, WIF provider, image registry, the gateway's reserved address (#39). Agent, at Jody's request, 2026-11-05 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 
 ## Later
 - Move the fleet to tacplus 2.4 (#1): blocked on the 2.4 floor in blobstore#1, coop#1, doppelganger#1, kmaker#1, letsencrypt#1, opa#1, operator#1, pigeon#1, tenantecho#1.
