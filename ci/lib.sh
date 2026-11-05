@@ -39,6 +39,8 @@ ci_gcp() {
       --service-account="$GCP_DEPLOY_SA" --credential-source-file="$ci_tmp/oidc-token" \
       --output-file="$ci_tmp/gcp-federation.json" >/dev/null )
   gcloud auth login --cred-file="$ci_tmp/gcp-federation.json" --quiet >/dev/null
+  # The same credential for what reads Application Default Credentials (lego's Cloud DNS, ci/cert.sh).
+  export GOOGLE_APPLICATION_CREDENTIALS=$ci_tmp/gcp-federation.json
   gcloud config set project "${GCP_PROJECT:-jody1-328023}" >/dev/null 2>&1
   echo "gcp: $(gcloud config get account 2>/dev/null) through workload identity federation"
 }
@@ -81,6 +83,24 @@ ci_crypto() {
   ( umask 077
     cp "$FLEET_CRYPTO_YAML" "$fleet/deploy/bootstrap/crypto.yaml"
     cp "$FLEET_CA_PEM" "$fleet/deploy/bootstrap/ca.pem" )
+}
+
+# ci_cert: the fleet's public certificate into crypto.yaml, after ci_crypto and
+# ci_gcp: the version the cert job passed on (CERT_SECRET and CERT_VERSION, its
+# dotenv), never latest, so generate, diff and apply render the same one
+# (ci/cert-install.sh, #35). Every job calls it in an && list, so it returns on
+# its own failures.
+ci_cert() {
+  [ -n "${CERT_VERSION:-}" ] && [ -n "${CERT_SECRET:-}" ] ||
+    { echo "cert: no CERT_SECRET and CERT_VERSION: the cert job passes them on (ci/cert.sh); this job needs it" >&2; return 1; }
+  ( umask 077
+    gcloud secrets versions access "$CERT_VERSION" --secret="$CERT_SECRET" --project="${CERT_PROJECT:-${GCP_PROJECT:-}}" \
+      --out-file="$ci_tmp/cert.pem" 2>"$ci_tmp/cert-err" ) ||
+    { echo "cert: cannot read version $CERT_VERSION of the secret $CERT_SECRET: $(grep -m1 '^ERROR' "$ci_tmp/cert-err" || head -c 300 "$ci_tmp/cert-err")" >&2
+      return 1; }
+  "$fleet/ci/cert-install.sh" "$ci_tmp/cert.pem" "$fleet/deploy/bootstrap/crypto.yaml" || return 1
+  rm -f "$ci_tmp/cert.pem"
+  echo "cert: the secret $CERT_SECRET, version $CERT_VERSION, is the gateway's certificate"
 }
 
 # ci_cleanup: removes what the job put in place (after_script; the VM goes too).

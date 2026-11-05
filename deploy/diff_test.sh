@@ -2,14 +2,15 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tests the letsencrypt guard: deploy/letsencrypt-guard.sh against LIVE and
-# MERGED directories shaped as kubectl diff writes them, and deploy/diff.sh
-# against a stub kubectl and operator. A diff that touches letsencrypt (its
-# Deployment, Service, anything its pods mount or read, or its removal) fails
-# deploy/diff.sh unless SEATRIALS_ALLOW_LETSENCRYPT=1; any other diff passes;
-# no object's content is ever printed. Needs bash, jq and yq.
+# Tests deploy/diff.sh against a stub kubectl and operator, with
+# deploy/diff-names.sh as kubectl diff's program on LIVE and MERGED
+# directories shaped as kubectl diff writes them: it names each object that
+# differs and never prints its content; diff.sh records the render's digest,
+# and deploy/apply.sh applies only that render. The letsencrypt guard is
+# retired (#35): a render that changes or removes letsencrypt passes like any
+# other. Needs bash, jq and yq.
 #
-#   deploy/letsencrypt-guard_test.sh
+#   deploy/diff_test.sh
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
@@ -73,59 +74,42 @@ fixture() {
   echo "$d"
 }
 
-# guard FIXTURE NAME WANT_STATUS WANT_TOUCHED: runs the guard on the fixture as
-# changed by the caller; WANT_TOUCHED is the list it must report (space-separated, sorted).
-guard() {
-  local d=$work/$1 name=$2 want_status=$3 want_touched=$4 out status touched
-  out=$(LETSENCRYPT_GUARD_OUT="$d/touched" "$here/letsencrypt-guard.sh" "$d/LIVE" "$d/MERGED" 2>&1)
+# names FIXTURE NAME WANT_STATUS WANT_NAMED: runs diff-names.sh on the fixture as changed by the
+# caller; WANT_NAMED is what it must name (space-separated, sorted).
+names() {
+  local d=$work/$1 name=$2 want_status=$3 want_named=$4 out status named
+  out=$("$here/diff-names.sh" "$d/LIVE" "$d/MERGED" 2>&1)
   status=$?
-  touched=$(sort "$d/touched" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+  named=$(sed -n 's/^[a-z]*: //p' <<<"$out" | sort | tr '\n' ' ' | sed 's/ $//')
   if [ "$status" -ne "$want_status" ]; then fail "$name: status $status, want $want_status; out=[$out]"; return; fi
-  if [ "$touched" != "$want_touched" ]; then fail "$name: touched [$touched], want [$want_touched]"; return; fi
+  if [ "$named" != "$want_named" ]; then fail "$name: named [$named], want [$want_named]"; return; fi
   if [[ "$out" == *SEKRIT* ]]; then fail "$name: printed an object's content: [$out]"; return; fi
   ok "$name"
 }
 
 fixture same >/dev/null
-guard same "no difference: status 0, nothing touched" 0 ""
+names same "no difference: status 0, nothing named" 0 ""
 
 d=$(fixture kernel); cm kernel-config SEKRIT > "$d/MERGED/v1.ConfigMap.schematic.kernel-config"
-guard kernel "another service's config: status 1, letsencrypt untouched" 1 ""
-out=$(LETSENCRYPT_GUARD_OUT=/dev/null "$here/letsencrypt-guard.sh" "$d/LIVE" "$d/MERGED" 2>&1)
-[[ "$out" == *"v1.ConfigMap.schematic.kernel-config"* ]] && ok "the changed object is named" ||
-  fail "the changed object is not named: [$out]"
+names kernel "a changed object is named, not shown" 1 "v1.ConfigMap.schematic.kernel-config"
 
 d=$(fixture deploy); le_deploy letsencrypt:SEKRIT > "$d/MERGED/apps.v1.Deployment.schematic.letsencrypt0"
-guard deploy "its Deployment" 1 "apps.v1.Deployment.schematic.letsencrypt0"
+names deploy "letsencrypt's Deployment is an object like any other" 1 "apps.v1.Deployment.schematic.letsencrypt0"
 
-d=$(fixture volume); cm letsencrypt0-config SEKRIT > "$d/MERGED/v1.ConfigMap.schematic.letsencrypt0-config"
-guard volume "a ConfigMap its pods mount" 1 "v1.ConfigMap.schematic.letsencrypt0-config"
-
-d=$(fixture envfrom); cm acme-account SEKRIT > "$d/MERGED/v1.Secret.schematic.acme-account"
-guard envfrom "a Secret its pods read through envFrom" 1 "v1.Secret.schematic.acme-account"
-
-d=$(fixture projected); cm shared-certs SEKRIT > "$d/MERGED/v1.Secret.schematic.shared-certs"
-guard projected "a Secret projected into its pods, whatever its name" 1 "v1.Secret.schematic.shared-certs"
-
-d=$(fixture keyref); cm acme-env SEKRIT > "$d/MERGED/v1.ConfigMap.schematic.acme-env"
-guard keyref "a ConfigMap key in its env" 1 "v1.ConfigMap.schematic.acme-env"
-
-d=$(fixture gateway); cm gateway0-config SEKRIT > "$d/MERGED/v1.ConfigMap.schematic.gateway0-config"
-guard gateway "a ConfigMap it does not read" 1 ""
-
-d=$(fixture added); cm x SEKRIT > "$d/MERGED/v1.Service.schematic.letsencrypt0"
-guard added "a new object named for it" 1 "v1.Service.schematic.letsencrypt0"
+d=$(fixture added); cm x SEKRIT > "$d/MERGED/v1.Service.schematic.added"
+names added "an added object is named" 1 "v1.Service.schematic.added"
+out=$("$here/diff-names.sh" "$d/LIVE" "$d/MERGED" 2>&1)
+[[ "$out" == "added: v1.Service.schematic.added" ]] && ok "it says how the object differs" || fail "how: [$out]"
 
 d=$(fixture removed); rm "$d/MERGED/apps.v1.Deployment.schematic.letsencrypt0"
-guard removed "its Deployment removed" 1 "apps.v1.Deployment.schematic.letsencrypt0"
+names removed "a removed object is named" 1 "apps.v1.Deployment.schematic.letsencrypt0"
 
-# ---- deploy/diff.sh: renders with the operator, diffs with kubectl, applies the guard.
+# ---- deploy/diff.sh: renders with the operator, diffs with kubectl, names what differs.
 mkdir -p "$work/bin"
 cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   "config current-context") echo "${STUB_CONTEXT:-gke_jody1-328023_us-central1-a_seatrials}" ;;
-  "get deployments -n schematic -o name") printf '%s\n' $STUB_LIVE_DEPLOYMENTS ;;
   "diff -f "*)
     [ -n "${STUB_DIFF_STATUS:-}" ] && exit "$STUB_DIFF_STATUS"
     "$KUBECTL_EXTERNAL_DIFF" "$STUB_FIXTURE/LIVE" "$STUB_FIXTURE/MERGED" ;;
@@ -146,7 +130,7 @@ diffsh() {
   local name=$1 want=$2 fx=$3 manifest=$4 out status
   shift 4
   out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/$fx" \
-    STUB_MANIFEST="$manifest" STUB_LIVE_DEPLOYMENTS="deployment.apps/letsencrypt0 deployment.apps/kernel0" "$@" \
+    STUB_MANIFEST="$manifest" "$@" \
     "$here/diff.sh" 2>&1)
   status=$?
   if [[ "$out" == *SEKRIT* ]]; then fail "diff.sh $name: printed an object's content"; return; fi
@@ -159,24 +143,21 @@ diffsh() {
 
 diffsh "no change passes" pass same "$work/with-le.yaml"
 diffsh "another service's change passes" pass kernel "$work/with-le.yaml"
-diffsh "a change to letsencrypt's Deployment fails" fail deploy "$work/with-le.yaml"
-diffsh "a change to its mounted config fails" fail volume "$work/with-le.yaml"
-diffsh "a letsencrypt change passes with SEATRIALS_ALLOW_LETSENCRYPT=1" pass deploy "$work/with-le.yaml" \
-  SEATRIALS_ALLOW_LETSENCRYPT=1
-diffsh "a render without letsencrypt, while it runs, fails" fail kernel "$work/without-le.yaml"
+diffsh "a change to letsencrypt passes: the guard is retired (#35)" pass deploy "$work/with-le.yaml"
+diffsh "a render without letsencrypt, while it runs, passes: its retirement (#35)" pass removed "$work/without-le.yaml"
 diffsh "kubectl diff failing fails" fail same "$work/with-le.yaml" STUB_DIFF_STATUS=2
 diffsh "another kube context is refused" fail same "$work/with-le.yaml" STUB_CONTEXT=gke_prod
-out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/deploy" \
-  STUB_MANIFEST="$work/with-le.yaml" STUB_LIVE_DEPLOYMENTS="" "$here/diff.sh" 2>&1)
-[[ "$out" == *letsencrypt* && "$out" == *"Jody"* ]] && ok "diff.sh says why it fails, and whose OK it needs" ||
-  fail "diff.sh failure does not say why: [$out]"
+out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/kernel" \
+  STUB_MANIFEST="$work/with-le.yaml" "$here/diff.sh" 2>&1)
+[[ "$out" == *"changed: v1.ConfigMap.schematic.kernel-config"* ]] && ok "diff.sh names what the apply would change" ||
+  fail "diff.sh does not name the change: [$out]"
 
 # ---- The render digest (#34): the render diff.sh showed is the one deploy/apply.sh applies.
-# other.yaml: the same render but for kernel's config, which the guard passes.
+# other.yaml: the same render but for kernel's config.
 le_deploy letsencrypt:a > "$work/other.yaml"; printf -- '---\n' >> "$work/other.yaml"; cm kernel-config two >> "$work/other.yaml"
 want=sha256:$(sha256sum < "$work/with-le.yaml" | cut -d' ' -f1)
 out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/same" \
-  STUB_MANIFEST="$work/with-le.yaml" STUB_LIVE_DEPLOYMENTS="" RENDER_DIGEST_OUT="$work/render.env" "$here/diff.sh" 2>&1)
+  STUB_MANIFEST="$work/with-le.yaml" RENDER_DIGEST_OUT="$work/render.env" "$here/diff.sh" 2>&1)
 [ "$(cat "$work/render.env" 2>/dev/null)" = "RENDER_DIGEST=$want" ] && [[ "$out" == *"$want"* ]] &&
   ok "diff.sh records and prints its render's digest" || fail "diff.sh digest: [$(cat "$work/render.env" 2>/dev/null)] out=[$out]"
 diffsh "the render diff showed passes" pass same "$work/with-le.yaml" RENDER_DIGEST="$want"

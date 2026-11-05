@@ -12,8 +12,9 @@
 # stored), and `fleet-deploy` runs it as the child pipeline,
 # with FLEET_COMMIT set. Runbook: docs/deploy-pipeline.md there.
 #
-# Runs when started from the web or the API, or on a schedule (a nightly dry
-# run shows drift); never on a push to this project, which only carries this
+# Runs when started from the web or the API, or on a schedule (daily: the
+# certificate's check and renewal, then the whole deploy, #35;
+# docs/deploy-pipeline.md); never on a push to this project, which only carries this
 # file. Nothing is passed as a pipeline variable.
 stages: [plan, deploy]
 

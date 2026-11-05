@@ -1,14 +1,15 @@
 # The sea-trials deployment: one of everything, two tenants, the two proofs as
 # app services. The public name is under tacplus.dev (an A record at the
-# registrar pointing at the reserved gateway IP) and TLS is Let's Encrypt, so
-# the fleet is a real OIDC issuer: Anthropic's federation fetches its discovery
-# document over public TLS. The operator CA (crypto.yaml) still signs the
+# registrar pointing at the reserved gateway IP) and its certificate is Let's
+# Encrypt's, so the fleet is a real OIDC issuer: Anthropic's federation fetches
+# its discovery document over public TLS. The pipeline owns that certificate
+# (#35, ci/cert.sh): it is installed as crypto.yaml's pki.edge_tls[0] in the
+# job, and the gateway serves it in CERT_CHAIN mode, so there is no `tls:` here
+# and no letsencrypt workload. The operator CA (crypto.yaml) still signs the
 # cluster's internal PKI.
 dev: true
 fqdn: seatrials.tacplus.dev
 external_ip: 146.148.80.132
-tls:
-    letsencrypt: true
 port: 443
 optional_services:
     oauth: true

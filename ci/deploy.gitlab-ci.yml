@@ -10,21 +10,28 @@
 # variables and the GCP side: docs/deploy-pipeline.md.
 #
 #   tools     tacplus, schematic-operator, yq and opa, built from pinned sources
-#   checks    the repository's script tests (the letsencrypt guard among them)
+#   checks    the repository's script tests
 #   security  OSV-Scanner on the tree, govulncheck on the pinned binaries, gitleaks on the tree
 #             and its history, Trivy on the CI image; security-exceptions.yaml enforced (#36).
 #             Nothing is built or applied until it passes
+#   cert      the pipeline owns the certificate (#35, ci/cert.sh): checks the current version
+#             of the secret tls-seatrials and, when lego says so (missing, expired, or due by
+#             ARI or the last third of its lifetime), obtains a new one by ACME DNS-01 as a new
+#             version; hands the version on to every job that renders
 #   images    images/build.sh changed on Cloud Build, waiting for every build
-#   generate  schematic-operator generate with the fleet's key material; the routing policy checked
-#   diff      what an apply would change, by object name; fails if it touches letsencrypt;
-#             records the render's digest
+#   generate  schematic-operator generate with the fleet's key material and that certificate
+#             version (the gateway's, CERT_CHAIN); the routing policy checked
+#   diff      what an apply would change, by object name; records the render's digest
 #   apply     once diff succeeds, by itself (seatrials is not production), the render diff
 #             showed, by digest; protected environment seatrials
 #   test      the functional end-to-end suite (deploy/e2e.yaml), its report as the job's JUnit report
 #
-# Manual, because none of them is approval of the fleet: apply-letsencrypt (Jody's standing
-# never-restart-letsencrypt rule; only Jody plays it), signin-secrets (a rotated secret),
+# Manual, because neither is approval of the fleet: signin-secrets (a rotated secret),
 # test-idp (the test IdP's one-time setup).
+#
+# A daily pipeline schedule on main runs all of it (docs/deploy-pipeline.md, the
+# schedule): when cert renews the certificate, the new version is rendered,
+# diffed and applied by itself, and every gateway hot-swaps it with no restart.
 #
 # and the test IdP (#27, test-idp/README.md), on the `tacplus` cluster:
 #
@@ -40,13 +47,14 @@
 # secret is written to the repository, an artifact or a job log: no job runs
 # with `set -x`, the diff prints object names only, and the only artifacts are
 # bin/ (tools built from public and pinned sources), the render's digest, the
+# certificate's secret name and version number (never its content), the
 # suite's report (pass, fail or waiting per item, with checks' output that holds
 # no secret) and the security report (gitleaks' findings redacted).
 #
 # Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
 # once, max_use_count = 1), never on the agents' runner.
 
-stages: [tools, checks, images, generate, diff, apply, test]
+stages: [tools, checks, cert, images, generate, diff, apply, test]
 
 variables:
   GIT_STRATEGY: none
@@ -57,6 +65,15 @@ variables:
   # The service account the block signs as when KMS does not accept the job's
   # federated principal (#30; docs/deploy-pipeline.md, GitHub).
   TACPLUS_READER_SA: fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com
+  # The fleet's public certificate (#35, ci/cert.sh): its secret and the ACME
+  # account's, in the project the cloud pipeline made them in (tacplus-dev/cloud#6),
+  # the names it asks Let's Encrypt for, and the Cloud DNS zone delegated for
+  # _acme-challenge.tacplus.dev, the only zone the deploy account may write.
+  CERT_PROJECT: tacplus-dev
+  CERT_SECRET: tls-seatrials
+  ACME_ACCOUNT_SECRET: acme-account-seatrials
+  CERT_DOMAINS: "tacplus.dev,*.tacplus.dev"
+  CERT_DNS_ZONE: acme-challenge-tacplus-dev
   # The commit being deployed: the parent pipeline writes it here (pipeline
   # variables are forbidden in the group).
   FLEET_COMMIT: ""
@@ -204,6 +221,24 @@ security:
     paths: [src/security/]
     expire_in: 30 days
 
+# The certificate (#35; tacplus-dev/roadmap decisions/certificates-by-pipeline-2026-11-03.md):
+# ci/cert.sh checks the current version and has lego obtain or renew it, as
+# the deploy account (the two secrets and the challenge zone are all it may
+# write there). Its dotenv, CERT_SECRET and CERT_VERSION, is the version every
+# job that renders installs (ci_cert), so diff and apply render the same one.
+# A certificate somebody else signed is a version of the secret the project
+# variable CERT_SUPPLIED_SECRET names: checked, never obtained.
+cert:
+  stage: cert
+  needs: [tools, checks]
+  environment: { name: seatrials, action: prepare }
+  resource_group: seatrials-cert
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && CERT_ENV_OUT=$CI_PROJECT_DIR/cert.env ci/cert.sh
+  artifacts:
+    reports:
+      dotenv: cert.env
+
 images:
   stage: images
   needs: [checks, security]
@@ -213,11 +248,11 @@ images:
 
 generate:
   stage: generate
-  needs: [checks, tools, security]
+  needs: [checks, tools, security, cert]
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
       bin/schematic-operator generate
@@ -225,11 +260,11 @@ generate:
 
 diff:
   stage: diff
-  needs: [tools, images, generate]
+  needs: [tools, cert, images, generate]
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
       RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
   # RENDER_DIGEST, the digest of the render diff showed, for apply.
   artifacts:
@@ -240,40 +275,17 @@ diff:
 # only production waits for Jody (tacplus-dev/roadmap
 # decisions/deterministic-deployments-2026-11-02.md, addendum; #34). In the
 # protected environment seatrials. It applies the render diff showed, by its
-# digest (RENDER_DIGEST, diff's dotenv), and the letsencrypt guard runs again
-# first, on the cluster as it is now.
+# digest (RENDER_DIGEST, diff's dotenv), with the certificate version cert
+# passed on.
 apply:
   stage: apply
-  needs: [tools, diff]
+  needs: [tools, cert, diff]
   environment: { name: seatrials, action: start }
   resource_group: seatrials
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
       deploy/diff.sh
-      deploy/secrets.sh
-      deploy/apply.sh
-      deploy/signin-secrets.sh
-
-# The apply when it touches letsencrypt, which is never restarted without
-# Jody's explicit OK: its own protected environment, seatrials-letsencrypt,
-# whose only deployer is Jody (docs/deploy-pipeline.md). Manual: playing it is
-# that OK, not approval of the fleet. It applies the render its own diff, in
-# this job's log, showed.
-apply-letsencrypt:
-  stage: apply
-  needs: [tools, images, generate]
-  environment: { name: seatrials-letsencrypt, action: start }
-  resource_group: seatrials
-  when: manual
-  allow_failure: true
-  variables:
-    SEATRIALS_ALLOW_LETSENCRYPT: "1"
-  script:
-    - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
-      RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
-      export "$(cat "$CI_PROJECT_DIR/render.env")"
       deploy/secrets.sh
       deploy/apply.sh
       deploy/signin-secrets.sh
@@ -293,11 +305,11 @@ signin-secrets:
 
 test:
   stage: test
-  needs: [tools, apply]
+  needs: [tools, cert, apply]
   environment: { name: seatrials, action: verify }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_kube
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
       bin/schematic-operator generate >/dev/null

@@ -34,14 +34,17 @@ The cluster is created for a trial and destroyed after it; nothing here is long-
   service build first builds it when that tag is missing.
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
   (CA and cluster PKI, once), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
-  variables), `diff.sh` (what an apply would change, by name; fails if it touches letsencrypt), `apply.sh`
+  variables), `diff.sh` (what an apply would change, by name), `apply.sh`
   (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
   secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets
   scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks). `ci/security.sh` is the security job: OSV-Scanner,
   govulncheck on the pinned binaries, gitleaks and Trivy on the CI image, with `security-exceptions.yaml` enforced
-  ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-security-job)).
+  ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-security-job)). `ci/cert.sh` is the cert job: the
+  pipeline owns the public certificate, checks it (`ci/cert-check.sh`) and has `lego` obtain or renew it by
+  DNS-01 into Secret Manager, and every job that renders installs that version as the gateway's
+  ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-certificate)).
 - `test-idp/` — the test IdP at idp.test.tacplus.dev: a Keycloak whose realms emulate Google's, Microsoft's
   and Apple's claim shapes, with test users and domains, applied and checked by the pipeline, so sign-in is tested
   with no person: [test-idp/README.md](test-idp/README.md).
@@ -57,17 +60,22 @@ diff, then apply, then the post-deploy checks.
 **Apply is automatic on main.** seatrials isn't production, so `apply` starts by itself once `diff` succeeds,
 and it applies the render `diff` showed, by its digest (Jody, 2026-11-02; tacplus-dev/roadmap
 `decisions/deterministic-deployments-2026-11-02.md`, addendum; #34). A production fleet keeps a manual apply
-that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Three
-jobs stay manual, because none of them approves the fleet:
+that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Two
+jobs stay manual, because neither approves the fleet:
 
-- `apply-letsencrypt`: letsencrypt is never restarted without Jody's explicit OK, Jody's standing rule.
-  `diff` and `apply` fail on any change that touches it. This job applies such a change, only Jody can play
-  it, and playing it is that OK.
 - `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables. `apply`
   installs them anyway.
 - `test-idp`: the test IdP's one-time setup, which generates and stores its seeds.
 
-`ci/pipeline_test.sh` checks this on the rendered pipeline. The first time, on a new cluster:
+`ci/pipeline_test.sh` checks this on the rendered pipeline.
+
+**The pipeline owns the certificate** (#35; tacplus-dev/roadmap `decisions/certificates-by-pipeline-2026-11-03.md`).
+The fleet runs no letsencrypt workload: the `cert` job obtains `tacplus.dev` and `*.tacplus.dev` from Let's Encrypt by
+DNS-01 when it is missing, expired or due (ARI, or the last third of its lifetime), keeps it as a version of the
+secret `tls-seatrials`, and the gateway serves that version (`CERT_CHAIN`) and hot-swaps a renewed one with no
+restart. A daily schedule runs the pipeline, so a renewal deploys by itself. The old rule that letsencrypt is
+never restarted no longer applies: there is nothing left to restart. (letsencrypt stays in `fleet.yaml` only
+as a contract the pinned gateway imports, until the gateway pin moves past its retirement: PROPOSALS.md.) The first time, on a new cluster:
 
 ```
 cluster/create.sh && deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project

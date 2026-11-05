@@ -18,8 +18,10 @@ services:
     repo: https://github.com/tacplus-dev/opa.git
   - name: gateway
     repo: https://github.com/tacplus-dev/gateway.git
-  # gateway reads letsencrypt's state; letsencrypt publishes through eventbus and
-  # its records are read through stratum's query plane.
+  # A contract only: the pinned gateway (32cd7a6) still imports letsencrypt's
+  # state, so the closure needs it. Nothing runs it: the pipeline owns the
+  # certificate (#35) and operator.yaml has no `tls`. It goes, with its
+  # registry entry, when the gateway pin moves past gateway#25 (PROPOSALS.md).
   - name: letsencrypt
     repo: https://github.com/tacplus-dev/letsencrypt.git
   - name: eventbus

@@ -2,15 +2,19 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tests ci/lib.sh's ci_kube and the test-idp-signin job (#31), against a stub
-# gcloud and kubectl. ci_kube fails, saying why, when gcloud gives it no
+# Tests ci/lib.sh's ci_kube, ci_cert (#35) and the test-idp-signin job (#31),
+# against a stub gcloud and kubectl. ci_kube fails, saying why, when gcloud gives it no
 # credentials for the cluster or leaves no current context, even where the
 # job's && list turns errexit off; it names the context it set. The
 # test-idp-signin job skips, saying the test IdP is not set up yet, when the
 # environment test-idp has no TEST_IDP_SEED (the test-idp job generates it),
 # before it asks GCP or the cluster for anything; with the seed it runs
 # test-idp/signin.sh. lib.sh runs from a copy, so its cleanup never touches
-# this checkout. Needs bash and yq.
+# this checkout. ci_cert installs the certificate version the cert job passed
+# on (CERT_SECRET, CERT_VERSION), that version and no other, as crypto.yaml's
+# edge_tls[0], and fails, saying so, without them or when the secret refuses.
+# ci_gcp hands its credential to Application Default Credentials (lego). Needs
+# bash, yq and openssl.
 #
 #   ci/lib_test.sh
 set -uo pipefail
@@ -31,6 +35,9 @@ echo "gcloud \$*" >> "$work/log/gcloud"
 case "\$1 \$2" in
   "iam workload-identity-pools") for a in "\$@"; do case "\$a" in --output-file=*) echo '{}' > "\${a#*=}" ;; esac; done ;;
   "config get") echo test-idp-deploy@p.iam.gserviceaccount.com ;;
+  "secrets versions")
+    [ -z "\${SM_REFUSE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) PERMISSION_DENIED: denied" >&2; exit 1; }
+    for a in "\$@"; do case "\$a" in --out-file=*) cp "$work/payload.pem" "\${a#*=}" ;; esac; done ;;
   "container clusters")
     echo "Fetching cluster endpoint and auth data." >&2
     if [ -n "\${GKE_REFUSE:-}" ]; then
@@ -49,10 +56,14 @@ cat "$KUBECONFIG"
 EOF
 chmod +x "$work/bin/"*
 
-# The job's tree: lib.sh, and a stub signin.sh that says it ran.
+# The job's tree: lib.sh, cert-install.sh, and a stub signin.sh that says it ran.
 src=$work/job/src
-mkdir -p "$src/ci" "$src/test-idp"
-cp "$here/ci/lib.sh" "$src/ci/lib.sh"
+mkdir -p "$src/ci" "$src/test-idp" "$src/deploy/bootstrap"
+cp "$here/ci/lib.sh" "$here/ci/cert-install.sh" "$src/ci/"
+# A certificate version: leaf and key (self-signed is enough here).
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$work/leaf.key" -out "$work/leaf.crt" \
+  -days 30 -subj /CN=tacplus.dev 2>/dev/null
+cat "$work/leaf.crt" "$work/leaf.key" > "$work/payload.pem"
 printf '#!/usr/bin/env bash\necho "signin.sh ran on $(kubectl config current-context)"\n' > "$src/test-idp/signin.sh"
 chmod +x "$src/test-idp/signin.sh"
 
@@ -92,6 +103,38 @@ if job GKE_NO_CONTEXT=1 -- 'cd src && source ci/lib.sh && ci_gcp && ci_kube && e
 else
   ! grep -q 'next ran' "$work/out" && grep -q 'kube: no current context' "$work/out" &&
     ok "ci_kube fails when it is left no current context" || fail "ci_kube, no context: $(cat "$work/out")"
+fi
+
+# --- ci_gcp, ci_cert ------------------------------------------------------------
+
+if job -- 'cd src && source ci/lib.sh && ci_gcp && echo "adc=$GOOGLE_APPLICATION_CREDENTIALS" && test -f "$GOOGLE_APPLICATION_CREDENTIALS"'; then
+  ok "ci_gcp hands its federated credential to Application Default Credentials"
+else
+  fail "ci_gcp, Application Default Credentials: $(cat "$work/out")"
+fi
+
+cert_job='cd src && source ci/lib.sh && printf "pki:\n    root_ca: {}\n" > deploy/bootstrap/crypto.yaml && ci_gcp && ci_cert &&
+  yq ".pki.edge_tls[0].chain[0].base64" deploy/bootstrap/crypto.yaml | base64 -d > ../installed.pem && echo "next ran"'
+if job CERT_SECRET=tls-seatrials CERT_VERSION=7 CERT_PROJECT=tacplus-dev -- "$cert_job"; then
+  grep -q 'next ran' "$work/out" && cmp -s "$work/job/installed.pem" "$work/leaf.crt" &&
+    ok "ci_cert installs the certificate as crypto.yaml's edge_tls[0]" || fail "ci_cert: $(cat "$work/out")"
+  grep -q '^gcloud secrets versions access 7 --secret=tls-seatrials --project=tacplus-dev ' "$work/log/gcloud" &&
+    ok "ci_cert reads the version the cert job passed on, not latest" || fail "ci_cert read: $(cat "$work/log/gcloud")"
+  ! grep -q 'PRIVATE KEY' "$work/out" && ok "ci_cert prints nothing secret" || fail "ci_cert printed the key"
+else
+  fail "ci_cert: $(cat "$work/out")"
+fi
+if job -- "$cert_job"; then
+  fail "ci_cert succeeded with no version from the cert job: $(cat "$work/out")"
+else
+  ! grep -q 'next ran' "$work/out" && grep -q 'the cert job passes them on' "$work/out" &&
+    ok "ci_cert fails, saying why, without the cert job's version" || fail "ci_cert, no version: $(cat "$work/out")"
+fi
+if job CERT_SECRET=tls-seatrials CERT_VERSION=7 CERT_PROJECT=tacplus-dev SM_REFUSE=1 -- "$cert_job"; then
+  fail "ci_cert succeeded when Secret Manager refused: $(cat "$work/out")"
+else
+  ! grep -q 'next ran' "$work/out" && grep -q 'PERMISSION_DENIED' "$work/out" &&
+    ok "ci_cert fails with Secret Manager's error" || fail "ci_cert, refused: $(cat "$work/out")"
 fi
 
 # --- the test-idp-signin job --------------------------------------------------

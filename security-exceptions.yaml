@@ -11,6 +11,7 @@
 #   schematic-operator (#11)    GO-2025-3528 3829 3887 3888 4100 4108, GO-2026-4762 4918 4958 5026 5475 5506 5758
 #                               5932 6061 6348 6443 6444 6597 6603 6610 6611 6612 6617 6796
 #   trivy 0.76.1                GO-2026-5932 6860 6866
+#   lego 5.6.0 (#35)            GO-2026-5932 (found 2026-11-05, when the cert job pinned it; its latest release)
 #   gitleaks v8.30.1 (#25)      GO-2025-3922
 exceptions:
   - id: GO-2025-3528
@@ -66,7 +67,7 @@ exceptions:
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp, in schematic-operator (#11) and Trivy 0.76.1 (ci/tools.sh, its latest release): neither handles an OpenPGP key or message from outside (Trivy reads the CI image from ghcr.io). The fix is an untagged x/crypto pseudo-version; no operator pin or Trivy release carries it yet."
+    reason: "x/crypto/openpgp, in schematic-operator (#11), Trivy 0.76.1 and lego 5.6.0 (ci/tools.sh, each its latest release; lego is the cert job's ACME client, #35): none handles an OpenPGP key or message from outside (Trivy reads the CI image from ghcr.io, lego talks ACME and Cloud DNS). The fix is an untagged x/crypto pseudo-version; no operator pin, Trivy or lego release carries it yet."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-6061

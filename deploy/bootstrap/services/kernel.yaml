@@ -117,12 +117,3 @@ delegates:
       # The coop mints each pigeon under the dog that asked for it, and
       # revokes it: the fleet's one workload broker.
       workload_broker: true
-    - name: letsencrypt
-      authorized_services:
-        - eventbus
-        - kernel
-        - letsencrypt
-        - stratum
-      kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
-          kubernetes_service_account: letsencrypt

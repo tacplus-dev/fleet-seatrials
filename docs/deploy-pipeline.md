@@ -17,20 +17,20 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 
 | Stage | Job | What it does |
 | --- | --- | --- |
-| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa and gitleaks ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
-| checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)), which include the letsencrypt guard's, and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
+| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa, gitleaks, the security job's scanners and `lego` ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
+| checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)) and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image ([below](#the-security-job)). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
+| cert | `cert` | [`ci/cert.sh`](../ci/cert.sh): the pipeline owns the certificate ([below](#the-certificate)). It checks the current version of the secret `tls-seatrials` and has `lego` obtain or renew it by ACME DNS-01 when it is missing, expired or due, as a new version. It hands the secret and version to every job that renders. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). |
-| generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
-| diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). It **fails if the change touches letsencrypt** (see below). |
-| apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Runs the guard again and checks the render's digest, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
-| apply | `apply-letsencrypt` | Manual, in the protected environment `seatrials-letsencrypt`, whose only deployer is Jody. The same apply, with the letsencrypt guard lifted. Playing it is Jody's explicit OK to restart letsencrypt. |
+| generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, and the certificate version `cert` passed on installed as the gateway's, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
+| diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
+| apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else, after a secret is rotated. |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `tacplus` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
 
-Every pipeline deploys: tools, checks, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails (a change touching letsencrypt, say) stops it before `apply`.
+Every pipeline deploys: tools, checks, cert, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails stops it before `apply`. A daily schedule runs the same pipeline ([below](#the-daily-schedule)).
 
 ### The security job
 
@@ -40,12 +40,12 @@ runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
 
 - **OSV-Scanner** on the tree's dependency manifests and lock files (`client/go.mod`), at the deployed commit;
 - **`govulncheck -mode=binary`** on every pinned tool binary in `bin/`: tacplus, schematic-operator, yq, opa,
-  gitleaks, and the scanners themselves;
+  gitleaks, lego, and the scanners themselves;
 - **gitleaks** on the whole history and on the tree (the job fetches the history: `FLEET_FETCH_HISTORY=1`);
 - **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform.
 
-The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): Trivy by version and the SHA-256 of its release
-download, the others by module version and module hash (osv-scanner built with a pinned Go toolchain, because
+The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): Trivy and lego by version and the SHA-256 of their
+release downloads, the others by module version and module hash (osv-scanner built with a pinned Go toolchain, because
 its release's standard library has fixed vulnerabilities). **It fails** on any secret, and on any HIGH or
 CRITICAL finding with a fixed version, unless an unexpired entry of
 [`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias. It also fails on a
@@ -69,47 +69,85 @@ and seatrials isn't production (Jody, 2026-11-02; tacplus-dev/roadmap
 `decisions/deterministic-deployments-2026-11-02.md`, addendum; #34). A production fleet keeps a manual apply
 that only Jody plays: [tacplus-dev/roadmap `PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md).
 
-Three jobs stay manual, because none of them approves the fleet:
+Two jobs stay manual, because neither approves the fleet:
 
-- `apply-letsencrypt`: Jody's standing rule that letsencrypt is never restarted without his explicit OK. Only
-  he can play it, and playing it is that OK.
 - `signin-secrets`: run after a sign-in secret is rotated in the variables. `apply` installs them anyway.
 - `test-idp`: the test IdP's one-time setup. It generates and stores its seeds, so it runs on purpose.
 
 [`ci/pipeline_test.sh`](../ci/pipeline_test.sh), run by `checks`, renders the pipeline as GitLab does (anchors
 expanded, `default` and `extends` merged). It checks that `apply` isn't manual on `main` and fails the
-pipeline when it fails, and that these three are the only manual jobs.
+pipeline when it fails, and that these two are the only manual jobs.
 
 ### The render diff showed is the one applied
 
 `diff` prints the SHA-256 digest of the render it compared, `render sha256:…`. It hands the digest to `apply` as
 `RENDER_DIGEST`, through a dotenv artifact. A digest of the manifest says nothing of its content. `apply`
-renders again twice, in `deploy/diff.sh` with the guard, and in `deploy/apply.sh` just before the apply. It
+renders again twice, in `deploy/diff.sh`, and in `deploy/apply.sh` just before the apply. It
 refuses, applying nothing, if either render's digest isn't the one `diff` showed: the commit, the variables
-or the images changed in between. Run the pipeline again. `apply-letsencrypt` applies the render its own
-`diff.sh`, earlier in the same job, showed. Once the uni-config lands (#28), the digest becomes the uni-config
+or the images changed in between. Run the pipeline again. Every job renders the certificate version `cert`
+passed on, never the secret's latest, so the digest covers the certificate, and a renewal by another pipeline
+in between can't split `diff` from `apply`. Once the uni-config lands (#28), the digest becomes the uni-config
 record's.
 
-### The letsencrypt guard
+### The certificate
 
-The standing rule is that letsencrypt is never restarted without Jody's explicit OK. Its ACME orders are
-rate-limited, and it holds the account key and the certificate.
+The pipeline owns the fleet's public certificate (Jody, 2026-11-03; #35; tacplus-dev/roadmap
+`decisions/certificates-by-pipeline-2026-11-03.md`, with its amendments). Nothing in the cluster orders,
+holds or renews it: the in-cluster letsencrypt, its guard, `apply-letsencrypt` and the
+`seatrials-letsencrypt` environment are retired, and so is the rule that letsencrypt is never restarted.
 
-`kubectl diff` writes each object of the render twice, as it is live and as it would be after the apply. It
-then calls [`deploy/letsencrypt-guard.sh`](../deploy/letsencrypt-guard.sh) on both. The guard names each
-object that differs, never its content. An object **touches letsencrypt** when:
+- **Where it is kept:** Secret Manager in `tacplus-dev` (tacplus-dev/cloud#6). The secret `tls-seatrials`
+  holds one version per certificate: the leaf, its chain and its key, in PEM. The secret
+  `acme-account-seatrials` holds lego's ACME account (its key and registration, a tar of lego's `accounts/`).
+  The deploy account may read them and add versions, and nothing else may.
+- **The check**, [`ci/cert-check.sh`](../ci/cert-check.sh) (`openssl`): `valid`; `due`, inside the last third
+  of its lifetime; `expired`; `wrong-hostname`, when `tacplus.dev`, `*.tacplus.dev` or the fleet's fqdn isn't
+  covered (a wildcard covers one label); `invalid`, when the chain doesn't verify, the key isn't the leaf's,
+  or it isn't valid yet. It prints the subject, issuer, serial and dates, never the key.
+- **The `cert` job**, [`ci/cert.sh`](../ci/cert.sh), with [`lego`](https://go-acme.github.io/lego/) (pinned by
+  version and SHA-256 in `ci/tools.sh`):
+  - `missing`, `expired`, `wrong-hostname` or `invalid`: lego obtains a new certificate for `tacplus.dev` and
+    `*.tacplus.dev` by ACME DNS-01. It writes the challenge in the Cloud DNS zone `acme-challenge-tacplus-dev`,
+    which serves `_acme-challenge.tacplus.dev` by delegation (tacplus-dev/cloud#13). The deploy account may
+    write records there and in no other zone.
+  - `valid` or `due`: lego is given the current certificate and renews it when Let's Encrypt's renewal
+    information (ARI) says so, or else in the last third of its lifetime. Usually it writes nothing.
+  - A certificate lego wrote is checked, and only a `valid` one is added as a new version.
+  - It passes `CERT_SECRET` and `CERT_VERSION` on, as its dotenv. `generate`, `diff`, `apply` and `test`
+    install that version (`ci_cert` in [`ci/lib.sh`](../ci/lib.sh), then
+    [`ci/cert-install.sh`](../ci/cert-install.sh)) as the job's `crypto.yaml` `pki.edge_tls[0]`. The operator
+    serves it as the gateway's certificate in `CERT_CHAIN` mode, and the gateway hot-swaps it when its config
+    changes, with no restart. It reaches the cluster only in the deployment's own delivery.
+  - lego's working directory is rebuilt from the two secrets in a private temporary directory each run and
+    removed on exit. No artifact holds more than the secret's name and the version number.
+- **A certificate somebody else signed:** add it (leaf, chain, key) as a version of a secret of its own and
+  set the project variable `CERT_SUPPLIED_SECRET` to that secret's name (the deploy account needs
+  `secretAccessor` on it). `cert` checks it the same way and never runs lego. `due` is a warning in the job's
+  log, and `expired`, `wrong-hostname` or `invalid` fails the pipeline, naming the secret to update.
+- **A test run against Let's Encrypt's staging:** set `ACME_SERVER=letsencrypt-staging` and
+  `CERT_CHECK_CAFILE` (a file variable) to staging's roots. The fleet then serves an untrusted certificate
+  until the next production run, so do it only in a window, and force the production renewal right after
+  (both runs order; stay well inside Let's Encrypt's limits).
+- **The first run** registers the ACME account (no `ACME_EMAIL`, so no contact address unless one is set)
+  and keeps it in `acme-account-seatrials`. Losing that version costs only a new registration.
 
-- it is named for letsencrypt (its Deployment, Service, ServiceAccount and so on);
-- it is a ConfigMap, Secret or ServiceAccount that letsencrypt's pods mount or read (volumes, projected
-  sources, `envFrom`, `env.valueFrom`), as its Deployment is now or will be;
-- it is letsencrypt's Deployment and the render no longer holds it: the helm upgrade would remove it.
+Its tests, run by `checks`: [`ci/cert-check_test.sh`](../ci/cert-check_test.sh) (certificates made with
+`openssl`), [`ci/cert_test.sh`](../ci/cert_test.sh) (stub `gcloud` and `lego`: lego obtains only on
+missing, expired, wrong-hostname or invalid; never for a supplied certificate; a new version only for a
+certificate that passes the check; nothing secret on its output),
+[`ci/cert-install_test.sh`](../ci/cert-install_test.sh), [`ci/lib_test.sh`](../ci/lib_test.sh) (`ci_cert`) and
+[`ci/pipeline_test.sh`](../ci/pipeline_test.sh) (`cert` before `generate` and `diff`, its version taken by
+every job that renders, no rule that skips it on a schedule).
 
-`diff` and `apply` fail on any such object, so an automatic `apply` never restarts letsencrypt. Once Jody has said yes, a change to letsencrypt is applied by
-`apply-letsencrypt`, which only Jody can start. The guard's tests are
-[`deploy/letsencrypt-guard_test.sh`](../deploy/letsencrypt-guard_test.sh), run by `checks`. To prove the
-guard on the cluster, push a test commit to a branch that changes something letsencrypt reads, for example
-its image tag or its config. Run the pipeline with `FLEET_DEPLOY_COMMIT` set to that commit. `diff` must
-fail and name the objects.
+### The daily schedule
+
+A pipeline schedule of the GitLab project runs the whole pipeline on `main` every day: `cert`, then images,
+generate, diff, apply and test. When nothing is due, the version doesn't change and the apply changes
+nothing. When `cert` renewed, the new version is rendered, diffed and applied by itself (seatrials isn't
+production), and every gateway serves it with no restart. The schedule lives in the GitLab project, not in
+this repository: set it up once (Build, Pipeline schedules, New schedule), target branch `main`, daily, for
+example `17 5 * * *` UTC, with no variables. The parent pipeline's `workflow` already admits `schedule`, and
+`ci/pipeline_test.sh` checks that nothing skips `cert` or the apply on one.
 
 ## Secrets: GitLab project variables only
 
@@ -119,8 +157,9 @@ the deploy pipeline's `checks` and on every push to GitHub (`.github/workflows/s
 TLS keys are the cluster PKI in `FLEET_CRYPTO_YAML`; `services/kernel.yaml` has no `tls` block (the one
 `schematic-operator init` writes is a placeholder the operator never renders). Masked variables are also *hidden*. The jobs place the file variables
 under `deploy/bootstrap/` (git-ignored) with mode 600. They remove them when the job ends, and no artifact
-includes them: the artifacts are `bin/`, the render's digest, the suite's report and the security report
-(gitleaks' findings redacted).
+includes them: the artifacts are `bin/`, the render's digest, the certificate's secret name and version
+number, the suite's report and the security report (gitleaks' findings redacted). The fleet's certificate and
+its key aren't variables: they are versions in Secret Manager ([the certificate](#the-certificate)).
 
 | Variable | Type | Scope | What |
 | --- | --- | --- | --- |
@@ -137,7 +176,7 @@ includes them: the artifacts are `bin/`, the render's digest, the suite's report
 | `TEST_IDP_CLIENT_SEED` | masked, hidden | `test-idp`, and again `seatrials*` | The test IdP's client secrets. Generated by the `test-idp` job; `deploy/signin-secrets.sh` derives the `Test *` providers' secrets from it. |
 | `TEST_IDP_GITLAB_TOKEN` | masked | `test-idp`, first run only | A project access token (Maintainer, `api`) with which the `test-idp` job stores the two seeds. It can read every variable here, so revoke it once they are stored. |
 
-The `seatrials*` scope reaches both environments, `seatrials` and `seatrials-letsencrypt`.
+The `seatrials*` scope reaches the environment `seatrials`.
 `deploy/signin-secrets.sh` keeps the cluster's current value of any sign-in secret whose variable is unset.
 Until all three are in GitLab, the secrets already on the cluster stay in place.
 
@@ -286,17 +325,17 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 1. Make the GCP side above (Jody's OK). Set `GCP_WIF_PROVIDER` in the project. Then the GitHub side: the
    `tacplus-reader` key's binding and the app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
 2. Register the deploy runner and turn off group runners on the project.
-3. Create the protected environments: `seatrials`, deployable by Maintainers, and `seatrials-letsencrypt`,
-   deployable by Jody only. Keep `main` protected. `apply` runs by itself as whoever started the pipeline (or owns its
+3. Create the protected environment `seatrials`, deployable by Maintainers (`seatrials-letsencrypt` is
+   retired with letsencrypt, #35: delete it). Keep `main` protected. `apply` runs by itself as whoever started the pipeline (or owns its
    schedule), so that user must be able to deploy to `seatrials`.
 4. Store the variables in the table above, once tacplus-dev/looper#25 is fixed. There is no GitHub token
    to store. Jody pastes the sign-in
    secrets into the GitLab UI directly: not through a chat, a terminal or a file.
 5. Commit `ci/gitlab-project.gitlab-ci.yml` to the project as `.gitlab-ci.yml`.
 6. **First run:** Build → Pipelines → Run pipeline on `main`. tools, checks, images, generate and diff must be
-   green, and `apply` then deploys by itself. Optionally add a nightly schedule: its `diff` shows drift, and
-   its `apply` puts main back.
-7. Prove the guard on the cluster (above).
+   green, and `apply` then deploys by itself.
+7. Add [the daily schedule](#the-daily-schedule): it renews the certificate when due, and its `apply` puts
+   main back on any drift.
 
 ## The test IdP
 
@@ -387,8 +426,8 @@ When an issue an item waits on closes, the item gets its `run`. The login-contin
 
 - **Deploy:** run the pipeline on `main` (web or API). It deploys main's head, or `FLEET_DEPLOY_COMMIT`.
   `diff` lists what changes, `apply` follows by itself, then `test`.
-- **A change touching letsencrypt:** `diff` fails and names the objects. With Jody's OK, Jody starts
-  `apply-letsencrypt`. `test` follows `apply` only, so after `apply-letsencrypt` the checks run with the next
-  pipeline's `apply`.
+- **The certificate:** `cert`'s log says the version and its state, and whether lego renewed. To replace it
+  now (a key compromise, a hostname change), disable the secret's enabled versions in Secret Manager and run
+  the pipeline: `cert` finds none and obtains a new one.
 - **A failed test:** the job's report names the failing item and its output. `deploy/checks.sh <check>` runs one check alone,
   in a job with the same setup.

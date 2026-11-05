@@ -25,17 +25,26 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Compare each security run with the last** (2026-11-04, #36): looper-scan publishes each run's findings as
   the next run's baseline and lists the new ones. `ci/security.sh` reports every finding each time. A baseline
   in the GitLab project's package registry, as looper-scan's `report` does, would show what changed overnight.
-- **The pipeline owns the certificate** (2026-11-03, #35, design in its comments; tacplus-dev/roadmap
-  `decisions/certificates-by-pipeline-2026-11-03.md`): a `cert` stage before `generate` checks the current Secret
-  Manager version (`ci/cert-check.sh`, openssl: valid, due, expired, wrong hostname). If it's missing, expired or
-  wrong, it runs `lego run`, otherwise `lego renew` (ARI, falling back to the last third). lego is pinned in
-  `ci/tools.sh` and does DNS-01 through a delegated `_acme-challenge` zone, apex plus wildcard. A new certificate
-  becomes a new version, passed on by number. The gateway gets it in `cert_chain` mode with no restart, and a
-  daily schedule deploys a renewal. Then the in-cluster letsencrypt, its guard, `apply-letsencrypt` and
-  `seatrials-letsencrypt` retire, after #4's first deploy. Why: no resident, stateful service whose restarts
-  spend an order budget. It waits on #28 / operator#17, unless Jody takes an interim route (the certificate into
-  crypto.yaml's `edge_tls` in memory). The operator has no input for a supplied public certificate yet, and the
-  gateway's `LetsEncryptState` import keeps letsencrypt in the fleet's closure.
+- **The certificate's follow-ups** (2026-11-05, #35; tacplus-dev/roadmap
+  `decisions/certificates-by-pipeline-2026-11-03.md`). The pipeline owns the certificate now (`ci/cert.sh`, the
+  `cert` stage, the daily schedule), by the interim route of #35's design: the version is installed as the job's
+  `crypto.yaml` `pki.edge_tls[0]`, which the pinned operator (3d0e4b7) serves in `CERT_CHAIN` mode once
+  `operator.yaml` has no `tls`. What is left:
+  - **Move the gateway pin past gateway#25 (0b0743f)** and the operator pin past operator#21 (4dc0a3d), then drop
+    letsencrypt from `fleet.yaml` and `fleet.lock` (relock) and ask for its registry entry's removal. The pinned
+    gateway (32cd7a6) still imports `LetsEncryptState`, so the closure keeps letsencrypt's contract until then.
+    Both new pins declare the tacplus 2.5 floor, and this fleet is on 2.2, so this waits on #1.
+  - **Reference the version in the uni-config** once #28 (operator#17) lands, in place of `edge_tls[0]` in
+    memory: the gateway's part of the uni-config names `tls-seatrials` and the version.
+  - **The gateway's `root_ca`**: in `CERT_CHAIN` mode the operator also hands the gateway the fleet's private
+    root (`pki.root_ca`). Check what the gateway uses it for; it must not be advertised as the edge's anchor.
+  - **The acceptance on the cluster**: a run forced against Let's Encrypt's staging gives a new version, a new
+    render and an apply, and every gateway pod serves the new serial (`openssl s_client` to each pod, before and
+    after) with its `restartCount` and start time unchanged. It needs the first deploy on `dev` (#39, #4) and
+    the challenge zone's delegation (tacplus-dev/cloud#13's cutover).
+  - **lego and the challenge zone**: `GCE_ZONE_ID` names the zone, so lego shouldn't need to list the project's
+    zones (the deploy account has `dns.admin` on that zone only, tacplus-dev/cloud#6). Untried until the first
+    `cert` run.
 - **The functional suite's RPC items without waiting for the client** (2026-11-03, #17, #14): most of
   `deploy/e2e.yaml`'s items (tenants, public RPCs, records, streams, kernel restart) wait on #14, because they
   would call the fleet through its generated client. The gateway already answers JSON over HTTP (oauth's
