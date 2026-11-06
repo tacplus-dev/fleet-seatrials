@@ -26,6 +26,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   jobs' `image:` by digest would make the scanned image and the one the jobs run provably the same, and fit
   `decisions/deterministic-deployments-2026-11-02.md`. Each tacplus build image patch would then be a commit
   here.
+- **The security job scans the images this repository deploys** (2026-11-06, nightly scan, #41): Trivy reads
+  only the CI images (`ci/*.gitlab-ci.yml`'s `image:`). Every image this repository pins and deploys itself, today
+  `test-idp/keycloak.yaml`'s Keycloak, goes unscanned, and Keycloak 26.8.1-2 has 4 HIGH CVEs (#41). Proposal:
+  take every `image:` of `test-idp/*.yaml` (and any later deploy manifest here) as Trivy targets too, with the
+  same policy and `security-exceptions.yaml`. Whether the fleet's own service images (`images/build.sh`) belong
+  in the same scan is a separate question. Why: a vulnerable image with a fix
+  would then fail the pipeline before `test-idp` applies it, not be found only by a nightly scan.
 - **The checks job's secrets scan reads one commit** (2026-11-04, #36): every child job fetches this repository
   at depth 1, so `ci/secrets.sh` in `checks` sees only the deployed commit's history, not the whole history it
   says it scans. The security job fetches the whole history (`FLEET_FETCH_HISTORY=1`) and runs gitleaks on it.
