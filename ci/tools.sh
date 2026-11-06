@@ -18,6 +18,11 @@
 #
 #   ci/tools.sh              # needs go, protoc and jq (ghcr.io/tacplus-dev/tacplus/build) and
 #                            # git access to github.com, with no credential (ci_github); linux arm64 or amd64
+#
+# Go's build and module caches are its own, in a temporary directory, never the
+# caller's: each tool's are dropped once it is built, so its disk use peaks at
+# the largest one build, not all of them (#37: on GitHub's runner the CI image
+# leaves too little disk for them all).
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 die() { echo "tools.sh: $*" >&2; exit 1; }
@@ -37,7 +42,10 @@ case $(uname -m) in
 esac
 mkdir -p "$here/bin"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+export GOCACHE=$tmp/go-build GOMODCACHE=$tmp/go-mod
+# go_drop: Go's caches emptied (go clean: the module cache is read-only), run from /, outside any module.
+go_drop() { ( cd / && go clean -cache -modcache ); }
+trap 'go_drop >/dev/null 2>&1; rm -rf "$tmp"' EXIT
 
 # fetch URL SHA256: the download in $tmp/<its name>, refused unless its SHA-256 is SHA256.
 fetch() {
@@ -52,6 +60,7 @@ go_install() {
   sum=$(GOFLAGS=-mod=mod go mod download -json "$2@$3" | jq -r .Sum) || die "cannot download $2@$3"
   [ "$sum" = "$4" ] || die "$2@$3: hash $sum, not the pinned $4"
   GOBIN="$here/bin" go install "$1@$3"
+  go_drop
 }
 
 # tacplus, built as images/tacplus.cloudbuild.yaml builds it.
@@ -64,9 +73,11 @@ pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo
      -ldflags="-w -s -X $pkg.Version=v2.2.0-seatrials -X $pkg.GitSha=$commit -X $pkg.BuildID=$commit -X $pkg.ProjectPath=tacplus-dev/tacplus" \
      -o "$here/bin/tacplus" . )
 rm -rf "$src"
+go_drop
 "$here/bin/tacplus" version
 
 TACPLUS="$here/bin/tacplus" "$here/deploy/build-operator.sh"
+go_drop
 
 go_install github.com/mikefarah/yq/v4 github.com/mikefarah/yq/v4 "$yq_version" "$yq_h1"
 go_install github.com/open-policy-agent/opa github.com/open-policy-agent/opa "$opa_version" "$opa_h1"

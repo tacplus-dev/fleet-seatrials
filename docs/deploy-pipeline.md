@@ -57,6 +57,10 @@ fails, a clean tree passes.
 It runs on every pipeline here, a scheduled one included. Pushes and pull requests happen on GitHub, so the
 same job runs there too, on every push to main, every pull request and nightly
 ([`.github/workflows/security.yml`](../.github/workflows/security.yml)).
+The CI image alone fills most of a GitHub runner's free disk, so that job runs on the runner's host: it
+deletes the runner's preinstalled toolsets, then runs `ci/tools.sh` and `ci/security.sh` with `docker run` in
+the image, and `ci/tools.sh` empties Go's build and module caches after each tool it builds (#37,
+[`ci/workflows_test.sh`](../ci/workflows_test.sh)).
 
 **A new finding** fails every pipeline until it is fixed or accepted. Fix it if this repository can: bump the
 pin or the dependency. Otherwise add an entry with the reason it is acceptable here, who decided, and an expiry
