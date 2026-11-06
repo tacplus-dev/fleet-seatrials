@@ -17,10 +17,22 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
-  them. Trivy 0.76.1 carries GO-2026-5932 (x/crypto openpgp), 6860 and 6866 (x/net v0.60.0), and gitleaks v8.30.1
-  carries GO-2025-3922 (#25): bump each in `ci/tools.sh` to the first release with the fix and drop its entries.
+  them. lego 5.6.0 carries GO-2026-5932 (x/crypto openpgp): bump it to the first release with the fix and drop
+  the entry. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
+  fixed dependencies (`ci/tools.sh`, `go_build_fixed`).
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
+- **Move the CI image to the rebuilt line, before 2026-11-19** (2026-11-06, #40): `build:2.3` (Debian 13.7)
+  carries ImageMagick deb13u13 (CVE-2026-109258, -109260, -109262, -109263, -109268, -116149) and apt 3.0.3
+  (CVE-2026-109518), accepted until 2026-11-19 (as tacplus-dev/cluster#8). When tacplus-dev/tacplus#283 rebuilds
+  the line's images, move every `image:` of `ci/*.gitlab-ci.yml`, `.github/workflows/security.yml` and
+  `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE` to the rebuilt one and drop the seven entries; build:2.5
+  carries the same CVEs today (cluster#8), so 2.5 alone does not clear them.
+- **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
+  builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8
+  and xz v0.5.17, because no release of theirs requires them yet. Each override is checked on every build
+  (selected version and module hash); once a tool's release requires the fixed version, bump the tool and drop its
+  override (and build it with `go_install` again, if it needs none).
 - **Trivy scans the CI image by tag** (2026-11-04, #36): the security job scans
   `ghcr.io/tacplus-dev/tacplus/build:2.3`, the tag the jobs run, which moves with each 2.3 patch. Pinning the
   jobs' `image:` by digest would make the scanned image and the one the jobs run provably the same, and fit
