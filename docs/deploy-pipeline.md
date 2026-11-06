@@ -44,9 +44,11 @@ runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
 - **gitleaks** on the whole history and on the tree (the job fetches the history: `FLEET_FETCH_HISTORY=1`);
 - **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform.
 
-The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): Trivy and lego by version and the SHA-256 of their
-release downloads, the others by module version and module hash (osv-scanner built with a pinned Go toolchain, because
-its release's standard library has fixed vulnerabilities). **It fails** on any secret, and on any HIGH or
+The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): lego by version and the SHA-256 of its release
+download, the others by module version and module hash (osv-scanner and Trivy built with a pinned Go toolchain, because
+osv-scanner's release's standard library has fixed vulnerabilities). opa, gitleaks, osv-scanner and Trivy are built
+from source, each in a module of its own that raises a dependency with a fixed vulnerability its release doesn't
+take yet (klauspost/compress, andybalholm/brotli, ulikunitz/xz; #40), each pinned by version and module hash too. **It fails** on any secret, and on any HIGH or
 CRITICAL finding with a fixed version, unless an unexpired entry of
 [`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias. It also fails on a
 tool that cannot run, and on an entry that has expired or has any field other than `id`, `reason`,
@@ -63,7 +65,7 @@ the image, and `ci/tools.sh` empties Go's build and module caches after each too
 [`ci/workflows_test.sh`](../ci/workflows_test.sh)).
 
 **A new finding** fails every pipeline until it is fixed or accepted. Fix it if this repository can: bump the
-pin or the dependency. Otherwise add an entry with the reason it is acceptable here, who decided, and an expiry
+pin or the dependency (for a tool, a fixed dependency version in `ci/tools.sh`'s `go_build_fixed`). Otherwise add an entry with the reason it is acceptable here, who decided, and an expiry
 30 days out. Run it locally after `ci/tools.sh`: `PATH=$PWD/bin:$PATH ci/security.sh` (needs the network).
 
 ### Apply is automatic: seatrials isn't production

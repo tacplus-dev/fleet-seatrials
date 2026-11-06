@@ -10,9 +10,17 @@
 #
 #   schematic-operator (#11)    GO-2025-3528 3829 3887 3888 4100 4108, GO-2026-4762 4918 4958 5026 5475 5506 5758
 #                               5932 6061 6348 6443 6444 6597 6603 6610 6611 6612 6617 6796
-#   trivy 0.76.1                GO-2026-5932 6860 6866
 #   lego 5.6.0 (#35)            GO-2026-5932 (found 2026-11-05, when the cert job pinned it; its latest release)
-#   gitleaks v8.30.1 (#25)      GO-2025-3922
+#
+# Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh
+# builds them from source with the fixed dependencies (#40). And Trivy's scan of the CI image,
+# ghcr.io/tacplus-dev/tacplus/build:2.3 (Debian 13.7; #40): Debian fixed them, the image is not rebuilt yet. Accepted
+# until 2026-11-19, as tacplus-dev/cluster#8; when tacplus-dev/tacplus#283 rebuilds the line's images, move the CI
+# image (every image: of ci/*.gitlab-ci.yml, .github/workflows/security.yml) to the rebuilt one and remove these:
+#
+#   ImageMagick 8:7.1.1.43+dfsg1-1+deb13u13 (fixed in deb13u14)   CVE-2026-109258 109260 109262 109263 109268 116149
+#   apt 3.0.3 (fixed in 3.0.4)                                      CVE-2026-109518
+#   gh and docker-buildx (x/crypto v0.58.0)                         GO-2026-5932, above
 exceptions:
   - id: GO-2025-3528
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
@@ -67,7 +75,7 @@ exceptions:
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp, in schematic-operator (#11), Trivy 0.76.1 and lego 5.6.0 (ci/tools.sh, each its latest release; lego is the cert job's ACME client, #35): none handles an OpenPGP key or message from outside (Trivy reads the CI image from ghcr.io, lego talks ACME and Cloud DNS). The fix is an untagged x/crypto pseudo-version; no operator pin, Trivy or lego release carries it yet."
+    reason: "x/crypto/openpgp, in schematic-operator (#11), lego 5.6.0 (ci/tools.sh, its latest release; the cert job's ACME client, #35), and gh and docker-buildx in the CI image (build:2.3, Trivy's scan): none handles an OpenPGP key or message from outside (lego talks ACME and Cloud DNS; no job runs gh or buildx). The fix is an untagged x/crypto pseudo-version; no operator pin, lego release or rebuilt CI image carries it yet."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-6061
@@ -114,15 +122,31 @@ exceptions:
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
-  - id: GO-2026-6860
-    reason: "x/net/html in Trivy 0.76.1 (ci/tools.sh, its latest release, x/net v0.60.0): Trivy parses no HTML from outside in the security job, which scans the CI image only. Fixed in x/net v0.62.0; no Trivy release with it yet."
-    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
-    expires: 2026-12-04
-  - id: GO-2026-6866
-    reason: "x/net/html rendering in Trivy 0.76.1 (ci/tools.sh, its latest release): the security job writes JSON only, no HTML. Fixed in x/net v0.62.0; no Trivy release with it yet."
-    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
-    expires: 2026-12-04
-  - id: GO-2025-3922
-    reason: "ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (ci/tools.sh, its latest release; #25): gitleaks scans this repository's own history and tree, never an outside xz archive. Fixed in xz v0.5.15; no gitleaks release with it yet."
-    decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
-    expires: 2026-12-04
+  - id: CVE-2026-109258
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-109260
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-109262
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-109263
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-109268
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-116149
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
+  - id: CVE-2026-109518
+    reason: "apt 3.0.3 in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7): an on-path attack on package installs. No job runs apt on the runner (ci/tools.sh fetches each tool by its pinned SHA-256 or module hash); it runs only in the images job's Cloud Build of images/tacplus-build.Dockerfile, which installs the cross compilers from Debian's signed archive inside Google's network. Fixed in apt 3.0.4; arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
+    expires: 2026-11-19
