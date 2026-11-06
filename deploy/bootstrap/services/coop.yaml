@@ -11,7 +11,7 @@ max_live_runs_per_tenant: 8
 ready_timeout_ms: 60000
 kinds:
     - name: echo.ping
-      image: us-central1-docker.pkg.dev/jody1-328023/seabeam/schematic/pigeonhost:local
+      image: us-central1-docker.pkg.dev/tacplus-dev/seatrials/schematic/pigeonhost:local
       cpu: 250m
       memory: 128Mi
       domain_ceiling: []

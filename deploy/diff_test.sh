@@ -109,7 +109,7 @@ mkdir -p "$work/bin"
 cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-  "config current-context") echo "${STUB_CONTEXT:-gke_jody1-328023_us-central1-a_seatrials}" ;;
+  "config current-context") echo "${STUB_CONTEXT:-gke_tacplus-dev_us-central1-a_dev}" ;;
   "diff -f "*)
     [ -n "${STUB_DIFF_STATUS:-}" ] && exit "$STUB_DIFF_STATUS"
     "$KUBECTL_EXTERNAL_DIFF" "$STUB_FIXTURE/LIVE" "$STUB_FIXTURE/MERGED" ;;
@@ -147,6 +147,8 @@ diffsh "a change to letsencrypt passes: the guard is retired (#35)" pass deploy 
 diffsh "a render without letsencrypt, while it runs, passes: its retirement (#35)" pass removed "$work/without-le.yaml"
 diffsh "kubectl diff failing fails" fail same "$work/with-le.yaml" STUB_DIFF_STATUS=2
 diffsh "another kube context is refused" fail same "$work/with-le.yaml" STUB_CONTEXT=gke_prod
+diffsh "the old cluster (jody1's seatrials) is refused" fail same "$work/with-le.yaml" \
+  STUB_CONTEXT=gke_old-project_us-central1-a_seatrials
 out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/kernel" \
   STUB_MANIFEST="$work/with-le.yaml" "$here/diff.sh" 2>&1)
 [[ "$out" == *"changed: v1.ConfigMap.schematic.kernel-config"* ]] && ok "diff.sh names what the apply would change" ||
@@ -178,7 +180,7 @@ EOF
 cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
-  "config current-context") echo "${STUB_CONTEXT:-gke_jody1-328023_us-central1-a_seatrials}" ;;
+  "config current-context") echo "${STUB_CONTEXT:-gke_tacplus-dev_us-central1-a_dev}" ;;
   "get pods -n schematic") ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
 esac

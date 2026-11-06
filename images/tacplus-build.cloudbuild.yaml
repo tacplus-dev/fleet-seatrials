@@ -1,7 +1,7 @@
 # Layers the fleet's tacplus binary onto tacplus's full build image. Source is
 # the images/ directory (the Dockerfile and the launcher's source).
 substitutions:
-  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
   _TACPLUS_COMMIT: unknown
   # The fingerprint of this image's inputs (images/build.sh fingerprint): the
   # service builds run in fp-<fingerprint>, so a change to this file, the

@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# What an apply would change on the seatrials cluster, by object name only:
+# What an apply would change on the cluster dev, by object name only:
 # renders the release the way deploy/apply.sh applies it (`schematic-operator
 # apply --dry-run`, from deploy/bootstrap) and runs `kubectl diff` on it with
 # deploy/diff-names.sh as the diff program, so no object's content reaches the
@@ -20,10 +20,11 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export SCHEMATIC_OPERATOR_DIR="$here/deploy/bootstrap"
-export SCHEMATIC_LOCAL_IMAGES=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
+export SCHEMATIC_LOCAL_IMAGES=${REGISTRY:-us-central1-docker.pkg.dev/tacplus-dev/seatrials}
 operator=${OPERATOR:-$here/bin/schematic-operator}
 ctx=$(kubectl config current-context)
-case "$ctx" in *seatrials*) ;; *) echo "kube context is $ctx, not the seatrials cluster" >&2; exit 1 ;; esac
+want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
+[ "$ctx" = "$want_ctx" ] || { echo "kube context is $ctx, not $want_ctx, the cluster seatrials deploys to" >&2; exit 1; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

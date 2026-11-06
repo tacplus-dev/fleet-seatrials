@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Renders the charts from deploy/bootstrap against the fleet's images in the
-# registry and applies them to the current kube context (the seatrials cluster).
+# registry and applies them to the current kube context (the cluster dev).
 # It applies only the render deploy/diff.sh showed: RENDER_DIGEST, the digest
 # diff recorded (#34). It renders again just before the apply, and it refuses
 # when the render's digest is any other.
@@ -12,10 +12,11 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export SCHEMATIC_OPERATOR_DIR="$here/deploy/bootstrap"
-export SCHEMATIC_LOCAL_IMAGES=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
+export SCHEMATIC_LOCAL_IMAGES=${REGISTRY:-us-central1-docker.pkg.dev/tacplus-dev/seatrials}
 : "${RENDER_DIGEST:?no RENDER_DIGEST: apply only the render deploy/diff.sh showed (docs/deploy-pipeline.md)}"
 ctx=$(kubectl config current-context)
-case "$ctx" in *seatrials*) ;; *) echo "kube context is $ctx, not the seatrials cluster" >&2; exit 1 ;; esac
+want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
+[ "$ctx" = "$want_ctx" ] || { echo "kube context is $ctx, not $want_ctx, the cluster seatrials deploys to" >&2; exit 1; }
 cd "$here"
 bin/schematic-operator generate
 digest=sha256:$(bin/schematic-operator apply --dry-run | sha256sum | cut -d' ' -f1)

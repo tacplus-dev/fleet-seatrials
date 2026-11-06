@@ -110,8 +110,8 @@ staging_checked() { # NAME -> checks every builds submit in $work/log
   local n bad
   n=$(grep -c '^builds submit ' "$work/log")
   bad=$(grep '^builds submit ' "$work/log" | while read -r line; do
-    [[ "$line" == *"--gcs-source-staging-dir gs://jody1-328023-seatrials-build/source"* &&
-       "$line" == *"--gcs-log-dir gs://jody1-328023-seatrials-build/logs"* ]] || echo "$line"
+    [[ "$line" == *"--gcs-source-staging-dir gs://tacplus-dev-seatrials-build/source"* &&
+       "$line" == *"--gcs-log-dir gs://tacplus-dev-seatrials-build/logs"* ]] || echo "$line"
   done)
   if [ "$n" -gt 0 ] && [ -z "$bad" ]; then echo "ok   $1: $n submits stage in the build bucket"
   else echo "FAIL $1: $n submits, without the build bucket: [$bad]"; failures=$((failures + 1)); fi
@@ -160,7 +160,7 @@ for cmd in changed all kernel; do
     "$(grep -m1 'tacplus-build.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^.*_FINGERPRINT=//p' | cut -d' ' -f1)" "$fp_build"
   check "$cmd: services run in the fingerprint's build image" \
     "$(grep 'service.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^_TACPLUS_IMAGE=//p' | cut -d' ' -f1 | sort -u)" \
-    "us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:fp-$fp_build"
+    "us-central1-docker.pkg.dev/tacplus-dev/seatrials/ci/tacplus-build:fp-$fp_build"
 done
 STUB_BUILD_TAGS="seatrials fp-$fp_build" platforms_run "platforms: [arm64]" changed > /dev/null
 check "changed, the build image built: it is reused" "$(submits)" "service.cloudbuild.yaml"

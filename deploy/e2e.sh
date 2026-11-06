@@ -4,8 +4,9 @@
 #
 # The functional end-to-end suite, the deploy pipeline's test stage (#17): every
 # platform capability SeaBeam relies on, run against the deployed fleet after
-# every deploy. SeaBeam starts once it is green on the `tacplus` cluster (Jody,
-# 2026-10-31: "I just mean everything works").
+# every deploy. SeaBeam starts once it is green on the cluster seatrials deploys
+# to, now `dev` (Jody, 2026-10-31, of the `tacplus` cluster it replaced: "I just
+# mean everything works").
 #
 # Each item of the manifest (deploy/e2e.yaml) is a named test with a clear pass
 # or fail. An item that cannot run yet names the open issues it waits on and is

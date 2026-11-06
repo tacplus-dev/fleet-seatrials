@@ -23,7 +23,7 @@ cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
 case "$*" in
-  "config current-context") echo gke_seatrials ;;
+  "config current-context") echo gke_tacplus-dev_us-central1-a_dev ;;
   *"get configmap kernel-config-override"*)
     echo '{"configs":{"oauth_config":{"providers":[{"name":"Google","client_secret":"kept-google"},{"name":"Microsoft","client_secret":"kept-microsoft"}]}}}' ;;
   *"get secret"*) printf '%s' "${STUB_APPLE_B64:-}" ;;

@@ -3,7 +3,7 @@
 # that directory as the build source; tacplus-dev repos are private, so Cloud
 # Build never clones anything itself).
 substitutions:
-  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
   _TACPLUS_COMMIT: unknown
 steps:
   - name: gcr.io/cloud-builders/docker

@@ -1,7 +1,8 @@
 # The functional end-to-end suite (#17; deploy/e2e.sh runs it): every platform
 # capability SeaBeam relies on, each a named test with a clear pass or fail,
 # run against the deployed fleet after every deploy. SeaBeam starts once it is
-# green on the `tacplus` cluster (Jody, 2026-10-31).
+# green on the cluster seatrials deploys to, now `dev` (Jody, 2026-10-31, of
+# the `tacplus` cluster it replaced, #39).
 #
 # Each item: name (capability/test), what it proves, and either run (a bash
 # script at the checkout's root that fails, saying why, when the fleet does not

@@ -75,16 +75,16 @@ job() {
   rm -f "$work/log/"*
   ( cd "$work/job" && env -i HOME="$work" PATH="$work/bin:$PATH" \
       GCP_ID_TOKEN=the-jobs-id-token GCP_WIF_PROVIDER=projects/1/locations/global/workloadIdentityPools/p/providers/g \
-      GCP_DEPLOY_SA=test-idp-deploy@p.iam.gserviceaccount.com CLUSTER=tacplus ZONE=us-central1-a "${envs[@]}" \
+      GCP_DEPLOY_SA=test-idp-deploy@p.iam.gserviceaccount.com CLUSTER=dev ZONE=us-central1-a "${envs[@]}" \
       bash -c "set -eo pipefail; $1" ) > "$work/out" 2>&1
 }
 
 # --- ci_kube ------------------------------------------------------------------
 
 if job -- 'cd src && source ci/lib.sh && ci_gcp && ci_kube && echo "next ran"'; then
-  grep -qx 'kube: gke_p_us-central1-a_tacplus' "$work/out" && grep -qx 'next ran' "$work/out" &&
+  grep -qx 'kube: gke_p_us-central1-a_dev' "$work/out" && grep -qx 'next ran' "$work/out" &&
     ok "ci_kube names the context it set" || fail "ci_kube: $(cat "$work/out")"
-  grep -q '^gcloud container clusters get-credentials tacplus --zone us-central1-a --project jody1-328023' "$work/log/gcloud" &&
+  grep -q '^gcloud container clusters get-credentials dev --zone us-central1-a --project tacplus-dev' "$work/log/gcloud" &&
     ok "ci_kube asks for CLUSTER in ZONE" || fail "get-credentials: $(cat "$work/log/gcloud")"
 else
   fail "ci_kube with credentials: $(cat "$work/out")"
@@ -93,7 +93,7 @@ fi
 if job GKE_REFUSE=1 -- 'cd src && source ci/lib.sh && ci_gcp && ci_kube && echo "next ran"'; then
   fail "ci_kube succeeded with no credentials: $(cat "$work/out")"
 else
-  ! grep -q 'next ran' "$work/out" && grep -q 'kube: no credentials for the cluster tacplus (us-central1-a)' "$work/out" &&
+  ! grep -q 'next ran' "$work/out" && grep -q 'kube: no credentials for the cluster dev (us-central1-a)' "$work/out" &&
     grep -q 'container.clusters.get' "$work/out" &&
     ok "ci_kube fails with gcloud's error when it gets no credentials" || fail "ci_kube refused: $(cat "$work/out")"
 fi
@@ -153,8 +153,8 @@ else
 fi
 
 if job TEST_IDP_SEED=seed TEST_IDP_CLIENT_SEED=client-seed -- "$script"; then
-  grep -qx 'signin.sh ran on gke_p_us-central1-a_tacplus' "$work/out" && ! grep -q skip "$work/out" &&
-    ok "test-idp-signin runs signin.sh on the tacplus cluster when the test IdP is set up" ||
+  grep -qx 'signin.sh ran on gke_p_us-central1-a_dev' "$work/out" && ! grep -q skip "$work/out" &&
+    ok "test-idp-signin runs signin.sh on the dev cluster when the test IdP is set up" ||
     fail "test-idp-signin, set up: $(cat "$work/out")"
 else
   fail "test-idp-signin, set up: $(cat "$work/out")"

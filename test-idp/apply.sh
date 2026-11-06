@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The test IdP's apply (#27), the deploy pipeline's test-idp job: Keycloak in
-# the namespace test-idp of the `tacplus` cluster (test-idp/keycloak.yaml),
+# the namespace test-idp of the `dev` cluster (test-idp/keycloak.yaml),
 # its realms (test-idp/realms/), and the DNS record of idp.test.tacplus.dev.
 # Run where ci_gcp and ci_kube have put gcloud and kubectl in place as
 # test-idp-deploy, which may touch nothing outside that namespace and that
@@ -34,7 +34,8 @@ zone=${DNS_ZONE:-tacplus-dev}
 port=${ADMIN_PORT:-18080}
 [ $# -eq 0 ] || { echo "usage: $0 (no arguments; see the header)" >&2; exit 2; }
 ctx=$(kubectl config current-context)
-case "$ctx" in *_tacplus) ;; *) echo "kube context is $ctx, not the tacplus cluster" >&2; exit 1 ;; esac
+want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
+[ "$ctx" = "$want_ctx" ] || { echo "kube context is $ctx, not $want_ctx, the cluster the test IdP runs on" >&2; exit 1; }
 
 tmp=$(mktemp -d)
 pf=""

@@ -9,7 +9,7 @@
 # as fp-<fingerprint>-<arch> (QEMU runs the Dockerfiles' RUN steps for a
 # platform the worker is not), and the tags above name one index over them.
 substitutions:
-  _REGISTRY: us-central1-docker.pkg.dev/jody1-328023/seabeam
+  _REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
   _SERVICE: unknown
   _LANG: go
   _MAIN: .            # go: the main package to build
@@ -19,7 +19,7 @@ substitutions:
   # contract it generates from (images/build.sh fingerprint). Carried as a tag so
   # `images/build.sh changed` can ask the registry what each image was built from.
   _FINGERPRINT: unknown
-  _TACPLUS_IMAGE: us-central1-docker.pkg.dev/jody1-328023/seabeam/ci/tacplus-build:seatrials
+  _TACPLUS_IMAGE: us-central1-docker.pkg.dev/tacplus-dev/seatrials/ci/tacplus-build:seatrials
   # The platforms to build, space-separated (images/pins.yaml's platforms).
   _PLATFORMS: arm64
   # Registers QEMU for the platforms the worker cannot run natively.

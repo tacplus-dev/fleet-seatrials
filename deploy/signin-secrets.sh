@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Puts the sign-in providers' secrets in place on the seatrials cluster, from
+# Puts the sign-in providers' secrets in place on the cluster dev, from
 # the deploy pipeline's protected GitLab variables (docs/deploy-pipeline.md),
 # never from git, a file or clipboard on a laptop, a terminal echo or anyone's
 # chat. Each is optional; one that is unset keeps what the cluster holds now.
@@ -46,7 +46,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 ns=${NAMESPACE:-schematic}
 [ $# -eq 0 ] || { echo "usage: $0 (the secrets come from FLEET_* variables; see the header)" >&2; exit 2; }
 ctx=$(kubectl config current-context)
-case "$ctx" in *seatrials*) ;; *) echo "kube context is $ctx, not the seatrials cluster" >&2; exit 1 ;; esac
+want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
+[ "$ctx" = "$want_ctx" ] || { echo "kube context is $ctx, not $want_ctx, the cluster seatrials deploys to" >&2; exit 1; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

@@ -41,20 +41,20 @@ ci_gcp() {
   gcloud auth login --cred-file="$ci_tmp/gcp-federation.json" --quiet >/dev/null
   # The same credential for what reads Application Default Credentials (lego's Cloud DNS, ci/cert.sh).
   export GOOGLE_APPLICATION_CREDENTIALS=$ci_tmp/gcp-federation.json
-  gcloud config set project "${GCP_PROJECT:-jody1-328023}" >/dev/null 2>&1
+  gcloud config set project "${GCP_PROJECT:-tacplus-dev}" >/dev/null 2>&1
   echo "gcp: $(gcloud config get account 2>/dev/null) through workload identity federation"
 }
 
-# ci_kube: kubectl on the seatrials cluster (CLUSTER in ZONE), as the deploy
-# service account. Every job calls it in an && list, where errexit is off, so
-# it returns on its own failures: no credentials for the cluster (gcloud's
-# error), or no current context (#31).
+# ci_kube: kubectl on the cluster seatrials deploys to (CLUSTER in ZONE: dev,
+# in tacplus-dev), as the deploy service account. Every job calls it in an &&
+# list, where errexit is off, so it returns on its own failures: no credentials
+# for the cluster (gcloud's error), or no current context (#31).
 ci_kube() {
-  local cluster=${CLUSTER:-seatrials} zone=${ZONE:-us-central1-a} context
+  local cluster=${CLUSTER:-dev} zone=${ZONE:-us-central1-a} context
   gcloud components install kubectl gke-gcloud-auth-plugin --quiet >/dev/null 2>&1 || true
   export KUBECONFIG=$ci_tmp/kubeconfig USE_GKE_GCLOUD_AUTH_PLUGIN=True
   gcloud container clusters get-credentials "$cluster" --zone "$zone" \
-      --project "${GCP_PROJECT:-jody1-328023}" >/dev/null 2>"$ci_tmp/kube-err" ||
+      --project "${GCP_PROJECT:-tacplus-dev}" >/dev/null 2>"$ci_tmp/kube-err" ||
     { echo "kube: no credentials for the cluster $cluster ($zone) as $(gcloud config get account 2>/dev/null): $(grep -m1 '^ERROR' "$ci_tmp/kube-err" || head -c 300 "$ci_tmp/kube-err")" >&2
       return 1; }
   context=$(kubectl config current-context 2>/dev/null) && [ -n "$context" ] ||

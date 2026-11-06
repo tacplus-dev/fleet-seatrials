@@ -11,8 +11,8 @@ value, derived from the pipeline's seeds and never printed.
 
 ## Where it runs
 
-- **Cluster:** the `tacplus` GKE cluster (jody1-328023, us-central1-a), namespace `test-idp`. Nothing is shared
-  with the fleet's namespaces.
+- **Cluster:** the `dev` GKE cluster (tacplus-dev/cloud's dev stack: project tacplus-dev, us-central1-a),
+  namespace `test-idp`. Nothing is shared with the fleet's namespaces.
 - **Keycloak:** a single-replica StatefulSet, pinned by digest, with its file-backed database on a 1 GiB PVC
   ([`keycloak.yaml`](keycloak.yaml)).
 - **Exposure:** a GKE Ingress with its own load balancer, on the reserved global address `test-idp`. TLS is a

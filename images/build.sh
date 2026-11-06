@@ -46,7 +46,7 @@
 #   <registry>/schematic/<service>:<fleet commit>  and  :local  and  :fp-<hash>
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
-registry=${REGISTRY:-us-central1-docker.pkg.dev/jody1-328023/seabeam}
+registry=${REGISTRY:-us-central1-docker.pkg.dev/tacplus-dev/seatrials}
 tacplus_repo=https://github.com/tacplus-dev/tacplus.git
 tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
@@ -56,7 +56,7 @@ fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
 # check it owns it, which needs storage.buckets.list on the project; the
 # synchronous submits stream their logs, and the default logs bucket needs
 # project Viewer. The deploy account has neither (docs/deploy-pipeline.md).
-build_bucket=gs://jody1-328023-seatrials-build
+build_bucket=gs://tacplus-dev-seatrials-build
 staging=(--gcs-source-staging-dir "$build_bucket/source" --gcs-log-dir "$build_bucket/logs")
 # platforms: [arm64, amd64] -> "amd64 arm64", sorted, so the order in pins.yaml
 # changes neither the build nor its fingerprint.

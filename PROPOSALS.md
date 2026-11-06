@@ -5,6 +5,15 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **The fleet's gateway behind the Gateway on the reserved address `gateway`** (2026-11-06, #39; split out by
+  the hub, 2026-11-05, which files the roadmap item once Jody says where TLS ends): the operator renders the
+  gateway as a `type: LoadBalancer` Service, a regional passthrough load balancer that the global address
+  `gateway` (34.54.57.155, tacplus-dev/cloud#13) cannot back. The recommendation on #39: tacplus-dev/cluster
+  owns one `gke-l7-global-external-managed` Gateway naming `gateway`, each namespace (seatrials, the test IdP)
+  attaches HTTPRoutes, tacplus-dev/operator renders the gateway's Service as its backend (NEG, `appProtocol`
+  HTTP/2) instead of a LoadBalancer, and #35's certificate goes on the Gateway, with `idp.test.tacplus.dev`
+  covered too. Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
+  stays pending instead of taking an ephemeral public IP.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
@@ -112,9 +121,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   it), and the cluster needs an image pull secret from a read-only packages token, held in GitLab, installed in
   `schematic` and in each tenant namespace nsproxy creates (nsproxy copying it, or the operator rendering it).
   Making the packages public would remove both, but the repos are private by choice.
-- **Create and initialise a trial cluster from the pipeline** (2026-10-29, #17): `cluster/create.sh` and
-  `deploy/init.sh` still run where someone has gcloud. A new trial's CA would then go straight into the
-  project's variables, never through a laptop.
+- **Initialise a trial's CA from the pipeline** (2026-10-29, #17; narrowed 2026-11-05, #39: the cluster is
+  tacplus-dev/cloud's `dev`, and `cluster/` is gone): `deploy/init.sh` still runs where someone has the tools.
+  A new trial's CA would then go straight into the project's variables, never through a laptop.
 - **A dry run on every push to main** (2026-10-29, #17): the pipeline runs from the web, the API or a
   schedule. A GitHub webhook to a GitLab pipeline trigger, whose token is held where agents cannot read it,
   would show each commit's diff before anyone asks.

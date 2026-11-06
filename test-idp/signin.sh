@@ -20,7 +20,7 @@
 #      IdP, and is then refused; the next test-idp apply puts the user back.
 #
 # Needs the seeds (TEST_IDP_SEED, TEST_IDP_CLIENT_SEED) and, for 4 and to put
-# the realms in step first, kubectl on the tacplus cluster as test-idp-deploy.
+# the realms in step first, kubectl on the dev cluster as test-idp-deploy.
 # test-idp/local.sh runs it on a local Keycloak: TEST_IDP_URL is then its URL,
 # ADMIN_URL its admin API (no port-forward), and TACPLUS_HOST=- skips 3.
 set -uo pipefail

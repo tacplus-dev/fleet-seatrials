@@ -26,7 +26,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
 | apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else, after a secret is rotated. |
-| apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `tacplus` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
+| apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `dev` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
 
@@ -169,7 +169,7 @@ its key aren't variables: they are versions in Secret Manager ([the certificate]
 | --- | --- | --- | --- |
 | `TACPLUS_READER_APP_ID` | plain | all | The `tacplus-reader` GitHub App's id. Not a secret ([below](#github-the-tacplus-reader-app-no-stored-token)). |
 | `TACPLUS_READER_INSTALLATION_ID` | plain | all | Its installation on tacplus-dev. Not a secret. |
-| `GCP_WIF_PROVIDER` | plain | all | `projects/<number>/locations/global/workloadIdentityPools/gitlab-tacplus-dev/providers/gitlab-com`. |
+| `GCP_WIF_PROVIDER` | plain, protected | all | `projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-fleet-seatrials`, tacplus-dev/cloud's provider for this project's protected `main` ([below](#gcp-workload-identity-federation-no-key-files)). |
 | `FLEET_CRYPTO_YAML` | file | `seatrials*` | `deploy/bootstrap/crypto.yaml`, the fleet's CA and cluster PKI (already stored; its scope widens from `seatrials` to `seatrials*`). |
 | `FLEET_CA_PEM` | file | `seatrials*` | `deploy/bootstrap/ca.pem` (already stored; scope as above). |
 | `FLEET_GOOGLE_CLIENT_SECRET` | masked | `seatrials*` | Google OAuth client `seatrials-web`. |
@@ -211,8 +211,8 @@ code is the `.github-reader` block, the same in both pipeline files:
 
 1. The job's GitLab ID token (`GCP_ID_TOKEN`) is exchanged through Workload Identity Federation, in the pool
    below, as the job itself (no service account).
-2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us`), which never leaves
-   KMS. The job asks as itself first. If KMS refuses that principal (HTTP 401 or 403), the job asks again as
+2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us`, in jody1-328023 until
+   it moves, tacplus-dev/cloud#15), which never leaves KMS. The job asks as itself first. If KMS refuses that principal (HTTP 401 or 403), the job asks again as
    the service account `fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com` (`TACPLUS_READER_SA`),
    which it may impersonate (#30). Each refusal is logged with KMS's HTTP status and error, for example
    `Cloud KMS refused to sign with … as the job itself: HTTP 403 PERMISSION_DENIED: Permission
@@ -230,15 +230,18 @@ GitHub.
 **What the hub sets up** (once; the key and the app already exist for tacplus-dev/build):
 
 - The `tacplus-reader` app installed on tacplus-dev/fleet-seatrials, if its installation selects repositories.
-- The key's binding for this project's protected main. The pool `gitlab-tacplus-dev` already admits only
-  tacplus-dev/fleet-seatrials on protected `main` (its condition, below):
+- The key's binding for this project's protected main. The job federates through `GCP_WIF_PROVIDER`, tacplus-dev's
+  pool `gitlab-com`, whose provider admits only tacplus-dev/fleet-seatrials on protected `main`. The KMS key is
+  still in jody1-328023 (KMS keys stay until they move), so its binding names the principal of that other
+  project's pool (**Jody**: the key's IAM is his).
+  It is a step of the cutover ([below](#the-cutover-to-dev)): with only the old pool's binding, every job fails
+  to fetch this repository once `GCP_WIF_PROVIDER` is the new provider:
 
   ```sh
-  project=jody1-328023
-  number=$(gcloud projects describe $project --format='value(projectNumber)')
-  gcloud kms keys add-iam-policy-binding tacplus-reader --keyring=looper --location=us --project=$project \
-    --role=roles/cloudkms.signer \
-    --member="principalSet://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/gitlab-tacplus-dev/attribute.project_path/tacplus-dev/fleet-seatrials"
+  kms_project=jody1-328023   # the KMS key's project, until it moves
+  principal=principalSet://iam.googleapis.com/projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/fleet-seatrials
+  gcloud kms keys add-iam-policy-binding tacplus-reader --keyring=looper --location=us --project=$kms_project \
+    --role=roles/cloudkms.signer --member="$principal"
   ```
 
 - If the dry run's log shows the direct principal refused (the first dry run, pipeline 3015778552, failed
@@ -248,14 +251,14 @@ GitHub.
   `seatrials-deploy`, which also holds Cloud Build and the cluster:
 
   ```sh
-  project=jody1-328023
-  number=$(gcloud projects describe $project --format='value(projectNumber)')
-  sa=fleet-seatrials-reader@$project.iam.gserviceaccount.com
-  gcloud services enable iamcredentials.googleapis.com --project=$project   # if it is not already
-  gcloud iam service-accounts create fleet-seatrials-reader --project=$project \
-    --display-name="fleet-seatrials: signs as the tacplus-reader app"
-  gcloud iam service-accounts add-iam-policy-binding $sa --project=$project --role=roles/iam.workloadIdentityUser \
-    --member="principalSet://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/gitlab-tacplus-dev/attribute.project_path/tacplus-dev/fleet-seatrials"
+  reader_project=jody1-328023   # the reader's project, until it moves
+  sa=fleet-seatrials-reader@$reader_project.iam.gserviceaccount.com
+  principal=principalSet://iam.googleapis.com/projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/fleet-seatrials
+  gcloud services enable iamcredentials.googleapis.com --project=$reader_project   # if it is not already
+  gcloud iam service-accounts create fleet-seatrials-reader --project=$reader_project \
+    --display-name="fleet-seatrials: signs as the tacplus-reader app"   # if it does not exist yet
+  gcloud iam service-accounts add-iam-policy-binding $sa --project=$reader_project --role=roles/iam.workloadIdentityUser \
+    --member="$principal"
   ```
 
   **Jody** binds it to the key (the key's IAM is his):
@@ -271,46 +274,65 @@ GitHub.
 
 ## GCP: Workload Identity Federation, no key files
 
-The jobs reach GCP as the service account `seatrials-deploy@jody1-328023.iam.gserviceaccount.com`. Each job
-exchanges its GitLab ID token (`id_tokens: GCP_ID_TOKEN`, audience
-`https://iam.googleapis.com/$GCP_WIF_PROVIDER`) for a short-lived Google token (`ci_gcp` in
-[`ci/lib.sh`](../ci/lib.sh)). No key file exists. This is an IAM change: **the hub makes it, with Jody's
-OK**.
+seatrials deploys to tacplus-dev/cloud's `dev` stack in seabeam.net: the project `tacplus-dev` and its GKE
+cluster `dev` (us-central1-a), in the namespaces tacplus-dev/cluster gives it (#39; tacplus-dev/roadmap
+`decisions/only-vms-are-k8s-nodes-2026-11-04.md`, addendum "a new cluster in seabeam.net"). The jobs reach GCP
+as the service account `seatrials-deploy@tacplus-dev.iam.gserviceaccount.com`. Each job exchanges its GitLab
+ID token (`id_tokens: GCP_ID_TOKEN`, audience `https://iam.googleapis.com/$GCP_WIF_PROVIDER`) for a
+short-lived Google token (`ci_gcp` in [`ci/lib.sh`](../ci/lib.sh)), through the provider
+`projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-fleet-seatrials`,
+which admits only this project's protected `main`. No key file exists. Nothing here is made by hand: the
+account, its provider and its roles are tacplus-dev/cloud's (the `dev` stack's deployment `seatrials`), and
+its rights in the cluster are tacplus-dev/cluster's (`deployments.yaml`). The pipeline file names the target
+(`GCP_PROJECT`, `CLUSTER`, `ZONE`, `GCP_DEPLOY_SA`, `REGISTRY`); `ci/target_test.sh` checks it, the scripts'
+defaults, and that nothing else names jody1-328023 but the reader and its KMS key.
 
-```sh
-project=jody1-328023
-number=$(gcloud projects describe $project --format='value(projectNumber)')
-pool=gitlab-tacplus-dev provider=gitlab-com sa=seatrials-deploy@$project.iam.gserviceaccount.com
-gcloud iam workload-identity-pools create $pool --project $project --location global \
-  --display-name "GitLab tacplus-dev"
-# Only this project's protected main, and only from gitlab.com.
-gcloud iam workload-identity-pools providers create-oidc $provider --project $project --location global \
-  --workload-identity-pool $pool --issuer-uri https://gitlab.com \
-  --allowed-audiences "https://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/$pool/providers/$provider" \
-  --attribute-mapping 'google.subject=assertion.sub,attribute.project_path=assertion.project_path,attribute.ref=assertion.ref,attribute.ref_protected=assertion.ref_protected' \
-  --attribute-condition 'assertion.project_path == "tacplus-dev/fleet-seatrials" && assertion.ref_type == "branch" && assertion.ref == "main" && assertion.ref_protected == "true"'
-gcloud iam service-accounts create seatrials-deploy --project $project --display-name "seatrials deploy pipeline"
-gcloud iam service-accounts add-iam-policy-binding $sa --project $project --role roles/iam.workloadIdentityUser \
-  --member "principalSet://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/$pool/attribute.project_path/tacplus-dev/fleet-seatrials"
-```
+`GCP_DEPLOY_SA` is the pipeline file's. If the project sets it as a variable too, scope it to `seatrials*`: an
+unscoped project variable overrides every job's own, the test IdP's jobs' `test-idp-deploy` included.
 
 What the account may do, and nothing more:
 
-- **Cloud Build** (images): `roles/cloudbuild.builds.editor` and `roles/serviceusage.serviceUsageConsumer` on
-  the project. `roles/storage.admin` on the bucket `gs://jody1-328023-seatrials-build` only (us-central1,
-  uniform access, public access prevented, objects deleted after 7 days), where `images/build.sh` has
-  `gcloud builds submit` stage the source (`--gcs-source-staging-dir .../source`) and write the build logs
-  (`--gcs-log-dir .../logs`); the account the builds run as has `roles/storage.objectAdmin` on it. Not the
-  project's default bucket `gs://jody1-328023_cloudbuild`: staging there, gcloud first checks that the bucket
-  belongs to the project by listing the project's buckets, which needs `storage.buckets.list` on the whole
-  project, and the synchronous submits stream their logs from the default logs bucket, which needs project
-  Viewer. `roles/iam.serviceAccountUser` on the service account the builds
-  run as, which already pushes to Artifact Registry. `roles/artifactregistry.reader` on the repository
-  `seabeam`, so `images/build.sh` can read the `fp-` tags.
-- **The seatrials cluster:** `roles/container.clusterViewer` with the IAM condition
-  `resource.name == "projects/jody1-328023/locations/us-central1-a/clusters/seatrials"`, enough for
-  `get-credentials`. Then, in the cluster, a ClusterRoleBinding of `cluster-admin` to the user `$sa`: the helm
-  release creates cluster-scoped objects. No other cluster, and no other project.
+- **Its certificate** (#35): it adds and reads the versions of its secrets `tls-seatrials` and
+  `acme-account-seatrials`, and administers the zone `_acme-challenge.tacplus.dev`. The `dev` stack makes these.
+- **Cloud Build** (images), in tacplus-dev: `roles/cloudbuild.builds.editor` and
+  `roles/serviceusage.serviceUsageConsumer` on the project. `roles/storage.admin` on the bucket
+  `gs://tacplus-dev-seatrials-build` only (us-central1, uniform access, public access prevented, objects deleted
+  after 7 days), where `images/build.sh` has `gcloud builds submit` stage the source
+  (`--gcs-source-staging-dir .../source`) and write the build logs (`--gcs-log-dir .../logs`); the account the
+  builds run as has `roles/storage.objectAdmin` on it. Not the project's default bucket: staging there, gcloud
+  first checks that the bucket belongs to the project by listing the project's buckets, which needs
+  `storage.buckets.list` on the whole project, and the synchronous submits stream their logs from the default
+  logs bucket, which needs project Viewer. `roles/iam.serviceAccountUser` on the service account the builds run
+  as, which pushes to the registry.
+- **The registry** `us-central1-docker.pkg.dev/tacplus-dev/seatrials` (`REGISTRY`): Docker, us-central1, the
+  fleet's images (`schematic/<service>`, `ci/tacplus-build`). `roles/artifactregistry.reader` on it, so
+  `images/build.sh` can read the `fp-` tags; the builds' account writes it, and the `dev` nodes' account
+  (`gke-nodes`) reads it. It is a deploy registry, not tacplus-ci's `build-cache`: that one is BuildKit's
+  cache, written and read only by tacplus-dev/build's identity and emptied of what is 30 days old, so the
+  nodes could not pull from it and a running fleet's images would go.
+- **The cluster `dev`:** `roles/container.clusterViewer` with the IAM condition
+  `resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`, enough for `get-credentials`.
+  In the cluster, what tacplus-dev/cluster's `deployments.yaml` gives `seatrials-deploy`: its Role in
+  `tac-seatrials`. The fleet still renders into the namespace `schematic`, with cluster-scoped objects, so it
+  applies on `dev` only once it moves to `tac-seatrials` (#4).
+
+The Cloud Build, registry and cluster grants are not in the `dev` stack yet: tacplus-dev/cloud#20 asks for
+them, with the test IdP's account ([below](#the-test-idp)).
+
+### The cutover to `dev`
+
+In order (#39):
+
+1. **The hub** sets the project's protected `GCP_WIF_PROVIDER` to the provider above (and `GCP_DEPLOY_SA`, if
+   the project carries it, to `seatrials-deploy@tacplus-dev.iam.gserviceaccount.com`, scoped to `seatrials*`).
+   **Jody** binds the new pool's principal on the `tacplus-reader` key, and the hub on `fleet-seatrials-reader`
+   if the jobs sign as it ([above](#github-the-tacplus-reader-app-no-stored-token)), the same day: from then
+   on, the jobs federate through tacplus-dev's pool, and the reader is asked as that principal.
+2. This repository's retarget lands (#39).
+3. **The hub** re-pins the project's `.gitlab-ci.yml`.
+
+The first deploy on `dev` waits for the certificate (#35), Jody's DNS cutover (tacplus-dev/cloud#13), the
+grants above and the move to `tac-seatrials` (#4).
 
 ## The runner
 
@@ -344,7 +366,7 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 ## The test IdP
 
 The test IdP (#27, [test-idp/README.md](../test-idp/README.md)) is a Keycloak in the namespace `test-idp` of
-the `tacplus` cluster (us-central1-a), at https://idp.test.tacplus.dev. Its realms emulate Google's,
+the `dev` cluster (tacplus-dev, us-central1-a), at https://idp.test.tacplus.dev. Its realms emulate Google's,
 Microsoft's and Apple's claim shapes, so sign-in is tested with no person.
 
 **Its jobs:**
@@ -353,32 +375,22 @@ Microsoft's and Apple's claim shapes, so sign-in is tested with no person.
   the realms through a port-forward, and the A record. It is manual, and it changes nothing of the fleet.
 - `test-idp-signin` checks it, and tacplus.dev's sign-in through it.
 
-Both run as their own service account, `test-idp-deploy@jody1-328023.iam.gserviceaccount.com`, never as
+Both run as their own service account, `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, never as
 `seatrials-deploy`. They are in their own protected environment, `test-idp`.
 
-**One-time setup (the hub, with Jody's OK for the IAM).** After the WIF pool and the runner above:
+**One-time setup.** Nothing is made by hand on `dev`: tacplus-dev/cloud#20 asks for the account,
+the equivalent in tacplus-dev of the account the old cluster's project had:
 
-```sh
-project=jody1-328023
-number=$(gcloud projects describe $project --format='value(projectNumber)')
-pool=gitlab-tacplus-dev provider=gitlab-com sa=test-idp-deploy@$project.iam.gserviceaccount.com
-# The provider maps the job's environment too, so a binding can name it.
-gcloud iam workload-identity-pools providers update-oidc $provider --project $project --location global \
-  --workload-identity-pool $pool \
-  --attribute-mapping 'google.subject=assertion.sub,attribute.project_path=assertion.project_path,attribute.ref=assertion.ref,attribute.ref_protected=assertion.ref_protected,attribute.environment=assertion.environment'
-gcloud iam service-accounts create test-idp-deploy --project $project --display-name "test IdP pipeline (#27)"
-gcloud iam service-accounts add-iam-policy-binding $sa --project $project --role roles/iam.workloadIdentityUser \
-  --member "principalSet://iam.googleapis.com/projects/$number/locations/global/workloadIdentityPools/$pool/attribute.environment/test-idp"
-# get-credentials on tacplus only; the record in tacplus-dev only.
-gcloud projects add-iam-policy-binding $project --role roles/container.clusterViewer --member "serviceAccount:$sa" \
-  --condition 'title=tacplus only,expression=resource.name == "projects/jody1-328023/locations/us-central1-a/clusters/tacplus"'
-gcloud dns managed-zones add-iam-policy-binding tacplus-dev --project $project --role roles/dns.admin \
-  --member "serviceAccount:$sa"
-# The Ingress's address.
-gcloud compute addresses create test-idp --global --project $project
-# The namespace and the account's rights in it, as cluster-admin.
-kubectl --context gke_jody1-328023_us-central1-a_tacplus apply -f test-idp/rbac.yaml
-```
+- `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, which only this project's jobs in the environment
+  `test-idp`, on protected `main`, may become: the provider maps the job's environment, and the binding names
+  this project and that environment together, since the pool `gitlab-com` is shared by tacplus-dev's projects;
+- `roles/container.clusterViewer` conditioned on the cluster `dev` (`get-credentials`), and no other role.
+
+In the cluster, the namespace `test-idp` and the account's rights in it ([`test-idp/rbac.yaml`](../test-idp/rbac.yaml))
+are applied as cluster-admin, which on `dev` only tacplus-dev/cluster's pipeline holds. Its exposure on `dev`,
+behind the Gateway on the reserved address `gateway` with its A record written by tacplus-dev/cloud
+(tacplus-dev/cloud#13), is #39's open question; until then `test-idp/keycloak.yaml` still has its own Ingress
+and address, and `test-idp/apply.sh` writes its record.
 
 Then, in the GitLab project:
 
@@ -401,7 +413,8 @@ off as skipped, not failed.
 ## The functional suite
 
 The `test` job runs every platform capability SeaBeam relies on against the deployed fleet, after every deploy.
-SeaBeam starts once the suite is green on the `tacplus` cluster (Jody, 2026-10-31: "I just mean everything
+SeaBeam starts once the suite is green on the cluster seatrials deploys to, now `dev` (Jody, 2026-10-31, of the
+`tacplus` cluster it replaced: "I just mean everything
 works"). Each item of [`deploy/e2e.yaml`](../deploy/e2e.yaml) is a named test (`capability/test`) that says
 what it proves. It has either a `run` that passes or fails, or the open issues it `waits_on`. An item that
 can't run yet is reported as **WAITING**, with those issues and why, and is never left out. In GitLab's test

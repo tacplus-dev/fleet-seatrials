@@ -18,12 +18,25 @@ all, stamps fleet-owned caller lists (llmproxy admits exactly the services here 
 client of it), writes `fleet.lock`, and leaves `build/proto` as the merged tree the fleet-side
 services are generated from.
 
-The cluster is created for a trial and destroyed after it; nothing here is long-lived.
+## Where it runs
+
+seatrials deploys to tacplus-dev/cloud's `dev` stack in seabeam.net (#39): the project **`tacplus-dev`**, its
+GKE cluster **`dev`** (us-central1-a), as `seatrials-deploy@tacplus-dev.iam.gserviceaccount.com` through the
+federation provider `tacplus-dev-fleet-seatrials` (this project's protected `main` only), with its images in
+the registry `us-central1-docker.pkg.dev/tacplus-dev/seatrials`. The test IdP's jobs run there as
+`test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`. The cluster is tacplus-dev/cloud's, and the namespaces
+and rights the fleet has in it are tacplus-dev/cluster's: nothing here creates or deletes a cluster.
+
+**These stay in jody1-328023 until they move** (tacplus-dev/cloud#15): the `tacplus-reader` app's KMS key
+(`TACPLUS_READER_KMS_KEY`) and the reader's service account (`TACPLUS_READER_SA`), the reader path every job
+fetches this repository through, and the drift path; and the Google OAuth client `seatrials-web`
+(`deploy/bootstrap/services/oauth.yaml`). `ci/target_test.sh` checks that nothing else names that project.
+The cutover's order and the grants still to come are in
+[docs/deploy-pipeline.md](docs/deploy-pipeline.md#gcp-workload-identity-federation-no-key-files).
 
 ## Layout
 
 - `fleet.yaml`, `fleet.lock`, `build/proto` — the fleet: what runs, at which commits, and the merged proto tree.
-- `cluster/` — create and destroy the small GKE cluster.
 - `images/` — Cloud Build pipeline: `images/build.sh tacplus` (the fleet's tacplus and build images at
   `images/pins.yaml`), `images/build.sh all` (every service at its locked commit, into Artifact Registry as
   `schematic/<service>:<fleet commit>` and `:local`). Every image runs under the launcher. Images are built for
@@ -78,7 +91,7 @@ never restarted no longer applies: there is nothing left to restart. (letsencryp
 as a contract the pinned gateway imports, until the gateway pin moves past its retirement: PROPOSALS.md.) The first time, on a new cluster:
 
 ```
-cluster/create.sh && deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project
+deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project
 # the pipeline: images, generate, diff, apply (by itself), test
 cd client && tacplus build && go build -o seatrials ./cmd/seatrials   # generate, then build; public TLS: no SEATRIALS_CA needed
 ./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again

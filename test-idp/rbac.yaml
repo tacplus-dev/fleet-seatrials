@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The test IdP's namespace and what the pipeline's test-idp jobs may do on the
-# `tacplus` cluster, as the GCP service account test-idp-deploy (through
+# `dev` cluster, as the GCP service account test-idp-deploy (through
 # Workload Identity Federation, docs/deploy-pipeline.md): the objects of
 # test-idp/keycloak.yaml in the namespace test-idp, and nothing in any other
 # namespace. The hub applies this file once, as cluster-admin; the jobs cannot
@@ -31,7 +31,7 @@ metadata:
   name: test-idp-namespace
 roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: test-idp-namespace }
 subjects:
-  - { apiGroup: rbac.authorization.k8s.io, kind: User, name: test-idp-deploy@jody1-328023.iam.gserviceaccount.com }
+  - { apiGroup: rbac.authorization.k8s.io, kind: User, name: test-idp-deploy@tacplus-dev.iam.gserviceaccount.com }
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -66,4 +66,4 @@ metadata:
   namespace: test-idp
 roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: test-idp-deploy }
 subjects:
-  - { apiGroup: rbac.authorization.k8s.io, kind: User, name: test-idp-deploy@jody1-328023.iam.gserviceaccount.com }
+  - { apiGroup: rbac.authorization.k8s.io, kind: User, name: test-idp-deploy@tacplus-dev.iam.gserviceaccount.com }

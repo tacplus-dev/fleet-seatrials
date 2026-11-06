@@ -33,7 +33,7 @@
 # schedule): when cert renews the certificate, the new version is rendered,
 # diffed and applied by itself, and every gateway hot-swaps it with no restart.
 #
-# and the test IdP (#27, test-idp/README.md), on the `tacplus` cluster:
+# and the test IdP (#27, test-idp/README.md), on the `dev` cluster:
 #
 #   test-idp         manual, protected environment test-idp: Keycloak, its realms, its DNS record
 #   test-idp-signin  every realm's discovery and claim shapes; one user per realm signs in
@@ -58,8 +58,18 @@ stages: [tools, checks, cert, images, generate, diff, apply, test]
 
 variables:
   GIT_STRATEGY: none
-  GCP_PROJECT: jody1-328023
-  GCP_DEPLOY_SA: seatrials-deploy@jody1-328023.iam.gserviceaccount.com
+  # Where seatrials deploys: tacplus-dev/cloud's dev stack in seabeam.net, the
+  # project tacplus-dev and its cluster dev (#39), as its deploy account there,
+  # through the federation provider GCP_WIF_PROVIDER names (docs/deploy-pipeline.md).
+  GCP_PROJECT: tacplus-dev
+  CLUSTER: dev
+  ZONE: us-central1-a
+  GCP_DEPLOY_SA: seatrials-deploy@tacplus-dev.iam.gserviceaccount.com
+  # The fleet's images: images/build.sh pushes them there, and the operator
+  # renders them from there (SCHEMATIC_LOCAL_IMAGES).
+  REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
+  # The reader and its KMS key stay in jody1-328023 until they move
+  # (tacplus-dev/cloud#15; README).
   # The tacplus-reader app's key, in Cloud KMS (.github-reader).
   TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
   # The service account the block signs as when KMS does not accept the job's
@@ -254,7 +264,7 @@ generate:
     - |
       cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
-      export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
+      export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate
       deploy/checks.sh opa deploy/bootstrap/configs
 
@@ -311,7 +321,7 @@ test:
     - |
       cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
-      export SCHEMATIC_LOCAL_IMAGES=us-central1-docker.pkg.dev/jody1-328023/seabeam
+      export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate >/dev/null
       E2E_CONFIGS=$PWD/deploy/bootstrap/configs E2E_JUNIT=$CI_PROJECT_DIR/e2e.xml deploy/e2e.sh
   # The functional suite's report (deploy/e2e.yaml), the evidence: GitLab's
@@ -322,15 +332,13 @@ test:
       junit: e2e.xml
 
 # The test IdP's jobs run as test-idp-deploy, which reaches the namespace
-# test-idp of the tacplus cluster and the record idp.test.tacplus.dev only
+# test-idp of the dev cluster and the record idp.test.tacplus.dev only
 # (test-idp/rbac.yaml, docs/deploy-pipeline.md), in the protected environment
 # test-idp, whose variables are the test IdP's seeds.
 .test-idp:
   resource_group: test-idp
   variables:
-    GCP_DEPLOY_SA: test-idp-deploy@jody1-328023.iam.gserviceaccount.com
-    CLUSTER: tacplus
-    ZONE: us-central1-a
+    GCP_DEPLOY_SA: test-idp-deploy@tacplus-dev.iam.gserviceaccount.com
 
 test-idp:
   extends: .test-idp
