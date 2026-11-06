@@ -90,8 +90,8 @@ want "test-idp/rbac.yaml's user" "$users" "$test_idp_sa"
 # Nothing names jody1-328023, or its project number, but the reader and its
 # KMS key, which stay there until they move (README), and the Google OAuth
 # client seatrials-web, which is jody1-328023's (deploy/bootstrap/services/oauth.yaml).
-# HISTORY.md and ROADMAP.md record the past and are not this repository's to edit.
-stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' |
+# HISTORY.md and ROADMAP.md record the past and are not this repository's to edit; this test names it.
+stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' ':!ci/target_test.sh' |
   grep -v -i -e reader -e kms |
   grep -v -e '^deploy/bootstrap/services/oauth\.yaml:[0-9]*: *# OAuth client "seatrials-web" in GCP project jody1-328023' \
     -e '^deploy/bootstrap/services/oauth\.yaml:[0-9]*: *client_id: 23279701427-' \
