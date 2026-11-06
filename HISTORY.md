@@ -14,3 +14,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-03 looper issue Deploy automatically on main after a successful diff (not production): no manual apply (#34, 186abb6)
 - 2026-11-04 looper issue Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, with an enforced security-exceptions.yaml (#36, 76698ca)
 - 2026-11-06 looper issue security workflow fails on main: the runner runs out of disk in ci/tools.sh building osv-scanner, so no security report (#37, e3b56ca)
+- 2026-11-06 looper issue security job fails the policy: GO-2026-6865 (klauspost/compress) in gitleaks, opa, osv-scanner, trivy; GO-2026-6888 (brotli) in gitleaks; ImageMagick and apt CVEs in build:2.3 (#40)
