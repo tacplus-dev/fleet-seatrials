@@ -1,0 +1,400 @@
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n "exception\|expire\|stale\|unused" ci/security.sh | head -30; git log --oneline -3 -- security-exceptions.yaml; sed -n 340,350p docs/deploy-pipeline.md
+< 15:# finding with a fixed version, unless an unexpired entry of 16:# security-exceptions.yaml accepts it (by its id or an alias). An entry has 17:# exactly id, reason, decided_by and expires (YYYY-MM-DD); one that has expired, 148:# The exceptions: exactly id, reason, decided_by and expires (YYYY-MM...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cat ci/workflows_test.sh; sed -n 1,40p ci/pipeline_test.sh; ls images/
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # Tests the GitHub security workflow (.github/workflows/security.yml, #36, #37). # The CI image alone takes most of an ubuntu-latest runner's free disk, so a job # run inside it (`container:`) ran out of disk...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Writing the failing test first: the CI image is pinned by digest, and every `tacplus/build` reference is that one image.
+> Edit /builds/looper/fleet-seatrials/issues/43/ci/workflows_test.sh
+< The file /builds/looper/fleet-seatrials/issues/43/ci/workflows_test.sh has been updated successfully.
+> Bash which yq jq; ci/workflows_test.sh 2>&1 | tail -6
+< /usr/bin/jq FAIL the CI image is a tacplus build image pinned by its patch and digest (#43):  FAIL every build-image reference in ci/, images/ and .github/ is the CI image (#21, #38): ghcr.io/tacplus-dev/tacplus/build:2.3 FAIL ci/tools.sh and ci/security.sh run in that image FAIL ci/security.sh runs...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash NEW='ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbcd320ca0d187f5' && sed -i "s|ghcr.io/tacplus-dev/tacplus/build:2.3\$|$NEW|" ci/deploy.gitlab-ci.yml ci/gitlab-project.gitlab-ci.yml .github/workflows/security.yml images/tacplus-build.Dockerfile && ...
+<  .github/workflows/security.yml  | 2 +-  ci/deploy.gitlab-ci.yml         | 2 +-  ci/gitlab-project.gitlab-ci.yml | 2 +-  ci/workflows_test.sh            | 9 +++++++++  images/tacplus-build.Dockerfile | 2 +-  5 files changed, 13 insertions(+), 4 deletions(-) ci/tools.sh:23:#   ci/tools.sh            ...
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n "Dockerfile\|2\.3\|build:" images/build.sh images/build_test.sh images/*.yaml | head -20
+< images/build.sh:37:# the content of tacplus-build.Dockerfile and tacplus-build.cloudbuild.yaml. images/build.sh:41:# before the Dockerfile gained the launcher was reused forever (#33). images/build.sh:92:    "$(shasum -a 256 < "$here/images/tacplus-build.Dockerfile" | cut -c1-64)" \ images/build.sh:...
+= thinking_tokens
+= thinking_tokens
+Now the exceptions file: add CVE-2026-78661, drop the seven Debian entries 2.6.1 fixes, update the header and GO-2026-5932's text.
+> Bash python3 - <<'EOF' p='security-exceptions.yaml' s=open(p).read() i=s.index('  - id: CVE-2026-109258') s=s[:i]+'''  - id: CVE-2026-78661     reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.6.1, every image:...
+<     expires: 2026-12-04   - id: CVE-2026-78661     reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.6.1, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs gh, and gh pa...
+> Read /builds/looper/fleet-seatrials/issues/43/security-exceptions.yaml
+< 1	# Copyright (c) 2026 Jody Scott 2	# SPDX-License-Identifier: Apache-2.0 3	# 4	# The known findings this repository accepts, each until its expiry, in the form looper-scan reads 5	# (tacplus-dev/looper#49: exactly id, reason, decided_by and expires, YYYY-MM-DD). ci/security.sh enforces it 6	# (#36)...
+> Edit /builds/looper/fleet-seatrials/issues/43/security-exceptions.yaml
+< The file /builds/looper/fleet-seatrials/issues/43/security-exceptions.yaml has been updated successfully.
+> Bash sed -i 's|and gh and docker-buildx in the CI image (build:2.3, Trivy'"'"'s scan)|and gh and docker-buildx in the CI image (build:2.6.1, Trivy'"'"'s scan)|' security-exceptions.yaml && grep -c "build:2.6.1, Trivy" security-exceptions.yaml; grep -n "2\.3" security-exceptions.yaml
+< 1 16:# builds them from source with the fixed dependencies (#40). build:2.3's ImageMagick and apt CVEs (#40) are fixed: 126:    reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.6.1, every image: of ci/*.gi...
+> Bash grep -rnwE "gh" ci/ images/ deploy/ test-idp/ .github/ --include=*.sh --include=*.yml --include=*.yaml | grep -v "^\s*#" | grep -vE ":\s*#" | head
+< (Bash completed with no output)
+Now docs, then the gates in build:2.6.1 (detached).
+> Bash sed -i 's|(`ghcr.io/tacplus-dev/tacplus/build:2.3` is both)|(`ghcr.io/tacplus-dev/tacplus/build:2.6.1`, pinned by digest, is both)|' docs/deploy-pipeline.md && grep -n "build:2.6.1" docs/deploy-pipeline.md IMG=ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36...
+< 346:  architecture (`ghcr.io/tacplus-dev/tacplus/build:2.6.1`, pinned by digest, is both). 912
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n "2\.3\|11-19\|#283" STATE.md PROPOSALS.md README.md docs/*.md | cut -c1-200
+< STATE.md:6:- **Works:** seatrials was live at https://seatrials.tacplus.dev until its clusters went (below). Google, Microsoft and Apple sign-in work (Google routes to alpha, Microsoft to beta). The d STATE.md:9:- **Known gaps:** The certificate: the `cert` job has never run, and its acceptance on t...
+> Bash grep -o "Its first full run[^.]*\.[^.]*\.[^)]*)[^.]*\." STATE.md; grep -o ".\{300\}2\.3.\{200\}" STATE.md | head -3; grep -n "build image\|CI image" STATE.md | cut -c1-80
+< Its first full run (42127731546, on the branch) failed the policy on findings new since #36; #40 fixed the Go ones (GO-2026-6865, 6888) and accepted `build:2.3`'s ImageMagick and apt CVEs until 2026-11-19: the CI image must move to the line's rebuilt image (tacplus-dev/tacplus#283) before then, or e...
+> Bash python3 - <<'EOF' p='STATE.md'; s=open(p).read() old="#40 fixed the Go ones (GO-2026-6865, 6888) and accepted `build:2.3`'s ImageMagick and apt CVEs until 2026-11-19: the CI image must move to the line's rebuilt image (tacplus-dev/tacplus#283) before then, or every pipeline fails (PROPOSALS.md)." ne...
+< - **Move the CI image to the rebuilt line, before 2026-11-19** (2026-11-06, #40): `build:2.3` (Debian 13.7)   carries ImageMagick deb13u13 (CVE-2026-109258, -109260, -109262, -109263, -109268, -116149) and apt 3.0.3   (CVE-2026-109518), accepted until 2026-11-19 (as tacplus-dev/cluster#8). When tacp...
+> Bash python3 - <<'EOF' p='PROPOSALS.md'; s=open(p).read() a=s.index('- **Move the CI image to the rebuilt line, before 2026-11-19**'); b=s.index('- **Drop the fixed-dependency overrides') s=s[:a]+'''- **Move the CI image to a line image whose gh has the fixed x/net, before 2026-12-06** (2026-11-07, #43):...
+< diff --git a/PROPOSALS.md b/PROPOSALS.md index c7e7710..1743278 100644 --- a/PROPOSALS.md +++ b/PROPOSALS.md @@ -22,22 +22,18 @@ the looper then marks it `promoted` or `declined` here with the date.    fixed dependencies (`ci/tools.sh`, `go_build_fixed`).    On 2026-12-04 every pipeline fails until ...
+= thinking_tokens
+= thinking_tokens
+> Bash sed -n 1,14p PROPOSALS.md; grep -n "done\|promoted\|declined" PROPOSALS.md | head
+< # Proposals: fleet-seatrials  Written by loopers. Each proposal: what, why, links. Jody promotes accepted ones into ROADMAP.md (via an agent); the looper then marks it `promoted` or `declined` here with the date.  ## Open - **<title>** (<date>, <issue/run link>): <what and why> - **The fleet's gatew...
+= thinking_tokens
+= thinking_tokens
+Planning files updated; the gates (tools, checks, security) are running in build:2.6.1. Polling.
+> Bash for i in $(seq 1 55); do kill -0 912 2>/dev/null || break; sleep 10; done; kill -0 912 2>/dev/null && echo RUNNING; tail -5 /tmp/gates43.log
+= task_started
+= task_notification
+< RUNNING go: downloading go.opentelemetry.io/otel/exporters/prometheus v0.68.0 go: downloading go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.21.0 go: downloading go.opentelemetry.io/otel/sdk/log v0.21.0 go: downloading go.opentelemetry.io/otel/log v0.21.0 go: downloading github.com/prometheu...
+Checkpointing while it runs.
+> Bash /usr/local/bin/repo-looper --repo fleet-seatrials --issue 43 --checkpoint "CI image moved to build:2.6.1 by digest (4 refs), CVE-2026-78661 exception added, 7 #40 Debian entries dropped, test in ci/workflows_test.sh, STATE/PROPOSALS/docs updated; left: gates in 2.6.1 (tools/checks/security), commit,...
+<  ! [remote rejected] 660a0e7623c26988c083b8791688d1b7f5145fed -> looper/fleet-seatrials-43 (refusing to allow a GitHub App to create or update workflow `.github/workflows/security.yml` without `workflows` permission) error: failed to push some refs to 'https://github.com/tacplus-dev/fleet-seatrials....
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash git status --short; git log --format='%h %an %cn %s' -5 -- .github/workflows/security.yml
+<  M .github/workflows/security.yml  M PROPOSALS.md  M STATE.md  M ci/deploy.gitlab-ci.yml  M ci/gitlab-project.gitlab-ci.yml  M ci/workflows_test.sh  M docs/deploy-pipeline.md  M images/tacplus-build.Dockerfile  M security-exceptions.yaml e3b56ca jodydadescott jodydadescott security workflow: run on ...
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n "#37\|#36" HISTORY.md | head; gh issue view 37 --repo tacplus-dev/fleet-seatrials --comments | grep -i -B2 -A8 "workflow\b\|permission\|landed\|merged" | head -60
+< 15:- 2026-11-04 looper issue Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, with an enforced security-exceptions.yaml (#36, 76698ca) 16:- 2026-11-06 looper issue security workflow fails on main: the runner runs out of disk in ci/tools.sh b...
+= thinking_tokens
+= thinking_tokens
+The manager landed workflow changes before (#37), so only the checkpoint push is refused for the workflow file; the land should go through. Continuing to poll the gates.
+> Bash for i in $(seq 1 57); do kill -0 912 2>/dev/null || break; sleep 10; done; kill -0 912 2>/dev/null && echo RUNNING; grep -v "^go: downloading" /tmp/gates43.log | tail -8
+= task_started
+= task_notification
+< accepted CVE-2026-116149: trivy CVE-2026-116149 libmagickcore-dev@8:7.1.1.43+dfsg1-1+deb13u13 (ghcr.io/tacplus-dev/tacplus/build:2.3: ghcr.io/tacplus-dev/tacplus/build:2.3 (debian 13.7)) accepted CVE-2026-116149: trivy CVE-2026-116149 libmagickwand-7-headers@8:7.1.1.43+dfsg1-1+deb13u13 (ghcr.io/tacp...
+= thinking_tokens
+= thinking_tokens
+It scanned build:2.3: security.sh apparently reads the committed tree, not the working copy. Checking.
+> Bash grep -n "tree=" ci/security.sh ci/checks.sh; grep -n "all checks passed\|FAIL\|passed\|failed" /tmp/gates43.log | grep -v "^.*accepted" | tail -30
+< ci/security.sh:43:tree=$work/tree 1916:all passed 1974:all passed 2016:ok   ci_cert reads the version the cert job passed on, not latest 2023:lib tests passed 2028:ok   a failed apply fails the pipeline 2036:ok   test publishes the suite's JUnit report, failed or not 2038:ok   a failed security job ...
+= thinking_tokens
+= thinking_tokens
+`ci/checks.sh` passes (workflow tests included). security.sh scans the committed HEAD, so I'll commit and re-run it.
+> Bash git add -A && git status --short && git commit -q -F - <<'EOF' security: move the CI image to build:2.6.1 by digest; accept gh's CVE-2026-78661 until 2026-12-06 (#43, #21, #38)  Trivy's database gained CVE-2026-78661 (golang.org/x/net/html, HIGH) in the CI image's gh, which failed the security job a...
+< M  .github/workflows/security.yml M  PROPOSALS.md M  STATE.md M  ci/deploy.gitlab-ci.yml M  ci/gitlab-project.gitlab-ci.yml M  ci/workflows_test.sh M  docs/deploy-pipeline.md M  images/tacplus-build.Dockerfile M  security-exceptions.yaml 60854d7 security: move the CI image to build:2.6.1 by digest; ...
+= thinking_tokens
+= thinking_tokens
+> Bash for i in $(seq 1 57); do kill -0 1959 2>/dev/null || break; sleep 10; done; kill -0 1959 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|problem" /tmp/sec43.log | tail -8
+= task_started
+= task_notification
+< 2429 finding(s): 0 failing the policy, 29 accepted by security-exceptions.yaml; checked 9 binaries and ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbcd320ca0d187f5 (linux/arm64) security verdict: pass (60854d7b834e077f6c8a0b3772d2ad746d888a82)
+= thinking_tokens
+= thinking_tokens
+Security passes on 2.6.1. Confirming what it accepted, and that the new test fails on main's tree.
+> Bash grep "^accepted" /tmp/sec43.log | grep -v "GO-2025\|GO-2026-[0-9]*: govuln" | cut -c1-170 | sort | uniq | grep -i "trivy" ; rm -rf /tmp/old43 && git worktree add -q /tmp/old43 origin/main && cp ci/workflows_test.sh /tmp/old43/ci/ && IMG=ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f9...
+< accepted CVE-2026-78661: trivy CVE-2026-78661 golang.org/x/net@v0.60.0 (ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbc accepted GO-2026-5932: trivy GO-2026-5932 golang.org/x/crypto@v0.58.0 (ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e...
+> Bash git worktree prune; H=/builds/looper/fleet-seatrials/homes/looper-43/old43; rm -rf $H && git worktree add -q $H origin/main && cp ci/workflows_test.sh $H/ci/ && IMG=ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbcd320ca0d187f5 && docker run --rm --me...
+< FAIL the CI image is a tacplus build image pinned by its patch and digest (#43): ghcr.io/tacplus-dev/tacplus/build:2.3 workflow tests failed
+= thinking_tokens
+= thinking_tokens
+The new test fails on main and passes on the change. Rule 13 check, then land.
+> Bash /usr/local/bin/looper-trace check 2>&1 | tail -5; git status --short | head; git fetch -q origin && git log --oneline HEAD..origin/main
+< looper-trace: /builds/looper/fleet-seatrials/issues/43 verdict: pass (0 handlers, 0 findings)
+> Bash /usr/local/bin/repo-looper --repo fleet-seatrials --issue 43 --checkpoint "committed 60854d7 (CI image build:2.6.1 by digest, CVE-2026-78661 exception, Debian entries dropped); gates green in 2.6.1 (tools, checks, security pass); left: land, comment, close #21 #38 #43" 2>&1 | tail -2 nohup /usr/loca...
+< error: failed to push some refs to 'https://github.com/tacplus-dev/fleet-seatrials.git' [2026-11-07T05:41:57Z] checkpoint of #43 (a step) pushed to looper/fleet-seatrials-43:  11 files changed, 332 insertions(+), 53 deletions(-) 2458
+> Bash sleep 60; cat /tmp/land43.log | tail -15
+< <tool_use_error>Blocked: sleep 60 followed by: cat /tmp/land43.log tail -15. To wait for a condition, use Monitor with an until-loop (e.g. `until <check>; do sleep 2; done`). To wait for a command you started, use run_in_background: true. Do not chain shorter sleeps to work around this block.</tool_...
+> Bash for i in $(seq 1 6); do kill -0 2458 2>/dev/null || break; sleep 10; done; tail -15 /tmp/land43.log
+= task_started
+= task_notification
+< To https://github.com/tacplus-dev/fleet-seatrials.git  ! [remote rejected] cf25e451a7284941987ab02cb2e3251e0f31ab59 -> looper/fleet-seatrials-43 (refusing to allow a GitHub App to create or update workflow `.github/workflows/security.yml` without `workflows` permission) error: failed to push some re...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash /usr/local/bin/repo-looper --help 2>&1 | head -60; grep -rn "workflows" /usr/local/bin/repo-looper 2>/dev/null | head
+< repo-looper: the looper of one tacplus-dev repository. It runs in the looper container, as jobs of the GitLab looper pipeline, and only while the repository has work: a job per issue, its report, and a manager per repository, which alone merges to its main (looper#70).    repo-looper --repo NAME --i...
+> Bash gh search issues --owner tacplus-dev "workflows permission" --json repository,number,title,state -L 10 2>&1 | head; gh search issues --owner tacplus-dev "workflow permission GitHub App" --json repository,number,title,state -L 10 2>&1 | head
+< [{"number":99,"repository":{"name":"looper","nameWithOwner":"tacplus-dev/looper"},"state":"open","title":"--checkpoint says 'pushed' when GitHub rejected the push (a .github/workflows change without the App's workflows permission)"},{"number":21,"repository":{"name":"llmproxy","nameWithOwner":"tacpl...
+> Bash gh issue view 99 --repo tacplus-dev/looper --comments | head -80
+< author:	tacplus-looper association:	none edited:	false status:	none -- The looper of looper starts this issue with its limit 4h capped at 4h by this job (https://gitlab.com/tacplus-dev/looper/-/jobs/17800829217), which ends sooner: the run stops by itself before then, its work checkpointed, and the ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash git branch -f keep43-move 60854d7 && git format-patch -1 60854d7 -o /builds/looper/fleet-seatrials/homes/looper-43/ && git reset -q --hard origin/main && git log --oneline -1 && cat .looper/land 2>/dev/null; git status --short
+< /builds/looper/fleet-seatrials/homes/looper-43/0001-security-move-the-CI-image-to-build-2.6.1-by-digest-.patch b994eb0 HISTORY.md: #40 (looper)
+= thinking_tokens
+= thinking_tokens
+Now the exception-only change on main's tree.
+> Bash python3 - <<'EOF' p='security-exceptions.yaml'; s=open(p).read() old="#   gh and docker-buildx (x/crypto v0.58.0)                         GO-2026-5932, above\n" new=old+"""# # And one the rebuilt line does not fix: build:2.6.1's gh carries the same x/net v0.60.0 (#43). Accepted until # 2026-12-06 by...
+<  PROPOSALS.md             | 6 +++++-  STATE.md                 | 2 +-  security-exceptions.yaml | 9 +++++++++  3 files changed, 15 insertions(+), 2 deletions(-)
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash sed -i 's/or pushes that commit himself (#43 has it)/or a maintainer pushes that commit (#43 has it)/' PROPOSALS.md && grep -c "maintainer pushes" PROPOSALS.md && ls bin | head -3 && git add -A && git commit -q -F - <<'EOF' security: accept gh's CVE-2026-78661 in the CI image until 2026-12-06 (#43) ...
+< 1 gitleaks govulncheck lego 0918c49 security: accept gh's CVE-2026-78661 in the CI image until 2026-12-06 (#43) 2770
+> Bash for i in $(seq 1 58); do kill -0 2770 2>/dev/null || break; sleep 10; done; kill -0 2770 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43b.log | tail -6
+= task_started
+= task_notification
+< RUNNING
+> Bash for i in $(seq 1 58); do kill -0 2770 2>/dev/null || break; sleep 10; done; kill -0 2770 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43b.log | tail -6
+= task_started
+= task_notification
+< RUNNING all checks passed
+> Bash for i in $(seq 1 58); do kill -0 2770 2>/dev/null || break; sleep 10; done; kill -0 2770 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43b.log | tail -6
+= task_started
+= task_notification
+< all checks passed 3029 finding(s): 0 failing the policy, 109 accepted by security-exceptions.yaml; checked 9 binaries and ghcr.io/tacplus-dev/tacplus/build:2.3 (linux/arm64) security verdict: pass (0918c49e086ecfacbef5a975e73a51ebe8dc5440)
+Green on build:2.3. Landing this commit.
+> Bash git fetch -q && git log --oneline HEAD..origin/main; /usr/local/bin/repo-looper --repo fleet-seatrials --issue 43 --checkpoint "landing 0918c49 (CVE-2026-78661 exception only, gates green on build:2.3). The 2.6.1 move (#21/#38) is saved locally as branch keep43-move / patch in home; it can't be push...
+< [2026-11-07T06:04:55Z] checkpoint of #43 (a step) pushed to looper/fleet-seatrials-43:  5 files changed, 397 insertions(+), 2 deletions(-) 4391
+= thinking_tokens
+= thinking_tokens
+> Bash git status --short --ignored | head; git fetch -q origin looper/fleet-seatrials-43 2>/dev/null; git diff --stat origin/main FETCH_HEAD
+< !! bin/ !! security/  .looper/claude.log       | 249 +++++++++++++++++++++++++++++++++++++++++++++++  .looper/land             |   4 +  .looper/prompt.md        | 134 +++++++++++++++++++++++++  PROPOSALS.md             |   6 +-  STATE.md                 |   2 +-  security-exceptions.yaml |   9 ++  6...
+Fine — those are the looper's own run files. Polling the land.
+> Bash for i in $(seq 1 58); do kill -0 4391 2>/dev/null || break; sleep 10; done; kill -0 4391 2>/dev/null && echo RUNNING; tail -5 /tmp/land43b.log
+= task_started
+= task_notification
+< RUNNING [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+= thinking_tokens
+= thinking_tokens
+Queued. While it waits, I'll prepare the follow-up: the 2.6.1 move rebased onto this commit, so its patch can go in the issue.
+> Bash git checkout -q -b move43 HEAD && git cherry-pick -X theirs keep43-move 2>&1 | tail -2; git status --short; git diff HEAD~1 --stat
+<  Date: Sat Nov 7 05:37:28 2026 +0000  9 files changed, 31 insertions(+), 63 deletions(-)  .github/workflows/security.yml  |  2 +-  PROPOSALS.md                    | 22 ++++++------------  STATE.md                        |  2 +-  ci/deploy.gitlab-ci.yml         |  2 +-  ci/gitlab-project.gitlab-ci.ym...
+> Bash git diff HEAD~1 -- STATE.md PROPOSALS.md security-exceptions.yaml | grep "^[-+]" | cut -c1-250 | head -60
+< --- a/PROPOSALS.md +++ b/PROPOSALS.md -- **Move the CI image to the rebuilt line, before 2026-11-19** (2026-11-06, #40): `build:2.3` (Debian 13.7) -  carries ImageMagick deb13u13 (CVE-2026-109258, -109260, -109262, -109263, -109268, -116149) and apt 3.0.3 -  (CVE-2026-109518), accepted until 2026-11...
+= thinking_tokens
+= thinking_tokens
+> Bash grep -o "#40 fixed the Go ones.\{0,900\}" STATE.md; grep -A1 "CVE-2026-78661$" security-exceptions.yaml | cut -c1-200; grep -c "id: CVE-2026-78661" security-exceptions.yaml
+< #40 fixed the Go ones (GO-2026-6865, 6888). Every job, the GitHub security workflow and the build image's `BUILD_IMAGE` run `ghcr.io/tacplus-dev/tacplus/build:2.6.1` pinned by digest (#43; #21, #38), which fixes `build:2.3`'s ImageMagick and apt CVEs; its `gh` still carries x/net v0.60.0 (CVE-2026-7...
+= thinking_tokens
+= thinking_tokens
+> Bash git diff keep43-move move43 --stat; git format-patch -1 move43 --stdout > /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch; wc -c /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch; git checkout -q looper/fleet-seatrials-43; kill -0 4391 && tail -2 /tmp/land43b.log
+< 35178 /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seat...
+= thinking_tokens
+= thinking_tokens
+The follow-up commit's tree is identical to the one I verified green on 2.6.1. Waiting on the land verdict.
+> Bash for i in $(seq 1 58); do kill -0 4391 2>/dev/null || break; sleep 10; done; kill -0 4391 2>/dev/null && echo RUNNING; tail -4 /tmp/land43b.log | cut -c1-400
+= task_started
+= task_notification
+< RUNNING [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+> Bash for i in $(seq 1 58); do kill -0 4391 2>/dev/null || break; sleep 10; done; kill -0 4391 2>/dev/null && echo RUNNING; tail -4 /tmp/land43b.log | cut -c1-600
+= task_started
+= task_notification
+< RUNNING [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+> Bash for i in $(seq 1 58); do kill -0 4391 2>/dev/null || break; sleep 10; done; kill -0 4391 2>/dev/null && echo RUNNING; tail -4 /tmp/land43b.log | cut -c1-600; gh issue view 43 --repo tacplus-dev/fleet-seatrials --comments | tail -8 | cut -c1-300
+= task_started
+= task_notification
+< RUNNING [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+> Bash for i in $(seq 1 58); do kill -0 4391 2>/dev/null || break; sleep 10; done; kill -0 4391 2>/dev/null && echo RUNNING; tail -6 /tmp/land43b.log | cut -c1-800
+= task_started
+= task_notification
+< [2026-11-07T06:04:56Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 402 insertions(+), 2 deletions(-) [2026-11-07T06:04:58Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and says on ...
+Main moved and conflicts in `security-exceptions.yaml`. Rebasing.
+> Bash git fetch -q origin && git log --oneline HEAD..origin/main && git diff HEAD~1..origin/main --stat -- . ':!.looper' | tail -15
+< a404789 security-exceptions.yaml: CVE-2026-119373's entry also marks build:2.3's libsqlite3 accepted; say so (#41) 3491e7b security: Trivy scans the images this repository deploys, the test IdP's Keycloak; accept its four HIGH CVEs until 2026-12-06 (#41)  PROPOSALS.md             | 19 ++++++++++++--...
+= thinking_tokens
+= thinking_tokens
+> Bash git log --oneline origin/main..HEAD; git rebase origin/main 2>&1 | tail -3; git status --short; git diff --name-only --diff-filter=U
+< 0918c49 security: accept gh's CVE-2026-78661 in the CI image until 2026-12-06 (#43) hint: To abort and get back to the state before "git rebase", run "git rebase --abort". hint: Disable this message with "git config advice.mergeConflict false" Could not apply 0918c49... security: accept gh's CVE-202...
+> Bash grep -n -A40 "^<<<<<<<" security-exceptions.yaml | cut -c1-220
+< 25:<<<<<<< HEAD 26-# And Trivy's scan of the images this repository deploys itself (#41): the test IdP's Keycloak, 26.8.1-2 27-# (test-idp/keycloak.yaml), for arm64. No Keycloak release fixes them yet: 26.8.2-0 (2026-11-05), the latest, has the 28-# same four. Accepted until 2026-12-06 (Jody, #41); ...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' import re p='security-exceptions.yaml'; s=open(p).read() # conflict 1: mine first (it continues the CI image's paragraph), then #41's def res(m, order):     head, mine = m.group(1), m.group(2)     return order(head, mine) blocks=list(re.finditer(r'<<<<<<< HEAD\n(.*?)=======\n(.*?)>...
+< 0 # Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh # builds them from source with the fixed dependencies (#40). And Trivy's scan of the CI image, # ghcr.io/tacplus-dev/tacplus/build:2.3 (Debian 13.7; #40): Debian fixed them, th...
+= thinking_tokens
+= thinking_tokens
+> Bash git add security-exceptions.yaml && GIT_EDITOR=true git rebase --continue 2>&1 | tail -1 && git log --oneline -3 && git diff origin/main --stat IMG=ghcr.io/tacplus-dev/tacplus/build:2.3 nohup docker run --rm --memory 4096m -v "$PWD:/w" -w /w "$IMG" bash -c 'git config --global --add safe.directory /...
+< Successfully rebased and updated refs/heads/looper/fleet-seatrials-43. dfb9592 security: accept gh's CVE-2026-78661 in the CI image until 2026-12-06 (#43) a404789 security-exceptions.yaml: CVE-2026-119373's entry also marks build:2.3's libsqlite3 accepted; say so (#41) 3491e7b security: Trivy scans ...
+= thinking_tokens
+= thinking_tokens
+> Bash for i in $(seq 1 55); do kill -0 9578 2>/dev/null || break; sleep 10; done; kill -0 9578 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43c.log | tail -6
+= task_started
+= task_notification
+< RUNNING
+Rebased onto main (resolved the conflict with #41's Keycloak entries); re-running the gates in build:2.3 before landing again.
+> Bash for i in $(seq 1 57); do kill -0 9578 2>/dev/null || break; sleep 10; done; kill -0 9578 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43c.log | tail -6
+= task_started
+= task_notification
+< all checks passed 3099 finding(s): 0 failing the policy, 115 accepted by security-exceptions.yaml; checked 9 binaries and ghcr.io/tacplus-dev/tacplus/build:2.3, quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332 (linux/arm64) security verdict: ...
+> Bash git fetch -q && git log --oneline HEAD..origin/main; nohup /usr/local/bin/repo-looper --repo fleet-seatrials --issue 43 --land --gates "ci/tools.sh && export PATH=\$PWD/bin:\$PATH && ci/checks.sh && ci/security.sh" > /tmp/land43c.log 2>&1 & echo $!
+< 10561
+= thinking_tokens
+= thinking_tokens
+While the land is queued, rebasing the 2.6.1 move onto it and re-verifying on 2.6.1 (security.sh now also scans Keycloak).
+> Bash git checkout -q -B move43 HEAD && git cherry-pick keep43-move 2>&1 | tail -2; git diff --name-only --diff-filter=U
+< hint: run "git cherry-pick --abort". hint: Disable this message with "git config advice.mergeConflict false" PROPOSALS.md STATE.md security-exceptions.yaml
+= thinking_tokens
+= thinking_tokens
+> Bash git cherry-pick --abort && git diff b994eb0 origin/main --stat -- .github ci/deploy.gitlab-ci.yml ci/gitlab-project.gitlab-ci.yml images ci/workflows_test.sh docs/deploy-pipeline.md
+<  docs/deploy-pipeline.md | 7 +++++--  1 file changed, 5 insertions(+), 2 deletions(-)
+> Bash git checkout keep43-move -- .github/workflows/security.yml ci/deploy.gitlab-ci.yml ci/gitlab-project.gitlab-ci.yml images/tacplus-build.Dockerfile ci/workflows_test.sh && sed -i 's|(`ghcr.io/tacplus-dev/tacplus/build:2.3` is both)|(`ghcr.io/tacplus-dev/tacplus/build:2.6.1`, pinned by digest, is both...
+< docs/deploy-pipeline.md:349:  architecture (`ghcr.io/tacplus-dev/tacplus/build:2.6.1`, pinned by digest, is both). security-exceptions.yaml:17:# ghcr.io/tacplus-dev/tacplus/build:2.3 (Debian 13.7; #40): Debian fixed them, the image is not rebuilt yet. Accepted security-exceptions.yaml:25:# And one t...
+> Bash sed -n 172p security-exceptions.yaml
+<     reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pa...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' import re p='security-exceptions.yaml'; s=open(p).read() a=s.index("# builds them from source with the fixed dependencies (#40). And Trivy's scan of the CI image,") b=s.index("#\n# And Trivy's scan of the images this repository deploys itself (#41)") s=s[:a]+"""# builds them from s...
+< 30 16:# builds them from source with the fixed dependencies (#40). build:2.3's ImageMagick and apt CVEs (#40) are fixed: 151:    reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.6.1, every image: of ci/*.g...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='STATE.md'; s=open(p).read() a=s.index("#40 fixed the Go ones (GO-2026-6865, 6888)"); b=s.index("it waits on that.",a)+len("it waits on that.") s=s[:a]+"#40 fixed the Go ones (GO-2026-6865, 6888). Every job, the GitHub security workflow and the build image's `BUILD_IMAGE` run `gh...
+< STATE.md:9:- **Known gaps:** The certificate: the `cert` job has never run, and its acceptance on the cluster (a staging  .github/workflows/security.yml  |  2 +-  PROPOSALS.md                    | 22 ++++++-----------  STATE.md                        |  2 +-  ci/deploy.gitlab-ci.yml         |  2 +- ...
+> Bash grep -o ".\{100\}2\.3[^.0-9].\{60\}" STATE.md | head -3; git commit -q -C keep43-move && git log --oneline -2 IMG=ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbcd320ca0d187f5 nohup docker run --rm --memory 4096m -v "$PWD:/w" -w /w "$IMG" bash -c 'gi...
+<  run `ghcr.io/tacplus-dev/tacplus/build:2.6.1` pinned by digest (#43; #21, #38), which fixes `build:2.3`'s ImageMagick and apt CVEs; its `gh` still carries x/net v0 1049716 security: move the CI image to build:2.6.1 by digest; accept gh's CVE-2026-78661 until 2026-12-06 (#43, #21, #38) dfb9592 secur...
+= thinking_tokens
+= thinking_tokens
+The exception commit is queued to land; the 2.6.1 move (rebased) is verifying in its own container. Fixing that follow-up commit's message, since the exception is now its own commit.
+> Bash git commit -q --amend -F - <<'EOF' ci: move the CI image to build:2.6.1 by digest; drop build:2.3's Debian exceptions (#43, #21, #38)  The four build-image references (both pipelines' image:, the GitHub security workflow's IMAGE, the build image's BUILD_IMAGE) move together to build:2.6.1 pinned by ...
+< d0aca3f ci: move the CI image to build:2.6.1 by digest; drop build:2.3's Debian exceptions (#43, #21, #38)
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash for i in $(seq 1 58); do kill -0 10788 2>/dev/null || break; sleep 10; done; kill -0 10788 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43d.log | tail -6; tail -1 /tmp/land43c.log | cut -c1-300
+= task_started
+= task_notification
+< RUNNING [2026-11-07T07:05:12Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and says on the issue what came of it; waiting for its verdict. If your time runs out first, it still lands it after you.
+> Bash for i in $(seq 1 58); do kill -0 10788 2>/dev/null || break; sleep 10; done; kill -0 10788 2>/dev/null && echo RUNNING; grep -E "^FAIL|verdict|finding\(s\)|all checks passed" /tmp/gates43d.log | tail -6; tail -1 /tmp/land43c.log | cut -c1-300
+= task_started
+= task_notification
+< all checks passed 2499 finding(s): 0 failing the policy, 35 accepted by security-exceptions.yaml; checked 9 binaries and ghcr.io/tacplus-dev/tacplus/build:2.6.1@sha256:91f42995e0e3d6f959a7f75177caf94b2aded90fc36c8492dbcd320ca0d187f5, quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd917...
+The rebased 2.6.1 move is green on 2.6.1 (checks and security). Saving its patch and switching the checkout back to the land branch so no checkpoint picks it up.
+> Bash git format-patch -1 d0aca3f --stdout > /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch && wc -c /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch && git checkout -q looper/fleet-seatrials-43 && git log --oneline -1 && git status --short
+< 37569 /builds/looper/fleet-seatrials/homes/looper-43/move-2.6.1.patch dfb9592 security: accept gh's CVE-2026-78661 in the CI image until 2026-12-06 (#43)
+> Bash for i in $(seq 1 58); do kill -0 10561 2>/dev/null || break; sleep 10; done; kill -0 10561 2>/dev/null && echo RUNNING; tail -3 /tmp/land43c.log | cut -c1-700
+= task_started
+= task_notification
+< RUNNING [2026-11-07T07:05:09Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 475 insertions(+), 2 deletions(-) [2026-11-07T07:05:12Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+> Bash for i in $(seq 1 58); do kill -0 10561 2>/dev/null || break; sleep 10; done; kill -0 10561 2>/dev/null && echo RUNNING; tail -3 /tmp/land43c.log | cut -c1-900
+= task_started
+= task_notification
+< RUNNING [2026-11-07T07:05:09Z] checkpoint of #43 (land queued) pushed to looper/fleet-seatrials-43:  6 files changed, 475 insertions(+), 2 deletions(-) [2026-11-07T07:05:12Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-43 after the lands queued before it, one at a time, and ...
+> Bash for i in $(seq 1 58); do kill -0 10561 2>/dev/null || break; sleep 10; done; kill -0 10561 2>/dev/null && echo RUNNING; tail -3 /tmp/land43c.log | cut -c1-900
+= task_started
+= task_notification
+< remote:      https://github.com/tacplus-dev/fleet-seatrials/pull/new/looper/fleet-seatrials-43         remote:  [2026-11-07T07:41:44Z] checkpoint of #43 (land done) pushed to looper/fleet-seatrials-43:  5 files changed, 523 insertions(+), 2 deletions(-)
+> Bash grep -v "^remote:" /tmp/land43c.log | tail -6 | cut -c1-1200; cd /builds/looper/fleet-seatrials/issues/43 && git fetch -q && git log --oneline -3 origin/main
+< Its report's last checkpoint:  > landing 0918c49 (CVE-2026-78661 exception only, gates green on build:2.3). The 2.6.1 move (#21/#38) is saved locally as branch keep43-move / patch in home; it can't be pushed: the App lacks the workflows permission (looper#99). Left: land, comment with the move's dif...
+> Bash grep -v "^remote:" /tmp/land43c.log | grep -i "merged\|gates\|green" | tail -4 | cut -c1-600
+< The manager merged [`looper/fleet-seatrials-43`](https://github.com/tacplus-dev/fleet-seatrials/tree/looper/fleet-seatrials-43) on main: a404789..dfb9592, on the gates full (no gates.yaml): green. The branch is deleted. Its gates: job https://gitlab.com/tacplus-dev/looper/-/jobs/17828734544. Manager...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+The exception landed on main as dfb9592 (full gates, green). Now I'll write the outcome comment with the 2.6.1 move's patch and flag the permission decision.
+> Bash P=/builds/looper/fleet-seatrials/homes/looper-43; { cat <<'EOF' Looper, 2026-11-07. **The exception is landed. The move to build:2.6.1 is done and verified, but the looper cannot push it**, because it changes `.github/workflows/security.yml`. The issue stays open, labelled `needs-decision`.  ## Land...
+< 42161 /builds/looper/fleet-seatrials/homes/looper-43/comment.md
+= thinking_tokens
+= thinking_tokens
+> Bash P=/builds/looper/fleet-seatrials/homes/looper-43; grep -c '```' $P/move-2.6.1.patch; grep -c 3b7cd767 $P/comment.md
+< 0 0
+> Bash P=/builds/looper/fleet-seatrials/homes/looper-43; gh issue comment 43 --repo tacplus-dev/fleet-seatrials --body-file $P/comment.md && gh issue edit 43 --repo tacplus-dev/fleet-seatrials --add-label needs-decision && for i in 21 38; do gh issue comment $i --repo tacplus-dev/fleet-seatrials --body "Lo...
+= task_started
+= task_notification
+< https://github.com/tacplus-dev/fleet-seatrials/issues/43#issuecomment-6704046191 https://github.com/tacplus-dev/fleet-seatrials/issues/43 https://github.com/tacplus-dev/fleet-seatrials/issues/21#issuecomment-6704046697 https://github.com/tacplus-dev/fleet-seatrials/issues/38#issuecomment-6704046876
+= thinking_tokens
+= thinking_tokens
+> Bash /usr/local/bin/repo-looper --repo fleet-seatrials --issue 43 --checkpoint "landed dfb9592 (CVE-2026-78661 exception). Left: the move to build:2.6.1 by digest (commit d0aca3f, patch in the issue comment, verified green on 2.6.1) cannot be pushed: the App lacks the workflows permission (looper#99); ne...
+< [2026-11-07T07:42:35Z] checkpoint of #43 (a step) pushed to looper/fleet-seatrials-43:  3 files changed, 531 insertions(+), 1 deletion(-)
+I landed the exception for CVE-2026-78661, but couldn't land the move to build:2.6.1: GitHub won't let the looper push a change to `.github/workflows/`. #43 stays open with the label `needs-decision`.
+
+**Landed on main: dfb9592.** `security-exceptions.yaml` now accepts CVE-2026-78661 in the CI image's `gh` until 2026-12-06, decided by the hub with Jody's delegation. The real fix is tacplus-dev/tacplus#350. I checked that no job in `ci/`, `images/`, `deploy/`, `test-idp/` or `.github/` runs `gh`. This unblocks the security job on GitLab and GitHub, and with it #17's land.
+- **My run, in build:2.3:** `ci/tools.sh`, `ci/checks.sh` and `ci/security.sh` all passed, ending `security verdict: pass`.
+- **The land:** the manager ran the full gates and they were green. Its first try was sent back on a conflict with #41's new Keycloak entries in the same file. I rebased, kept both, checked again and landed.
+
+**Verified but not landed: the move to build:2.6.1 by digest (commit d0aca3f, which also covers #21 and #38).**
+- **What I checked:** build:2.6.1 resolves to `sha256:91f42995…`. Its `gh` carries the same x/net v0.60.0, so the exception is still needed. It does have ImageMagick deb13u14 and apt 3.0.4, which fix the seven Debian findings #40 accepted until 2026-11-19.
+- **What the commit does:**
+  - It moves all four build-image references to 2.6.1 by digest: both GitLab `image:` lines, the GitHub workflow's `IMAGE` and the Dockerfile's `BUILD_IMAGE`.
+  - It drops those seven Debian exceptions.
+  - It adds two checks to `ci/workflows_test.sh`: the image is pinned by patch and digest, and every reference is that one image. The first check fails on main and passes with the change.
+- **Verified:** the same gates pass in build:2.6.1.
+- **Why it isn't landed:** the GitHub App has no `workflows` permission, so GitHub refused both the checkpoint and the land (the same refusal tacplus-dev/looper#99 records). The commit can't drop the workflow file either: `ci/workflows_test.sh` requires the workflow's image to match the pipeline's, so the checks would fail.
+
+**Decision for Jody** (asked on #43, with the full patch): either give the looper's GitHub App the `workflows` permission and the next run lands it, or a maintainer applies it with `git am` and pushes. **This needs to land before 2026-11-19.** On that date build:2.3's Debian exceptions expire, and every pipeline fails from then until the move is on main.
+
+**Not verified:** the service image builds on 2.6.1's toolchains (Cloud Build). The fleet's 2.2 compiler builds fine with 2.6.1's Go.
+
+I commented on #21 and #38 to point them at #43. They close when the move lands. No service handlers were touched, and `looper-trace check` passed with 0 handlers and 0 findings.
+= success: I landed the exception for CVE-2026-78661, but couldn't land the move to build:2.6.1: GitHub won't let the looper push a change to `.github/workflows/`. #43 stays open with the label `needs-decision`.
+
+**Landed on main: dfb9592.** `security-exceptions.yaml` now accepts CVE-2026-78661 in the CI image's `gh` until 2026-12-06, decided by the hub with Jody's delegation. The real fix is tacplus-dev/tacplus#350. I checked that no job in `ci/`, `images/`, `deploy/`, `test-idp/` or `.github/` runs `gh`. This unblocks the security job on GitLab and GitHub, and with it #17's land.
+- **My run, in build:2.3:** `ci/tools.sh`, `ci/checks.sh` and `ci/security.sh` all passed, ending `security verdict: pass`.
+- **The land:** the manager ran the full gates and they were green. Its first try was sent back on a conflict with #41's new Keycloak entries in the same file. I rebased, kept both, checked again and landed.
+
+**Verified but not landed: the move to build:2.6.1 by digest (commit d0aca3f, which also covers #21 and #38).**
+- **What I checked:** build:2.6.1 resolves to `sha256:91f42995…`. Its `gh` carries the same x/net v0.60.0, so the exception is still needed. It does have ImageMagick deb13u14 and apt 3.0.4, which fix the seven Debian findings #40 accepted until 2026-11-19.
+- **What the commit does:**
+  - It moves all four build-image references to 2.6.1 by digest: both GitLab `image:` lines, the GitHub workflow's `IMAGE` and the Dockerfile's `BUILD_IMAGE`.
+  - It drops those seven Debian exceptions.
+  - It adds two checks to `ci/workflows_test.sh`: the image is pinned by patch and digest, and every reference is that one image. The first check fails on main and passes with the change.
+- **Verified:** the same gates pass in build:2.6.1.
+- **Why it isn't landed:** the GitHub App has no `workflows` permission, so GitHub refused both the checkpoint and the land (the same refusal tacplus-dev/looper#99 records). The commit can't drop the workflow file either: `ci/workflows_test.sh` requires the workflow's image to match the pipeline's, so the checks would fail.
+
+**Decision for Jody** (asked on #43, with the full patch): either give the looper's GitHub App the `workflows` permission and the next run lands it, or a maintainer applies it with `git am` and pushes. **This needs to land before 2026-11-19.** On that date build:2.3's Debian exceptions expire, and every pipeline fails from then until the move is on main.
+
+**Not verified:** the service image builds on 2.6.1's toolchains (Cloud Build). The fleet's 2.2 compiler builds fine with 2.6.1's Go.
+
+I commented on #21 and #38 to point them at #43. They close when the move lands. No service handlers were touched, and `looper-trace check` passed with 0 handlers and 0 findings.
