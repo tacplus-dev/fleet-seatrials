@@ -16,3 +16,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-06 looper issue security workflow fails on main: the runner runs out of disk in ci/tools.sh building osv-scanner, so no security report (#37, e3b56ca)
 - 2026-11-06 looper issue security job fails the policy: GO-2026-6865 (klauspost/compress) in gitleaks, opa, osv-scanner, trivy; GO-2026-6888 (brotli) in gitleaks; ImageMagick and apt CVEs in build:2.3 (#40)
 - 2026-11-07 looper issue test-idp Keycloak 26.8.1-2 carries 4 HIGH CVEs (Guava CVE-2026-102554, sqlite, OpenJDK) and the security job never scans it (#41, a404789)
+- 2026-11-07 looper issue Deploy and test seatrials from GitLab: pipeline in gitlab.com/tacplus-dev/fleet-seatrials, secrets held by GitLab, nothing on a laptop (#17, 8ab4f54)
