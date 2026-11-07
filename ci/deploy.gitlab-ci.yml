@@ -26,8 +26,9 @@
 #             showed, by digest; protected environment seatrials
 #   test      the functional end-to-end suite (deploy/e2e.yaml), its report as the job's JUnit report
 #
-# Manual, because neither is approval of the fleet: signin-secrets (a rotated secret),
-# test-idp (the test IdP's one-time setup).
+# Manual, because none of them is approval of the fleet: signin-secrets (a rotated secret),
+# test-idp (the test IdP's one-time setup), init-secrets (a deployment's first run: its key
+# material generated into the project's variables).
 #
 # A daily pipeline schedule on main runs all of it (docs/deploy-pipeline.md, the
 # schedule): when cert renews the certificate, the new version is rendered,
@@ -312,6 +313,22 @@ signin-secrets:
   allow_failure: true
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci_kube && deploy/signin-secrets.sh
+
+# A deployment's first run (#17): generates its key material, FLEET_CRYPTO_YAML
+# and FLEET_CA_PEM, and stores it in this project's variables, never printing it
+# (deploy/init-secrets.sh). It skips both when they exist, and refuses when only
+# one does. Manual, in the protected environment init-secrets, the only one
+# that holds FLEET_INIT_TOKEN, the bot user's token. It needs only the tools,
+# so it runs while generate, with nothing to generate from yet, has failed;
+# then run the pipeline again.
+init-secrets:
+  stage: generate
+  needs: [tools]
+  environment: { name: init-secrets, action: prepare }
+  when: manual
+  allow_failure: true
+  script:
+    - cd src && source ci/lib.sh && deploy/init-secrets.sh
 
 test:
   stage: test

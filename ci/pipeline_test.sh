@@ -9,7 +9,9 @@
 # `diff` succeeds: it is not manual, and a failure fails the pipeline. It takes
 # the render digest `diff` recorded (a dotenv artifact, RENDER_DIGEST), so the
 # render `diff` showed is the one applied. The jobs that stay manual are the
-# ones that are not approval of the fleet: `test-idp` and `signin-secrets`.
+# ones that are not approval of the fleet: `test-idp`, `signin-secrets` and
+# `init-secrets` (#17: a deployment's generated key material, in its own
+# environment).
 # The pipeline owns the certificate (#35): `cert` (ci/cert.sh) runs before
 # `generate` and `diff`, and hands the secret version to every job that
 # renders, which installs that version (ci_cert); `apply-letsencrypt` and its
@@ -69,11 +71,16 @@ check "nothing is built or applied before the security job passes" \
   '([.images.needs[], .generate.needs[]] | map(if type == "object" then .job else . end)) as $n
    | ($n | map(select(. == "security")) | length) == 2'
 
-for j in test-idp signin-secrets; do
+for j in test-idp signin-secrets init-secrets; do
   check "$j stays manual" ".[\"$j\"].when == \"manual\""
 done
 check "no other job is manual" \
-  '[to_entries[] | select(.value.when == "manual") | .key] | sort == ["signin-secrets", "test-idp"]'
+  '[to_entries[] | select(.value.when == "manual") | .key] | sort == ["init-secrets", "signin-secrets", "test-idp"]'
+check "init-secrets is the only job of the environment init-secrets, which holds the bot user's token" \
+  '[to_entries[] | select(.value.environment.name == "init-secrets") | .key] == ["init-secrets"]'
+check "init-secrets needs only the tools, so it runs before the first generate" '."init-secrets".needs == ["tools"]'
+check "init-secrets runs deploy/init-secrets.sh, and no apply" \
+  '."init-secrets".script | join("\n") | test("deploy/init-secrets.sh") and (test("apply.sh|ci_kube|ci_crypto") | not)'
 check "apply-letsencrypt is retired (#35)" 'has("apply-letsencrypt") | not'
 grep -q 'SEATRIALS_ALLOW_LETSENCRYPT\|letsencrypt-guard' "$here/ci/deploy.gitlab-ci.yml" "$here/deploy/diff.sh" &&
   fail "the letsencrypt guard is still in the pipeline" || ok "the letsencrypt guard is retired (#35)"

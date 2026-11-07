@@ -105,6 +105,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   trusts) in place of `client_secret`. It's an oauth change (tacplus-dev/oauth), with a design for the
   assertion's issuer and subject. The issuer must be publicly discoverable, which seatrials.tacplus.dev is.
   Until then, the secret is rotated by hand (docs/deploy-pipeline.md).
+- **A narrower writer for generated secrets** (2026-11-03, #17): `init-secrets` and `test-idp` write
+  variables with a Maintainer token (`FLEET_INIT_TOKEN`, `TEST_IDP_GITLAB_TOKEN`), which can read every
+  variable of the project. One bot user per deployment, with its token in the `init-secrets` scope only, keeps
+  it out of every other job. A writer that can't read would be better: a small service that only creates a
+  variable when it's absent, or GitLab's own feature if it ever has one. The two jobs should also share one
+  token and one `gitlab_variable` helper.
+- **A crypto.yaml that fits one variable** (2026-11-06, #17): crypto.yaml is some 23,000 bytes for this
+  topology, so `init-secrets` stores it gzipped, base64-encoded and split into `FLEET_CRYPTO_YAML`,
+  `FLEET_CRYPTO_YAML_2`, ... of GitLab's 10,000 characters each, which `ci_crypto` joins. The lasting fix is
+  the operator's: keep only the root CA as the stored secret and derive the cluster PKI from it in a stable
+  way, so one variable holds it. That's an operator change, best settled by the uni-config design
+  (tacplus-dev/operator#17, #28).
 - **The applied render's digest is the uni-config record's** (2026-11-03, #34, #28): `apply` now runs by
   itself and applies only the render whose digest `diff` recorded. Until #28, that digest is a SHA-256 of
   `schematic-operator apply --dry-run`, recomputed in `apply` before the operator renders again for the real

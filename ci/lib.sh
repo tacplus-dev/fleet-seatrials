@@ -74,15 +74,31 @@ ci_test_idp_set_up() {
 # ci_crypto: the fleet's key material into deploy/bootstrap, where
 # schematic-operator reads it, from the protected file variables
 # FLEET_CRYPTO_YAML and FLEET_CA_PEM (environment scope seatrials). Both paths
-# are in .gitignore and in no job's artifacts.
+# are in .gitignore and in no job's artifacts. FLEET_CRYPTO_YAML is crypto.yaml
+# as it is, or, as the init-secrets job stores it, gzipped and base64-encoded
+# on one line ("H4sI", gzip's magic), which can be masked, and split into parts
+# of at most GitLab's 10,000-character limit on a value: FLEET_CRYPTO_YAML, then
+# the file variables FLEET_CRYPTO_YAML_2 and on, joined in order up to the first
+# that is not set (#17, deploy/init-secrets.sh).
 ci_crypto() {
   : "${FLEET_CRYPTO_YAML:?the file variable FLEET_CRYPTO_YAML is not set (environment seatrials)}"
   : "${FLEET_CA_PEM:?the file variable FLEET_CA_PEM is not set (environment seatrials)}"
   [ -f "$FLEET_CRYPTO_YAML" ] && [ -f "$FLEET_CA_PEM" ] ||
     { echo "FLEET_CRYPTO_YAML and FLEET_CA_PEM must be file variables" >&2; exit 1; }
   ( umask 077
-    cp "$FLEET_CRYPTO_YAML" "$fleet/deploy/bootstrap/crypto.yaml"
-    cp "$FLEET_CA_PEM" "$fleet/deploy/bootstrap/ca.pem" )
+    if [ "$(head -c4 "$FLEET_CRYPTO_YAML")" = H4sI ]; then
+      parts=("$FLEET_CRYPTO_YAML") i=2
+      while part=$(printenv "FLEET_CRYPTO_YAML_$i"); do
+        [ -f "$part" ] || { echo "FLEET_CRYPTO_YAML_$i must be a file variable" >&2; exit 1; }
+        parts+=("$part") i=$((i + 1))
+      done
+      cat "${parts[@]}" | base64 -d 2>/dev/null | gunzip > "$fleet/deploy/bootstrap/crypto.yaml" 2>/dev/null &&
+        [ -s "$fleet/deploy/bootstrap/crypto.yaml" ] ||
+        { echo "FLEET_CRYPTO_YAML is encoded but does not decode (gzip, base64)" >&2; exit 1; }
+    else
+      cp "$FLEET_CRYPTO_YAML" "$fleet/deploy/bootstrap/crypto.yaml"
+    fi
+    cp "$FLEET_CA_PEM" "$fleet/deploy/bootstrap/ca.pem" ) || exit 1
 }
 
 # ci_cert: the fleet's public certificate into crypto.yaml, after ci_crypto and

@@ -26,6 +26,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
 | apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else, after a secret is rotated. |
+| generate | `init-secrets` | Manual, in the protected environment `init-secrets`. A deployment's first run: generates `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM` and stores them in the project ([below](#generated-secrets-the-init-secrets-job)). |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP on the `dev` cluster, its realms and its DNS record ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
@@ -175,8 +176,10 @@ its key aren't variables: they are versions in Secret Manager ([the certificate]
 | `TACPLUS_READER_APP_ID` | plain | all | The `tacplus-reader` GitHub App's id. Not a secret ([below](#github-the-tacplus-reader-app-no-stored-token)). |
 | `TACPLUS_READER_INSTALLATION_ID` | plain | all | Its installation on tacplus-dev. Not a secret. |
 | `GCP_WIF_PROVIDER` | plain, protected | all | `projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-fleet-seatrials`, tacplus-dev/cloud's provider for this project's protected `main` ([below](#gcp-workload-identity-federation-no-key-files)). |
-| `FLEET_CRYPTO_YAML` | file | `seatrials*` | `deploy/bootstrap/crypto.yaml`, the fleet's CA and cluster PKI (already stored; its scope widens from `seatrials` to `seatrials*`). |
-| `FLEET_CA_PEM` | file | `seatrials*` | `deploy/bootstrap/ca.pem` (already stored; scope as above). |
+| `FLEET_CRYPTO_YAML` | file | `seatrials*` | `deploy/bootstrap/crypto.yaml`, the fleet's CA and cluster PKI (already stored; its scope widens from `seatrials` to `seatrials*`). A new deployment's is **generated** by `init-secrets`, gzipped, base64-encoded and masked, in parts of at most 10,000 characters. |
+| `FLEET_CRYPTO_YAML_2`, `_3`, ... | file, masked, hidden | `seatrials*` | The further parts of a generated `FLEET_CRYPTO_YAML`, which `ci_crypto` joins ([below](#generated-secrets-the-init-secrets-job)). |
+| `FLEET_CA_PEM` | file | `seatrials*` | `deploy/bootstrap/ca.pem` (already stored; scope as above). Generated with `FLEET_CRYPTO_YAML`. |
+| `FLEET_INIT_TOKEN` | masked, hidden | `init-secrets` | The deployment's bot user's personal access token (`api`). The bot is a Maintainer of this project only. `init-secrets` writes the generated variables with it ([below](#generated-secrets-the-init-secrets-job)). |
 | `FLEET_GOOGLE_CLIENT_SECRET` | masked | `seatrials*` | Google OAuth client `seatrials-web`. |
 | `FLEET_MICROSOFT_CLIENT_SECRET` | masked | `seatrials*` | The Entra client secret **value** of `seatrials-web` (`deploy/signin-secrets.sh` refuses a Secret ID). |
 | `FLEET_APPLE_KEY_P8` | file | `seatrials*` | The Sign in with Apple key `AuthKey_D9JNT33239.p8`. |
@@ -188,6 +191,46 @@ its key aren't variables: they are versions in Secret Manager ([the certificate]
 The `seatrials*` scope reaches the environment `seatrials`.
 `deploy/signin-secrets.sh` keeps the cluster's current value of any sign-in secret whose variable is unset.
 Until all three are in GitLab, the secrets already on the cluster stay in place.
+
+### Generated secrets: the init-secrets job
+
+A deployment's own key material is generated in the pipeline, never on a laptop (Jody, 2026-11-01). On a
+deployment's first run, the manual job `init-secrets` ([`deploy/init-secrets.sh`](../deploy/init-secrets.sh))
+runs `schematic-operator init ca` and then `init cluster` for `operator.yaml`'s fqdn, as `deploy/init.sh` did.
+It works in a copy of `deploy/bootstrap` and stores the results as protected file variables of scope
+`seatrials*`: `FLEET_CRYPTO_YAML` (the root CA and the cluster PKI) and `FLEET_CA_PEM`. No job prints them:
+`ci_crypto` places them in files.
+
+crypto.yaml is some 23,000 bytes for this topology, and GitLab caps a variable's value at 10,000 characters.
+The job stores it gzipped and base64-encoded on one line, which GitLab can mask and hide. Encoded, it comes to
+about 10,000 characters, sometimes just over, so it is split into parts of at most 10,000: `FLEET_CRYPTO_YAML`,
+then `FLEET_CRYPTO_YAML_2` and on, each masked and hidden. `ci_crypto` joins them in order, up to the first that
+isn't set, and decodes them. It still takes a plain crypto.yaml in `FLEET_CRYPTO_YAML`, as seatrials' is stored.
+`FLEET_CA_PEM`, a certificate, holds no secret; a PEM's lines can't be masked. The job:
+
+- skips both if both exist, and generates nothing (seatrials' are already stored);
+- refuses if only one exists, because a CA and its crypto.yaml are a pair. Restore the other, or delete the one
+  that's there to generate both;
+- refuses, storing nothing, if crypto.yaml would take more than nine parts, or if a part such as
+  `FLEET_CRYPTO_YAML_2` is left from an earlier run (`ci_crypto` would join it to the new one): delete it;
+- stores `FLEET_CRYPTO_YAML` first, so a run that stops part-way is refused the next time, never stored twice:
+  delete `FLEET_CRYPTO_YAML` and its parts and run it again;
+- reads only the status of the API's answer when it checks a variable, because that answer holds the value.
+
+Writing variables needs a Maintainer token. gitlab.com Free has no project access tokens, so the hub creates a
+**bot user per deployment**, a Maintainer of this one project only, and stores its personal access token as
+`FLEET_INIT_TOKEN`: protected, masked and hidden, in the scope `init-secrets`. Only the protected environment
+`init-secrets` (deployable by Maintainers) has that scope, and only this job uses it. The token can read every
+variable of the project, as any Maintainer can, so it never reaches another job.
+
+On a new deployment's first pipeline, `generate` fails because there's nothing to generate from. Run
+`init-secrets` (it needs only `tools`), then run the pipeline again.
+
+**Third-party secrets** are entered once per deployment, keyless where the provider allows. Apple's `.p8` is
+entered once (`FLEET_APPLE_KEY_P8`), and oauth mints the client-secret JWT from it for each request, so no Apple
+secret expires. Google's client secret is entered once. Microsoft without a secret (Entra federated credentials)
+needs oauth to authenticate to Entra with a client assertion, which it can't do yet (PROPOSALS.md). Until then,
+the secret is rotated by hand, as below.
 
 **Rotating the Microsoft secret** (every 6 months; the current one expires around 2027-04-27, #6):
 
@@ -356,8 +399,9 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 1. Make the GCP side above (Jody's OK). Set `GCP_WIF_PROVIDER` in the project. Then the GitHub side: the
    `tacplus-reader` key's binding and the app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
 2. Register the deploy runner and turn off group runners on the project.
-3. Create the protected environment `seatrials`, deployable by Maintainers (`seatrials-letsencrypt` is
-   retired with letsencrypt, #35: delete it). Keep `main` protected. `apply` runs by itself as whoever started the pipeline (or owns its
+3. Create the protected environments `seatrials` and `init-secrets`, both deployable by Maintainers
+   (`seatrials-letsencrypt` is retired with letsencrypt, #35: delete it). For a new deployment, create its bot
+   user and store `FLEET_INIT_TOKEN` ([above](#generated-secrets-the-init-secrets-job)). Keep `main` protected. `apply` runs by itself as whoever started the pipeline (or owns its
    schedule), so that user must be able to deploy to `seatrials`.
 4. Store the variables in the table above, once tacplus-dev/looper#25 is fixed. There is no GitHub token
    to store. Jody pastes the sign-in

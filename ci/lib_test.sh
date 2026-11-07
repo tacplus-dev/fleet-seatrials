@@ -167,4 +167,36 @@ else
     fail "test-idp-signin, refused: $(cat "$work/out")"
 fi
 
+# ci_crypto places FLEET_CRYPTO_YAML as it is, or, when init-secrets stored it
+# gzipped and base64-encoded (to fit GitLab's 10,000-character limit, #17),
+# decoded, joined first with its parts FLEET_CRYPTO_YAML_2 and on; a value that
+# decodes to nothing is refused.
+printf 'pki:\n  root_ca: x\n' > "$work/crypto-plain"
+gzip -9nc "$work/crypto-plain" | base64 -w0 > "$work/crypto-gz"
+echo 'H4sIbroken' > "$work/crypto-bad"
+echo CA > "$work/ca"
+head -c 7 "$work/crypto-gz" > "$work/crypto-gz-1"
+tail -c +8 "$work/crypto-gz" | head -c 9 > "$work/crypto-gz-2"
+tail -c +17 "$work/crypto-gz" > "$work/crypto-gz-3"
+crypto() { # FILE [VAR=VALUE...]: ci_crypto with FLEET_CRYPTO_YAML=FILE, the placed crypto.yaml in $work/placed
+  local f=$1; shift
+  rm -f "$work/placed"
+  ( cd "$src" && env "$@" FLEET_CRYPTO_YAML=$f FLEET_CA_PEM=$work/ca bash -c \
+      'source ci/lib.sh && ci_crypto && cp deploy/bootstrap/crypto.yaml "$0"' "$work/placed" ) > "$work/out" 2>&1
+}
+mkdir -p "$src/deploy/bootstrap"
+crypto "$work/crypto-plain" && cmp -s "$work/placed" "$work/crypto-plain" &&
+  ok "ci_crypto places a plain crypto.yaml as it is" || fail "ci_crypto, plain: $(cat "$work/out")"
+crypto "$work/crypto-gz" && cmp -s "$work/placed" "$work/crypto-plain" &&
+  ok "ci_crypto decodes a gzipped, base64-encoded crypto.yaml" || fail "ci_crypto, encoded: $(cat "$work/out")"
+crypto "$work/crypto-gz-1" FLEET_CRYPTO_YAML_2="$work/crypto-gz-2" FLEET_CRYPTO_YAML_3="$work/crypto-gz-3" &&
+  cmp -s "$work/placed" "$work/crypto-plain" &&
+  ok "ci_crypto joins FLEET_CRYPTO_YAML_2, _3 and decodes them" || fail "ci_crypto, parts: $(cat "$work/out")"
+if crypto "$work/crypto-gz-1" FLEET_CRYPTO_YAML_2=/nonexistent; then fail "ci_crypto accepts a part that is not a file"
+else grep -q "FLEET_CRYPTO_YAML_2 must be a file variable" "$work/out" && ok "ci_crypto refuses a part that is not a file" ||
+  fail "ci_crypto, part not a file: $(cat "$work/out")"; fi
+if crypto "$work/crypto-bad"; then fail "ci_crypto accepts an encoded value that does not decode"
+else grep -q "does not decode" "$work/out" && ok "ci_crypto refuses an encoded value that does not decode" ||
+  fail "ci_crypto, bad: $(cat "$work/out")"; fi
+
 [ "$failed" = 0 ] && echo "lib tests passed" || { echo "lib tests failed"; exit 1; }
