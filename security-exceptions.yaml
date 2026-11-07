@@ -164,7 +164,7 @@ exceptions:
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119373
-    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest."
+    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.3, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119586
