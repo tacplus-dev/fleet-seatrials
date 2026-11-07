@@ -27,7 +27,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   (CVE-2026-109518), accepted until 2026-11-19 (as tacplus-dev/cluster#8). When tacplus-dev/tacplus#283 rebuilds
   the line's images, move every `image:` of `ci/*.gitlab-ci.yml`, `.github/workflows/security.yml` and
   `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE` to the rebuilt one and drop the seven entries; build:2.5
-  carries the same CVEs today (cluster#8), so 2.5 alone does not clear them.
+  carries the same CVEs today (cluster#8), so 2.5 alone does not clear them. build:2.6.1 (ImageMagick deb13u14, apt
+  3.0.4) clears all seven; the hub chose it, pinned by digest (#43). Its `gh` still carries x/net v0.60.0
+  (CVE-2026-78661, accepted until 2026-12-06; tacplus-dev/tacplus#350). The move changes
+  `.github/workflows/security.yml`, which the looper's GitHub App may not push without the `workflows`
+  permission (tacplus-dev/looper#99): Jody grants it, or a maintainer pushes that commit (#43 has it).
 - **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
   builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8
   and xz v0.5.17, because no release of theirs requires them yet. Each override is checked on every build

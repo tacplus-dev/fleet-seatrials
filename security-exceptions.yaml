@@ -22,6 +22,11 @@
 #   apt 3.0.3 (fixed in 3.0.4)                                      CVE-2026-109518
 #   gh and docker-buildx (x/crypto v0.58.0)                         GO-2026-5932, above
 #
+# And one the rebuilt line does not fix: build:2.6.1's gh carries the same x/net v0.60.0 (#43). Accepted until
+# 2026-12-06 by the hub, with Jody's delegation; tacplus-dev/tacplus#350 rebuilds the line's image with it fixed:
+#
+#   gh (x/net v0.60.0)                                              CVE-2026-78661 (found 2026-11-06)
+#
 # And Trivy's scan of the images this repository deploys itself (#41): the test IdP's Keycloak, 26.8.1-2
 # (test-idp/keycloak.yaml), for arm64. No Keycloak release fixes them yet: 26.8.2-0 (2026-11-05), the latest, has the
 # same four. Accepted until 2026-12-06 (Jody, #41); when a Keycloak release ships the fixes, move
@@ -174,4 +179,8 @@ exceptions:
   - id: CVE-2026-91403
     reason: "java-21-openjdk-headless 1:21.0.13.0.9-1.2.el9 (Red Hat 9.8), the JDK Keycloak runs on, in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same JDK): the fix is the first Keycloak release rebuilt on a fixed OpenJDK 21, then move the pin to it by tag and digest."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
+    expires: 2026-12-06
+  - id: CVE-2026-78661
+    reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs gh, and gh parses no HTML from outside; it only reads trusted GitHub API responses. build:2.6.1's gh carries the same x/net; the fix is the line's image rebuilt with a gh on the fixed x/net (tacplus-dev/tacplus#350)."
+    decided_by: "hub, with Jody's delegation (tacplus-dev/fleet-seatrials#43, 2026-11-07)"
     expires: 2026-12-06
