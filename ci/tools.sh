@@ -97,7 +97,7 @@ git clone -q https://github.com/tacplus-dev/tacplus.git "$src" && git -C "$src" 
 pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo
 ( cd "$src" && go generate ./pkg/internal/proto/spec/... \
   && CGO_ENABLED=0 go build -trimpath \
-     -ldflags="-w -s -X $pkg.Version=v2.2.0-seatrials -X $pkg.GitSha=$commit -X $pkg.BuildID=$commit -X $pkg.ProjectPath=tacplus-dev/tacplus" \
+     -ldflags="-w -s -X $pkg.Version=v2.6.1-seatrials -X $pkg.GitSha=$commit -X $pkg.BuildID=$commit -X $pkg.ProjectPath=tacplus-dev/tacplus" \
      -o "$here/bin/tacplus" . )
 rm -rf "$src"
 go_drop

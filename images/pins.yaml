@@ -1,7 +1,8 @@
-# The tacplus commit this fleet generates and builds with (branch registry-and-floor
-# until it is merged and released; then this becomes the released MAJOR.MINOR).
-tacplus_commit: 3acaaf78560fe2c49f6fc91aaba3f786d265b6e8
-operator_commit: 3d0e4b76721a614c259f10c8df1642d949b58efd
+# The tacplus commit this fleet generates and builds with: v2.6.1, of fleet.yaml's
+# floor 2.6 (#1). ci/tools.sh and images/tacplus.cloudbuild.yaml stamp it with
+# the same line. operator_commit is operator v0.1.0.
+tacplus_commit: 59419d5446bbba66a7bd8482ff00b8b4f1d5820f
+operator_commit: a17d50774e5ea8c565127e5334c336f3f87f8178
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708
 # The platforms every service image is built for (images/build.sh): arm64, what
 # the fleet runs on. amd64 is off to save the cost of a second build (Jody,

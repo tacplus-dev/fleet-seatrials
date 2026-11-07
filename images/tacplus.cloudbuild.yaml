@@ -11,7 +11,7 @@ steps:
     args:
       - build
       - --file=images/tacplus.Dockerfile
-      - --build-arg=VERSION=v2.2.0-seatrials
+      - --build-arg=VERSION=v2.6.1-seatrials
       - --build-arg=VCS_REF=${_TACPLUS_COMMIT}
       - --tag=${_REGISTRY}/ci/tacplus:${_TACPLUS_COMMIT}
       - --tag=${_REGISTRY}/ci/tacplus:seatrials

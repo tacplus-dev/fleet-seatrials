@@ -87,8 +87,7 @@ The fleet runs no letsencrypt workload: the `cert` job obtains `tacplus.dev` and
 DNS-01 when it is missing, expired or due (ARI, or the last third of its lifetime), keeps it as a version of the
 secret `tls-seatrials`, and the gateway serves that version (`CERT_CHAIN`) and hot-swaps a renewed one with no
 restart. A daily schedule runs the pipeline, so a renewal deploys by itself. The old rule that letsencrypt is
-never restarted no longer applies: there is nothing left to restart. (letsencrypt stays in `fleet.yaml` only
-as a contract the pinned gateway imports, until the gateway pin moves past its retirement: PROPOSALS.md.) The first time, on a new cluster:
+never restarted no longer applies: there is nothing left to restart. The first time, on a new cluster:
 
 ```
 deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project

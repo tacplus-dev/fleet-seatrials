@@ -12,8 +12,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   owns one `gke-l7-global-external-managed` Gateway naming `gateway`, each namespace (seatrials, the test IdP)
   attaches HTTPRoutes, tacplus-dev/operator renders the gateway's Service as its backend (NEG, `appProtocol`
   HTTP/2) instead of a LoadBalancer, and #35's certificate goes on the Gateway, with `idp.test.tacplus.dev`
-  covered too. Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
-  stays pending instead of taking an ephemeral public IP.
+  covered too. Settled for the gateway itself (hub, 2026-11-07, #1): it is a standalone NEG behind the TCP proxy
+  load balancer (tacplus-dev/operator#22, tacplus-dev/cloud#21), the operator refuses `external_ip`, and #1
+  drops it from `operator.yaml`. The shared Gateway for the other namespaces is still open.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
@@ -67,10 +68,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   `cert` stage, the daily schedule), by the interim route of #35's design: the version is installed as the job's
   `crypto.yaml` `pki.edge_tls[0]`, which the pinned operator (3d0e4b7) serves in `CERT_CHAIN` mode once
   `operator.yaml` has no `tls`. What is left:
-  - **Move the gateway pin past gateway#25 (0b0743f)** and the operator pin past operator#21 (4dc0a3d), then drop
-    letsencrypt from `fleet.yaml` and `fleet.lock` (relock) and ask for its registry entry's removal. The pinned
-    gateway (32cd7a6) still imports `LetsEncryptState`, so the closure keeps letsencrypt's contract until then.
-    Both new pins declare the tacplus 2.5 floor, and this fleet is on 2.2, so this waits on #1.
+  - **Ask for letsencrypt's registry entry's removal.** #1 moves the fleet to gateway 0.1 and operator v0.1.0
+    (both past gateway#25 and operator#21) and drops letsencrypt from `fleet.yaml` and `fleet.lock`.
   - **Reference the version in the uni-config** once #28 (operator#17) lands, in place of `edge_tls[0]` in
     memory: the gateway's part of the uni-config names `tls-seatrials` and the version.
   - **The gateway's `root_ca`**: in `CERT_CHAIN` mode the operator also hands the gateway the fleet's private
