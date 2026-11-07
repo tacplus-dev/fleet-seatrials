@@ -22,26 +22,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`).
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
-- **Move the CI image to the rebuilt line, before 2026-11-19** (2026-11-06, #40): `build:2.3` (Debian 13.7)
-  carries ImageMagick deb13u13 (CVE-2026-109258, -109260, -109262, -109263, -109268, -116149) and apt 3.0.3
-  (CVE-2026-109518), accepted until 2026-11-19 (as tacplus-dev/cluster#8). When tacplus-dev/tacplus#283 rebuilds
-  the line's images, move every `image:` of `ci/*.gitlab-ci.yml`, `.github/workflows/security.yml` and
-  `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE` to the rebuilt one and drop the seven entries; build:2.5
-  carries the same CVEs today (cluster#8), so 2.5 alone does not clear them. build:2.6.1 (ImageMagick deb13u14, apt
-  3.0.4) clears all seven; the hub chose it, pinned by digest (#43). Its `gh` still carries x/net v0.60.0
-  (CVE-2026-78661, accepted until 2026-12-06; tacplus-dev/tacplus#350). The move changes
-  `.github/workflows/security.yml`, which the looper's GitHub App may not push without the `workflows`
-  permission (tacplus-dev/looper#99): Jody grants it, or a maintainer pushes that commit (#43 has it).
+- **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
+  (2026-11-09, #43): the CI image is `build:2.6.4` by digest (every `image:` of `ci/*.gitlab-ci.yml`,
+  `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`
+  checks they are one image). Its `gh` and `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until
+  2026-12-04). When a line image moves them, move the four references to its patch and digest and drop them from
+  GO-2026-5932's reason. Each build image patch is now a commit here: no tag moves under the jobs.
 - **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
   builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8
   and xz v0.5.17, because no release of theirs requires them yet. Each override is checked on every build
   (selected version and module hash); once a tool's release requires the fixed version, bump the tool and drop its
   override (and build it with `go_install` again, if it needs none).
-- **Trivy scans the CI image by tag** (2026-11-04, #36): the security job scans
-  `ghcr.io/tacplus-dev/tacplus/build:2.3`, the tag the jobs run, which moves with each 2.3 patch. Pinning the
-  jobs' `image:` by digest would make the scanned image and the one the jobs run provably the same, and fit
-  `decisions/deterministic-deployments-2026-11-02.md`. Each tacplus build image patch would then be a commit
-  here.
 - **Move the test IdP's Keycloak before its exceptions expire, 2026-12-06** (2026-11-07, #41): the security job
   now scans every container of `test-idp/*.yaml` (Jody's decision in #41), and Keycloak 26.8.1-2 has four HIGH CVEs
   no Keycloak release fixes yet (26.8.2-0, 2026-11-05, has the same): Guava CVE-2026-102554 (fixed in Guava

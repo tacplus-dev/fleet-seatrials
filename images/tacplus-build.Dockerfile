@@ -5,7 +5,7 @@
 # into launcher/ beside this file). The slim tacplus image has no compilers.
 # It builds for both platforms whatever it runs on: a launcher per platform, and
 # Rust's targets with a C compiler for each (ring and bzip2-sys compile C).
-ARG BUILD_IMAGE=ghcr.io/tacplus-dev/tacplus/build:2.3
+ARG BUILD_IMAGE=ghcr.io/tacplus-dev/tacplus/build:2.6.4@sha256:3c5d7fe2c00e1c4be9c53e576904ad32e63242dbb4a5489d137a34d95887c324
 ARG TACPLUS_IMAGE
 FROM ${TACPLUS_IMAGE} AS tacplus
 FROM ${BUILD_IMAGE} AS launcher

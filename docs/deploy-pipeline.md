@@ -391,7 +391,7 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 - A **project runner** registered to tacplus-dev/fleet-seatrials only, not the group. It is locked to the
   project, takes no untagged jobs and has the tag `deploy`. Use the docker-autoscaler executor with
   `max_use_count = 1`, so each job gets a fresh VM, and an image that is multi-arch or built for the VM's
-  architecture (`ghcr.io/tacplus-dev/tacplus/build:2.3` is both).
+  architecture (`ghcr.io/tacplus-dev/tacplus/build:2.6.4`, pinned by digest, is both).
 - The VMs' own service account has no roles. GCP is reached through federation only.
 - Turn off group runners on this project (Settings → CI/CD → Runners). The tag alone already keeps the
   group's agent runner away, since its tags are `arm64` and `autoscale`.

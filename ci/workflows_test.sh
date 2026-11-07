@@ -36,6 +36,15 @@ check "it frees the runner's preinstalled toolsets before the image runs (#37)" 
   | ([\$s[] | select(.run | test(\"docker (run|pull)\")) | .i] | first) as \$image
   | \$free != null and \$image != null and \$free < \$image"
 check "the job's image (IMAGE) is the deploy pipeline's CI image" '.jobs.security.env.IMAGE == $image'
+# The CI image is pinned by digest, so the image Trivy scans is the one the jobs
+# run (#43), and every build-image reference is that one (#21, #38).
+[[ "$image" =~ ^ghcr\.io/tacplus-dev/tacplus/build:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]] &&
+  ok "the CI image is a tacplus build image pinned by its patch and digest (#43)" ||
+  fail "the CI image is a tacplus build image pinned by its patch and digest (#43): $image"
+others=$(grep -rhoE 'ghcr\.io/tacplus-dev/tacplus/build[^ "`]*' "$here"/ci/*.gitlab-ci.yml "$here"/images \
+  "$here"/.github | LC_ALL=C sort -u)
+[ "$others" = "$image" ] && ok "every build-image reference in ci/, images/ and .github/ is the CI image (#21, #38)" ||
+  fail "every build-image reference in ci/, images/ and .github/ is the CI image (#21, #38): $(echo $others)"
 check "ci/tools.sh and ci/security.sh run in that image" "
   [$steps[] | .run | select(test(\"ci/(tools|security).sh\"))] | length > 0
   and all(test(\"docker run [^\\\\n]*\\\"[\$]IMAGE\\\"\"))"

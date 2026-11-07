@@ -13,19 +13,12 @@
 #   lego 5.6.0 (#35)            GO-2026-5932 (found 2026-11-05, when the cert job pinned it; its latest release)
 #
 # Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh
-# builds them from source with the fixed dependencies (#40). And Trivy's scan of the CI image,
-# ghcr.io/tacplus-dev/tacplus/build:2.3 (Debian 13.7; #40): Debian fixed them, the image is not rebuilt yet. Accepted
-# until 2026-11-19, as tacplus-dev/cluster#8; when tacplus-dev/tacplus#283 rebuilds the line's images, move the CI
-# image (every image: of ci/*.gitlab-ci.yml, .github/workflows/security.yml) to the rebuilt one and remove these:
-#
-#   ImageMagick 8:7.1.1.43+dfsg1-1+deb13u13 (fixed in deb13u14)   CVE-2026-109258 109260 109262 109263 109268 116149
-#   apt 3.0.3 (fixed in 3.0.4)                                      CVE-2026-109518
-#   gh and docker-buildx (x/crypto v0.58.0)                         GO-2026-5932, above
-#
-# And one the rebuilt line does not fix: build:2.6.1's gh carries the same x/net v0.60.0 (#43). Accepted until
-# 2026-12-06 by the hub, with Jody's delegation; tacplus-dev/tacplus#350 rebuilds the line's image with it fixed:
-#
-#   gh (x/net v0.60.0)                                              CVE-2026-78661 (found 2026-11-06)
+# builds them from source with the fixed dependencies (#40). build:2.3's ImageMagick and apt CVEs (#40) are fixed:
+# the CI image is ghcr.io/tacplus-dev/tacplus/build:2.6.4 by digest (#43, #45), with ImageMagick deb13u14, apt 3.0.4,
+# zlib1g deb13u1 (CVE-2026-85091 76844) and a gh on x/net v0.62.0 (CVE-2026-78661). Trivy's scan of it still finds
+# gh's and docker-buildx's x/crypto v0.58.0; when a line image moves them, move the CI image (every image: of
+# ci/*.gitlab-ci.yml, .github/workflows/security.yml and images/tacplus-build.Dockerfile's BUILD_IMAGE) to it and
+# remove them from GO-2026-5932, above.
 #
 # And Trivy's scan of the images this repository deploys itself (#41): the test IdP's Keycloak, 26.8.1-2
 # (test-idp/keycloak.yaml), for arm64. No Keycloak release fixes them yet: 26.8.2-0 (2026-11-05), the latest, has the
@@ -89,7 +82,7 @@ exceptions:
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp, in schematic-operator (#11), lego 5.6.0 (ci/tools.sh, its latest release; the cert job's ACME client, #35), and gh and docker-buildx in the CI image (build:2.3, Trivy's scan): none handles an OpenPGP key or message from outside (lego talks ACME and Cloud DNS; no job runs gh or buildx). The fix is an untagged x/crypto pseudo-version; no operator pin, lego release or rebuilt CI image carries it yet."
+    reason: "x/crypto/openpgp, in schematic-operator (#11), lego 5.6.0 (ci/tools.sh, its latest release; the cert job's ACME client, #35), and gh and docker-buildx in the CI image (build:2.6.4, Trivy's scan): none handles an OpenPGP key or message from outside (lego talks ACME and Cloud DNS; no job runs gh or buildx). The fix is an untagged x/crypto pseudo-version; no operator pin, lego release or rebuilt CI image carries it yet."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-6061
@@ -136,40 +129,12 @@ exceptions:
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
-  - id: CVE-2026-109258
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-109260
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-109262
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-109263
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-109268
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-116149
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs ImageMagick or processes an image; the jobs run shell, yq, gcloud and the pinned tools on this repository and its render. Fixed in Debian (deb13u14); arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
-  - id: CVE-2026-109518
-    reason: "apt 3.0.3 in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, Debian 13.7): an on-path attack on package installs. No job runs apt on the runner (ci/tools.sh fetches each tool by its pinned SHA-256 or module hash); it runs only in the images job's Cloud Build of images/tacplus-build.Dockerfile, which installs the cross compilers from Debian's signed archive inside Google's network. Fixed in apt 3.0.4; arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, tacplus-dev/fleet-seatrials#40, 2026-11-06; as tacplus-dev/cluster#8)"
-    expires: 2026-11-19
   - id: CVE-2026-102554
     reason: "Guava 33.6.0-jre in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. A denial of service by unthrottled allocation in deserialization: at worst the test IdP restarts. Fixed in Guava 33.7.2; no Keycloak release has it yet (26.8.2-0, the latest, has 33.6.0-jre): the fix is the first Keycloak release with Guava 33.7.2 or later, then move the pin to it by tag and digest."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119373
-    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.3, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
+    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.6.4, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119586
@@ -179,8 +144,4 @@ exceptions:
   - id: CVE-2026-91403
     reason: "java-21-openjdk-headless 1:21.0.13.0.9-1.2.el9 (Red Hat 9.8), the JDK Keycloak runs on, in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same JDK): the fix is the first Keycloak release rebuilt on a fixed OpenJDK 21, then move the pin to it by tag and digest."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
-    expires: 2026-12-06
-  - id: CVE-2026-78661
-    reason: "golang.org/x/net v0.60.0's html parser (denial of service on crafted HTML), in gh in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.3, every image: of ci/*.gitlab-ci.yml and the GitHub security workflow): no job here runs gh, and gh parses no HTML from outside; it only reads trusted GitHub API responses. build:2.6.1's gh carries the same x/net; the fix is the line's image rebuilt with a gh on the fixed x/net (tacplus-dev/tacplus#350)."
-    decided_by: "hub, with Jody's delegation (tacplus-dev/fleet-seatrials#43, 2026-11-07)"
     expires: 2026-12-06
