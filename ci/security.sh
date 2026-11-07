@@ -9,7 +9,9 @@
 #   OSV-Scanner   the tree's dependency manifests and lock files, at HEAD
 #   govulncheck   -mode=binary, every pinned tool binary the pipeline runs (bin/, ci/tools.sh)
 #   gitleaks      the history and the tree at HEAD, with .gitleaks.toml and .gitleaksignore
-#   Trivy         the CI image the jobs run in (every `image:` of ci/*.gitlab-ci.yml), for this platform
+#   Trivy         the CI image the jobs run in (every `image:` of ci/*.gitlab-ci.yml), for this platform,
+#                 and the images this repository deploys itself (#41: every container of test-idp/*.yaml),
+#                 for the architecture its nodeSelector picks
 #
 # The policy, looper-scan's: any secret fails, and so does a HIGH or CRITICAL
 # finding with a fixed version, unless an unexpired entry of
@@ -22,7 +24,8 @@
 #   ci/security.sh [REPO]   # needs git, jq, yq and the pinned scanners (ci/tools.sh builds them into bin/)
 #
 # SECURITY_OUT (default REPO/security), SECURITY_BIN (default REPO/bin) and
-# SECURITY_IMAGES (default the CI images above, one per line) override what it reads and writes.
+# SECURITY_IMAGES (default the CI images above, one per line; the deployed ones are scanned either way)
+# override what it reads and writes.
 set -uo pipefail
 repo=$(cd "${1:-$(dirname "$0")/..}" && pwd)
 out=${SECURITY_OUT:-$repo/security}
@@ -120,7 +123,8 @@ if need gitleaks; then
   done
 fi
 
-# Trivy: the CI image, as this platform's jobs run it.
+# Trivy: the CI image, as this platform's jobs run it, and the images this
+# repository deploys itself (#41), each as its nodes run it.
 images=()
 if [ -n "${SECURITY_IMAGES+set}" ]; then
   while IFS= read -r i; do [ -z "$i" ] || images+=("$i"); done <<<"$SECURITY_IMAGES"
@@ -130,11 +134,27 @@ else
 fi
 ((${#images[@]})) || problem "no CI image to check in ci/*.gitlab-ci.yml"
 case $(uname -m) in aarch64|arm64) platform=linux/arm64 ;; *) platform=linux/amd64 ;; esac
+platforms=()
+for i in "${images[@]+"${images[@]}"}"; do platforms+=("$platform"); done
+# The deployed ones: every container of test-idp/*.yaml (the test IdP's Keycloak), for the
+# architecture its pod's nodeSelector picks, else this platform's.
+deployed=("$tree"/test-idp/*.yaml)
+if [ -e "${deployed[0]}" ]; then
+  if yq -N '.. | select(tag == "!!map" and has("containers")) | (.nodeSelector["kubernetes.io/arch"] // "") as $a
+            | (.containers + (.initContainers // []))[] | .image + " " + $a' "${deployed[@]}" > "$work/deployed" 2>"$work/deployed.err"; then
+    while read -r i a; do
+      [ -n "$i" ] || continue
+      images+=("$i"); platforms+=("linux/${a:-${platform#linux/}}")
+    done < <(LC_ALL=C sort -u "$work/deployed")
+  else
+    problem "test-idp/*.yaml: its images could not be read: $(grep -m1 . "$work/deployed.err")"
+  fi
+fi
 if need trivy; then
   n=0
   for i in "${images[@]}"; do
     n=$((n + 1)); rc=0
-    trivy image -q --scanners vuln --platform "$platform" --format json -o "$out/raw/trivy-$n.json" "$i" \
+    trivy image -q --scanners vuln --platform "${platforms[n - 1]}" --format json -o "$out/raw/trivy-$n.json" "$i" \
       2>"$out/raw/trivy-$n.log" || rc=$?
     [ "$rc" = 0 ] || { problem "trivy: $i exited $rc: $(tail -1 "$out/raw/trivy-$n.log")"; continue; }
     norm "trivy-$n" '

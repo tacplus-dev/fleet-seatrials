@@ -53,7 +53,10 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: keycloak
-          # 26.8.1-2, the multi-arch index (arm64 among its images).
+          # 26.8.1-2, the multi-arch index (arm64 among its images). The security
+          # job scans it for arm64 (#41); its four HIGH CVEs, which no Keycloak
+          # release fixes yet, are accepted until 2026-12-06
+          # (security-exceptions.yaml): move it to the release that does.
           image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
           args: [start]
           env:

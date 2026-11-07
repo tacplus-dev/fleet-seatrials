@@ -53,8 +53,8 @@ The cutover's order and the grants still to come are in
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
   secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets
   scan, `ci/secrets.sh` (bash, git, jq, yq, opa, gitleaks). `ci/security.sh` is the security job: OSV-Scanner,
-  govulncheck on the pinned binaries, gitleaks and Trivy on the CI image, with `security-exceptions.yaml` enforced
-  ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-security-job)). `ci/cert.sh` is the cert job: the
+  govulncheck on the pinned binaries, gitleaks and Trivy on the CI image and the test IdP's Keycloak, with
+  `security-exceptions.yaml` enforced ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-security-job)). `ci/cert.sh` is the cert job: the
   pipeline owns the public certificate, checks it (`ci/cert-check.sh`) and has `lego` obtain or renew it by
   DNS-01 into Secret Manager, and every job that renders installs that version as the gateway's
   ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-certificate)).

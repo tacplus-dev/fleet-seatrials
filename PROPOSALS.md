@@ -38,13 +38,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   jobs' `image:` by digest would make the scanned image and the one the jobs run provably the same, and fit
   `decisions/deterministic-deployments-2026-11-02.md`. Each tacplus build image patch would then be a commit
   here.
-- **The security job scans the images this repository deploys** (2026-11-06, nightly scan, #41): Trivy reads
-  only the CI images (`ci/*.gitlab-ci.yml`'s `image:`). Every image this repository pins and deploys itself, today
-  `test-idp/keycloak.yaml`'s Keycloak, goes unscanned, and Keycloak 26.8.1-2 has 4 HIGH CVEs (#41). Proposal:
-  take every `image:` of `test-idp/*.yaml` (and any later deploy manifest here) as Trivy targets too, with the
-  same policy and `security-exceptions.yaml`. Whether the fleet's own service images (`images/build.sh`) belong
-  in the same scan is a separate question. Why: a vulnerable image with a fix
-  would then fail the pipeline before `test-idp` applies it, not be found only by a nightly scan.
+- **Move the test IdP's Keycloak before its exceptions expire, 2026-12-06** (2026-11-07, #41): the security job
+  now scans every container of `test-idp/*.yaml` (Jody's decision in #41), and Keycloak 26.8.1-2 has four HIGH CVEs
+  no Keycloak release fixes yet (26.8.2-0, 2026-11-05, has the same): Guava CVE-2026-102554 (fixed in Guava
+  33.7.2), sqlite-libs CVE-2026-119373 and CVE-2026-119586 and OpenJDK CVE-2026-91403 (Red Hat 9.8, no fix yet).
+  They are accepted until 2026-12-06. When a Keycloak release ships the fixes, move `test-idp/keycloak.yaml` to it
+  by tag and digest, run `test-idp/local.sh`, and remove the four entries; otherwise every pipeline fails from
+  2026-12-06 until they are decided again.
+- **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
+  deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
+  operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them
+  would need the digests the `images` job builds as Trivy targets, once they are built on Cloud Build (#23).
+  Why: they are what seatrials runs. Whether they belong in this scan was left open in #41.
 - **The checks job's secrets scan reads one commit** (2026-11-04, #36): every child job fetches this repository
   at depth 1, so `ci/secrets.sh` in `checks` sees only the deployed commit's history, not the whole history it
   says it scans. The security job fetches the whole history (`FLEET_FETCH_HISTORY=1`) and runs gitleaks on it.

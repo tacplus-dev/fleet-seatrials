@@ -5,8 +5,9 @@
 # Tests ci/security.sh (#36) on throwaway repositories: a planted secret fails
 # the job, an expired exception fails it, and a clean tree passes; a HIGH or
 # CRITICAL finding with a fix fails unless an unexpired exception accepts it,
-# one with no fix does not; a malformed exception and a tool that cannot run
-# fail; the JSON report is written either way. gitleaks is the real one, with
+# one with no fix does not, in the CI image and in an image this repository
+# deploys (#41), scanned for its nodes' platform; a malformed exception and a
+# tool that cannot run fail; the JSON report is written either way. gitleaks is the real one, with
 # this repository's configuration. OSV-Scanner, govulncheck and Trivy are
 # stand-ins on PATH that answer what each case sets in $stub (their real runs
 # need the network and change with each day's databases). Needs git, gitleaks,
@@ -21,12 +22,14 @@ failed=0
 fail() { echo "FAIL $*"; failed=1; }
 
 # The stand-ins: each writes $stub/<tool>.json (or nothing found) where the
-# real tool writes its JSON report, and exits $stub/<tool>.rc (default 0).
+# real tool writes its JSON report, and exits $stub/<tool>.rc (default 0);
+# each call's arguments are a line of $stub/<tool>.args.
 stub=$work/stub
 mkdir -p "$work/path" "$stub"
 for tool in osv-scanner govulncheck trivy; do
   cat > "$work/path/$tool" <<EOF
 #!/usr/bin/env bash
+echo "\$*" >> "$stub/$tool.args"
 out=
 while [ \$# -gt 0 ]; do case \$1 in --output-file|-o) out=\$2; shift ;; esac; shift; done
 rc=\$(cat "$stub/$tool.rc" 2>/dev/null || echo 0)
@@ -141,6 +144,37 @@ trivy_critical > "$stub/trivy.json"
 scan "a CRITICAL in the CI image with a fix fails" fail "$r" "CVE-2026-0002"
 exceptions "$r" CVE-2026-0002 2999-01-01
 scan "an exception accepts it" pass "$r"
+
+stubs
+r=$(repo deployed)
+mkdir -p "$r/test-idp"
+cat > "$r/test-idp/idp.yaml" <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata: { name: test-idp }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: idp }
+spec:
+  template:
+    spec:
+      nodeSelector: { kubernetes.io/arch: s390x }
+      containers:
+        - name: idp
+          image: registry.example.invalid/idp:1@sha256:0000
+EOF
+git -C "$r" add -A && git -C "$r" commit -qm idp
+trivy_critical > "$stub/trivy.json"
+scan "a CRITICAL with a fix in an image this repository deploys fails" fail "$r" "registry.example.invalid/idp:1@sha256:0000"
+jq -e '.images == ["registry.example.invalid/ci:1", "registry.example.invalid/idp:1@sha256:0000"]' "$work/out/report.json" >/dev/null &&
+  echo "ok   the report names the deployed image beside the CI image" ||
+  fail "the deployed image's report: $(jq -c .images "$work/out/report.json")"
+grep -q -- "--platform linux/s390x .*registry.example.invalid/idp:1@sha256:0000" "$stub/trivy.args" &&
+  echo "ok   the deployed image is scanned for its nodes' platform, not the runner's" ||
+  fail "the deployed image's platform: $(cat "$stub/trivy.args")"
+exceptions "$r" CVE-2026-0002 2999-01-01
+scan "an exception accepts it in the deployed image too" pass "$r"
 
 stubs
 r=$(repo binary)

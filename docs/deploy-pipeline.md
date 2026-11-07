@@ -42,7 +42,10 @@ runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
 - **`govulncheck -mode=binary`** on every pinned tool binary in `bin/`: tacplus, schematic-operator, yq, opa,
   gitleaks, lego, and the scanners themselves;
 - **gitleaks** on the whole history and on the tree (the job fetches the history: `FLEET_FETCH_HISTORY=1`);
-- **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform.
+- **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform, and
+  on the images this repository deploys itself (#41): every container of `test-idp/*.yaml`, today the test IdP's
+  Keycloak, for the architecture its pod's `nodeSelector` picks (arm64), so a vulnerable pin fails the pipeline before
+  `test-idp` applies it.
 
 The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): lego by version and the SHA-256 of its release
 download, the others by module version and module hash (osv-scanner and Trivy built with a pinned Go toolchain, because
@@ -54,7 +57,7 @@ CRITICAL finding with a fixed version, unless an unexpired entry of
 tool that cannot run, and on an entry that has expired or has any field other than `id`, `reason`,
 `decided_by` and `expires` (YYYY-MM-DD), the form looper-scan reads. Its tests are
 [`ci/security_test.sh`](../ci/security_test.sh), run by `checks`: a planted secret fails, an expired exception
-fails, a clean tree passes.
+fails, a clean tree passes, and a finding in a deployed image fails like one in the CI image.
 
 It runs on every pipeline here, a scheduled one included. Pushes and pull requests happen on GitHub, so the
 same job runs there too, on every push to main, every pull request and nightly
