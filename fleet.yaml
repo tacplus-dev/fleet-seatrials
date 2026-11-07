@@ -10,42 +10,53 @@
 # tenant's instance.
 registries:
   - https://github.com/tacplus-dev/registry.git
-tacplus: "2.2"
+tacplus: "2.6"
 services:
   - name: kernel
+    version: "0.1"
     repo: https://github.com/tacplus-dev/kernel.git
   - name: opa
+    version: "0.1"
     repo: https://github.com/tacplus-dev/opa.git
   - name: gateway
+    version: "0.1"
     repo: https://github.com/tacplus-dev/gateway.git
-  # A contract only: the pinned gateway (32cd7a6) still imports letsencrypt's
-  # state, so the closure needs it. Nothing runs it: the pipeline owns the
-  # certificate (#35) and operator.yaml has no `tls`. It goes, with its
-  # registry entry, when the gateway pin moves past gateway#25 (PROPOSALS.md).
-  - name: letsencrypt
-    repo: https://github.com/tacplus-dev/letsencrypt.git
   - name: eventbus
+    version: "0.1"
     repo: https://github.com/tacplus-dev/eventbus.git
   - name: stratum
+    version: "0.1"
     repo: https://github.com/tacplus-dev/stratum.git
   # oauth: users log in through it to get the token the gateway checks; kernel's
   # people/tenant code and the gateway reference its contract directly.
   - name: oauth
+    version: "0.1"
     repo: https://github.com/tacplus-dev/oauth.git
   # kmaker: the operator always renders the key maker (kernel's signing CA path).
   - name: kmaker
+    version: "0.1"
     repo: https://github.com/tacplus-dev/kmaker.git
   - name: llmproxy
+    version: "0.1"
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger
+    version: "0.1"
     repo: https://github.com/tacplus-dev/doppelganger.git
   - name: tenantecho
+    version: "0.1"
     repo: https://github.com/tacplus-dev/tenantecho.git
   # coop: the pigeon protocol and the one door to pigeons; in MODE_MOCK here so
   # the fleet proves a dog's round trip on the thread before Jobs exist.
   - name: coop
+    version: "0.1"
     repo: https://github.com/tacplus-dev/coop.git
   # pigeonhost: the generic pigeon host. Never a Deployment: the coop runs it
   # as a Job per pigeon; it is in the fleet for its contract and its image.
   - name: pigeonhost
+    version: "0.1"
     repo: https://github.com/tacplus-dev/pigeon.git
+  # redo: the durability of every tenant's Stratum (stratum 0.1 appends to it),
+  # in the reserved restore tenant; the operator renders its Config (#3).
+  - name: redo
+    version: "0.1"
+    repo: https://github.com/tacplus-dev/redo.git
