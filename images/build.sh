@@ -56,8 +56,12 @@ fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
 # check it owns it, which needs storage.buckets.list on the project; the
 # synchronous submits stream their logs, and the default logs bucket needs
 # project Viewer. The deploy account has neither (docs/deploy-pipeline.md).
+# Every build runs as seatrials-build, which pushes to the registry and writes
+# the bucket: the deploy account may act as that account only, and the default
+# Cloud Build account has no rights in tacplus-dev (tacplus-dev/cloud#20).
 build_bucket=gs://tacplus-dev-seatrials-build
-staging=(--gcs-source-staging-dir "$build_bucket/source" --gcs-log-dir "$build_bucket/logs")
+build_sa=projects/tacplus-dev/serviceAccounts/seatrials-build@tacplus-dev.iam.gserviceaccount.com
+staging=(--gcs-source-staging-dir "$build_bucket/source" --gcs-log-dir "$build_bucket/logs" --service-account "$build_sa")
 # platforms: [arm64, amd64] -> "amd64 arm64", sorted, so the order in pins.yaml
 # changes neither the build nor its fingerprint.
 platforms=$(sed -n 's/^platforms: *\[\(.*\)\] *$/\1/p' "$here/images/pins.yaml" | tr ', ' '\n\n' | sed '/^$/d' | sort -u | xargs)

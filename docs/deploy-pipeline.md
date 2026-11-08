@@ -351,7 +351,9 @@ What the account may do, and nothing more:
   first checks that the bucket belongs to the project by listing the project's buckets, which needs
   `storage.buckets.list` on the whole project, and the synchronous submits stream their logs from the default
   logs bucket, which needs project Viewer. `roles/iam.serviceAccountUser` on the service account the builds run
-  as, which pushes to the registry.
+  as, `seatrials-build@tacplus-dev.iam.gserviceaccount.com`, and on no other: every submit names it
+  (`--service-account`), since the default Cloud Build account has no rights here. It pushes to the registry and
+  has `roles/storage.objectAdmin` on the bucket.
 - **The registry** `us-central1-docker.pkg.dev/tacplus-dev/seatrials` (`REGISTRY`): Docker, us-central1, the
   fleet's images (`schematic/<service>`, `ci/tacplus-build`). `roles/artifactregistry.reader` on it, so
   `images/build.sh` can read the `fp-` tags; the builds' account writes it, and the `dev` nodes' account
@@ -364,8 +366,8 @@ What the account may do, and nothing more:
   `tac-seatrials`. The fleet still renders into the namespace `schematic`, with cluster-scoped objects, so it
   applies on `dev` only once it moves to `tac-seatrials` (#4).
 
-The Cloud Build, registry and cluster grants are not in the `dev` stack yet: tacplus-dev/cloud#20 asks for
-them, with the test IdP's account ([below](#the-test-idp)).
+The `dev` stack makes the Cloud Build, registry and cluster grants, with the test IdP's account
+([below](#the-test-idp)) (tacplus-dev/cloud#20, applied 2026-11-08).
 
 ### The cutover to `dev`
 
@@ -427,7 +429,7 @@ Microsoft's and Apple's claim shapes, so sign-in is tested with no person.
 Both run as their own service account, `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, never as
 `seatrials-deploy`. They are in their own protected environment, `test-idp`.
 
-**One-time setup.** Nothing is made by hand on `dev`: tacplus-dev/cloud#20 asks for the account,
+**One-time setup.** Nothing is made by hand on `dev`: the `dev` stack makes the account (tacplus-dev/cloud#20),
 the equivalent in tacplus-dev of the account the old cluster's project had:
 
 - `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, which only this project's jobs in the environment

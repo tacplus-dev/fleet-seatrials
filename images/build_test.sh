@@ -105,16 +105,20 @@ done
 
 # Every submit stages its source and logs in the dedicated bucket: given the
 # default bucket, gcloud lists the project's buckets to check it owns it, which
-# the deploy account may not (docs/deploy-pipeline.md).
+# the deploy account may not (docs/deploy-pipeline.md). And every build runs as
+# seatrials-build, the one account the deploy account may act as, which pushes
+# to the registry; the default Cloud Build account has no rights (#39,
+# tacplus-dev/cloud#20).
 staging_checked() { # NAME -> checks every builds submit in $work/log
   local n bad
   n=$(grep -c '^builds submit ' "$work/log")
   bad=$(grep '^builds submit ' "$work/log" | while read -r line; do
     [[ "$line" == *"--gcs-source-staging-dir gs://tacplus-dev-seatrials-build/source"* &&
-       "$line" == *"--gcs-log-dir gs://tacplus-dev-seatrials-build/logs"* ]] || echo "$line"
+       "$line" == *"--gcs-log-dir gs://tacplus-dev-seatrials-build/logs"* &&
+       "$line" == *"--service-account projects/tacplus-dev/serviceAccounts/seatrials-build@tacplus-dev.iam.gserviceaccount.com"* ]] || echo "$line"
   done)
-  if [ "$n" -gt 0 ] && [ -z "$bad" ]; then echo "ok   $1: $n submits stage in the build bucket"
-  else echo "FAIL $1: $n submits, without the build bucket: [$bad]"; failures=$((failures + 1)); fi
+  if [ "$n" -gt 0 ] && [ -z "$bad" ]; then echo "ok   $1: $n submits stage in the build bucket, as seatrials-build"
+  else echo "FAIL $1: $n submits, without the build bucket or seatrials-build: [$bad]"; failures=$((failures + 1)); fi
 }
 platforms_run "platforms: [arm64]" tacplus > /dev/null
 check "tacplus: both images submitted" "$(grep -c '^builds submit ' "$work/log")" 2
