@@ -19,6 +19,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, an enforced security-exceptions.yaml (#36). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:suggestions/2026-11-04-the-deterministic-security-checks-in-the-pipelines-that-apply-infrastructure.md`).
 - Retarget to the new cluster in seabeam.net: project tacplus-dev, cluster dev, deploy accounts, WIF provider, image registry, the gateway's reserved address (#39). Agent, at Jody's request, 2026-11-05 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 - init-secrets writes the fleet CA and crypto file to Secret Manager through WIF; deploy reads them there (#44). Agent, at Jody's request, 2026-11-08 (tacplus-dev/cloud#28, option D).
+- Google sign-in client out of jody1 into seabeam.net, created and maintained by the pipeline, its secret in Secret Manager; design first (#46). Agent, at Jody's request, 2026-11-09.
 
 ## Later
 - Move the fleet to tacplus 2.4 (#1): blocked on the 2.4 floor in blobstore#1, coop#1, doppelganger#1, kmaker#1, letsencrypt#1, opa#1, operator#1, pigeon#1, tenantecho#1.
