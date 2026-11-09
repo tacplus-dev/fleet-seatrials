@@ -10,10 +10,8 @@ or an error message.
 
   testidp.py secret PURPOSE           the secret derived for PURPOSE (see derive)
   testidp.py render REALM.json        the realm with its client secrets, pairwise
-                                      salt and user passwords filled in
-  testidp.py sync ADMIN_URL REALM.json...
-                                      makes Keycloak's realms these (admin API, master
-                                      realm, user admin, password derived from the seed)
+                                      salt and user passwords filled in, as Keycloak
+                                      imports it on every start (test-idp/apply.sh)
   testidp.py claims ISSUER_URL REALM.json USERNAME
                                       signs USERNAME in with the realm's claims-check client
                                       (authorization code + PKCE) and checks its ID token's shape
@@ -55,7 +53,6 @@ PROVIDER_NAMES = {"google": "Test Google", "microsoft": "Test Microsoft", "apple
 ADMIN_USER = "admin"
 # The tid of Microsoft personal accounts (consumers), as Entra issues it.
 MSA_TID = "9188040d-6c67-4c5b-b112-36a304b66dad"
-SHAPE_ATTRIBUTE = "testIdpShape"
 
 
 class Failure(Exception):
@@ -103,9 +100,7 @@ def new_seed():
 
 def render(realm, env=None):
     """The realm as Keycloak imports it: each tacplus-dev client gets its
-    secret, each pairwise sub mapper its salt, each user a password, and the
-    realm the hash of everything but its users (sync recreates the realm when
-    that changes)."""
+    secret, each pairwise sub mapper its salt, each user a password."""
     realm = json.loads(json.dumps(realm))
     name = realm["realm"]
     for client in realm.get("clients", []):
@@ -117,9 +112,6 @@ def render(realm, env=None):
     for user in realm.get("users", []):
         user["credentials"] = [{"type": "password", "temporary": False,
                                 "value": secret(f"user/{name}/{user['username']}", env)}]
-    shape = {k: v for k, v in realm.items() if k != "users"}
-    realm.setdefault("attributes", {})[SHAPE_ATTRIBUTE] = hashlib.sha256(
-        json.dumps(shape, sort_keys=True).encode()).hexdigest()
     return realm
 
 
@@ -343,38 +335,6 @@ def admin_token(browser, admin_url):
     return tok["access_token"]
 
 
-def sync(admin_url, realms):
-    browser = Http()
-    token = admin_token(browser, admin_url)
-    for realm in realms:
-        doc = render(realm)
-        name = doc["realm"]
-        status, _, body = browser.request("GET", f"{admin_url}/admin/realms/{name}", token=token)
-        if status == 200:
-            have = (json.loads(body).get("attributes") or {}).get(SHAPE_ATTRIBUTE)
-            if have != doc["attributes"][SHAPE_ATTRIBUTE]:
-                browser.json("DELETE", f"{admin_url}/admin/realms/{name}", token=token, want=(204,))
-                status = 404
-                print(f"{name}: its realm settings, clients or claim mappers changed: recreated")
-        elif status != 404:
-            raise Failure(f"GET realm {name}: HTTP {status}")
-        if status == 404:
-            browser.json("POST", f"{admin_url}/admin/realms", doc, token=token, want=(201,))
-            print(f"{name}: created, {len(doc.get('users', []))} users")
-            continue
-        # Same shape: the users only. Each user's id is fixed, so OVERWRITE
-        # keeps its sub; a user no longer in the file goes.
-        browser.json("POST", f"{admin_url}/admin/realms/{name}/partialImport",
-                     {"ifResourceExists": "OVERWRITE", "users": doc.get("users", [])}, token=token)
-        want = {u["username"] for u in doc.get("users", [])}
-        have = browser.json("GET", f"{admin_url}/admin/realms/{name}/users?briefRepresentation=true&max=1000",
-                            token=token)
-        gone = [u for u in have if u["username"] not in want]
-        for u in gone:
-            browser.json("DELETE", f"{admin_url}/admin/realms/{name}/users/{u['id']}", token=token, want=(204,))
-        print(f"{name}: up to date, {len(want)} users" + (f", {len(gone)} removed" if gone else ""))
-
-
 def remove(admin_url, realm, username):
     browser = Http()
     token = admin_token(browser, admin_url)
@@ -508,8 +468,6 @@ def main(argv):
             sys.stdout.write(new_seed())
         elif cmd == "render" and len(args) == 1:
             json.dump(render(load(args[0])), sys.stdout)
-        elif cmd == "sync" and len(args) >= 2:
-            sync(args[0].rstrip("/"), [load(p) for p in args[1:]])
         elif cmd == "claims" and len(args) == 3:
             claims_check(args[0].rstrip("/"), load(args[1]), args[2])
         elif cmd == "tacplus" and len(args) == 4:

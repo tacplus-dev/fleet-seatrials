@@ -71,7 +71,7 @@ providers:
   # its realm does not answer.
   - enable: true
     name: Test Google
-    issuer: https://idp.test.tacplus.dev/realms/google
+    issuer: https://idp.test.tacplus.dev:8443/realms/google
     client_id: tacplus-dev
     allowed_redirect_uri_prefixes:
       - https://seatrials.tacplus.dev/
@@ -83,7 +83,7 @@ providers:
   # realm's issuer is one URL for every directory (no issuer_template).
   - enable: true
     name: Test Microsoft
-    issuer: https://idp.test.tacplus.dev/realms/microsoft
+    issuer: https://idp.test.tacplus.dev:8443/realms/microsoft
     email_verified_claim: xms_edov
     client_id: tacplus-dev
     allowed_redirect_uri_prefixes:
@@ -94,7 +94,7 @@ providers:
       - email
   - enable: true
     name: Test Apple
-    issuer: https://idp.test.tacplus.dev/realms/apple
+    issuer: https://idp.test.tacplus.dev:8443/realms/apple
     client_id: tacplus-dev
     allowed_redirect_uri_prefixes:
       - https://seatrials.tacplus.dev/

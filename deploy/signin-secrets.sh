@@ -10,8 +10,9 @@
 #   FLEET_GOOGLE_CLIENT_SECRET      masked variable: the Google client secret
 #   FLEET_MICROSOFT_CLIENT_SECRET   masked variable: the Entra client secret VALUE
 #   FLEET_APPLE_KEY_P8              file variable: the Sign in with Apple .p8 key
-#   TEST_IDP_CLIENT_SEED            masked variable: the seed of the test IdP's client
-#                                   secrets (test-idp/README.md), written by its job
+#   TEST_IDP_CLIENT_SEED            the seed of the test IdP's client secrets
+#                                   (test-idp/README.md), from the secret test-idp-seeds
+#                                   (ci/lib.sh, ci_test_idp_seeds), written by its job
 #
 #   deploy/signin-secrets.sh
 #
@@ -102,7 +103,7 @@ fi
 
 yq -o=json '.providers' "$here/deploy/bootstrap/services/oauth.yaml" > "$tmp/bundle.json"
 # The test IdP's providers: {name: secret} for each whose realm answers now.
-test_idp=https://idp.test.tacplus.dev/realms/
+test_idp=https://idp.test.tacplus.dev:8443/realms/
 echo '{}' > "$tmp/test_idp.json"
 while IFS=$'\t' read -r name issuer; do
   [ -n "${TEST_IDP_CLIENT_SEED:-}" ] || { echo "test idp: $name off: TEST_IDP_CLIENT_SEED is not set"; continue; }

@@ -31,7 +31,9 @@
 # CERT_DOMAINS (comma-separated; tacplus.dev,*.tacplus.dev), CERT_DNS_ZONE (the
 # Cloud DNS zone of _acme-challenge.<domain>), ACME_SERVER (lego's --server:
 # letsencrypt, or letsencrypt-staging for a test run, with CERT_CHECK_CAFILE its
-# roots), ACME_EMAIL (optional contact), CERT_SUPPLIED_SECRET, CERT_ENV_OUT.
+# roots), ACME_EMAIL (optional contact), CERT_SUPPLIED_SECRET, CERT_ENV_OUT, CERT_FQDN
+# (the name the certificate must also cover; operator.yaml's fqdn by default: the
+# test IdP's job names its own, test-idp/apply.sh).
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 die() { echo "cert: $*" >&2; exit 1; }
@@ -42,7 +44,7 @@ account_secret=${ACME_ACCOUNT_SECRET:-acme-account-seatrials}
 supplied=${CERT_SUPPLIED_SECRET:-}
 server=${ACME_SERVER:-letsencrypt}
 IFS=, read -ra domains <<<"${CERT_DOMAINS:-tacplus.dev,*.tacplus.dev}"
-fqdn=$(yq '.fqdn' "${OPERATOR_YAML:-$here/deploy/bootstrap/operator.yaml}")
+fqdn=${CERT_FQDN:-$(yq '.fqdn' "${OPERATOR_YAML:-$here/deploy/bootstrap/operator.yaml}")}
 [ -n "$fqdn" ] && [ "$fqdn" != null ] || die "no fqdn in operator.yaml"
 name=seatrials # lego's name for the certificate and the account
 

@@ -113,6 +113,7 @@ run() {
   local name=$1; shift
   s=$work/$name; rm -rf "$s"; mkdir -p "$s/sm/tacplus-dev/tls-seatrials" "$s/sm/tacplus-dev/acme-account-seatrials" \
     "$s/sm/tacplus-dev/tls-supplied"
+  for d in ${SECRETS:-}; do mkdir -p "$s/sm/tacplus-dev/$d"; done
   : > "$s/log"
   [ -z "${CURRENT:-}" ] || cp "$work/pki/$CURRENT" "$s/sm/tacplus-dev/tls-seatrials/4"
   [ -z "${ACCOUNT:-}" ] || { mkdir -p "$s/acct/accounts/x/seatrials"; echo '{"id":"seatrials"}' > "$s/acct/accounts/x/seatrials/account.json"
@@ -229,5 +230,24 @@ expect "supplied missing: lego never runs" [ "$(lego_runs)" = 0 ]
 # A secret that does not exist (or cannot be read) is an error, not a missing certificate.
 CURRENT= ACCOUNT= run nosecret STUB_LEGO=issue CERT_SECRET=tls-nowhere
 expect "an unreadable secret fails the job, and lego never runs" bash -c "[ $rc != 0 ] && [ $(lego_runs) = 0 ]"
+
+# The test IdP's own certificate (test-idp/apply.sh, #27): its secrets, its one name and its
+# challenge zone, checked for CERT_FQDN, not the fleet's fqdn, with no operator.yaml read.
+(cd "$work/pki" && leaf idp 400 idp.test.tacplus.dev)
+CURRENT= ACCOUNT= ISSUE=idp.pem SECRETS="tls-test-idp acme-account-test-idp" run testidp STUB_LEGO=issue CERT_SECRET=tls-test-idp \
+  ACME_ACCOUNT_SECRET=acme-account-test-idp CERT_DOMAINS=idp.test.tacplus.dev CERT_FQDN=idp.test.tacplus.dev \
+  CERT_DNS_ZONE=acme-challenge-idp-test-tacplus-dev OPERATOR_YAML="$work/nowhere.yaml"
+expect "test IdP: the job succeeds" [ "$rc" = 0 ]
+expect "test IdP: lego asks for its one name" bash -c "grep -q -- '--domains idp.test.tacplus.dev' '$s/log' && ! grep -q -- '--domains tacplus.dev' '$s/log'"
+expect "test IdP: lego writes the challenge in its own zone" \
+  grep -qx 'GCE_PROJECT=tacplus-dev GCE_ZONE_ID=acme-challenge-idp-test-tacplus-dev' "$s/log"
+expect "test IdP: its certificate is version 1 of tls-test-idp, its account in acme-account-test-idp" \
+  bash -c "[ '$(versions tls-test-idp)' = 1 ] && [ '$(versions acme-account-test-idp)' = 1 ] && [ -z '$(versions tls-seatrials)' ]"
+expect "test IdP: it passes tls-test-idp version 1 on" env_is tls-test-idp 1
+CURRENT= ACCOUNT= SECRETS="tls-test-idp acme-account-test-idp" run testidp-wrongname STUB_LEGO=issue CERT_SECRET=tls-test-idp \
+  ACME_ACCOUNT_SECRET=acme-account-test-idp CERT_DOMAINS=idp.test.tacplus.dev CERT_FQDN=idp.test.tacplus.dev \
+  CERT_DNS_ZONE=acme-challenge-idp-test-tacplus-dev OPERATOR_YAML="$work/nowhere.yaml"
+expect "test IdP: a certificate without its name is never added" \
+  bash -c "[ $rc != 0 ] && [ -z '$(versions tls-test-idp)' ]"
 
 [ "$failed" = 0 ] && echo "all passed" || { echo "cert tests failed"; exit 1; }

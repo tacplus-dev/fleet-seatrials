@@ -1,37 +1,85 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The test IdP (#27): one Keycloak in the namespace test-idp of the `tacplus`
-# GKE cluster, at https://idp.test.tacplus.dev. Applied by the pipeline's
-# test-idp job (test-idp/apply.sh) only; the namespace and the job's rights in
-# it are test-idp/rbac.yaml, which the hub applies once. Nothing here is shared
-# with the fleet's namespaces, and nothing here is secret: the admin credential
-# is the Secret keycloak-admin, which apply.sh writes from the pipeline's seed.
+# The test IdP (#27): one Keycloak in the namespace tac-test-idp of the `dev`
+# cluster, at https://idp.test.tacplus.dev:8443. Applied by the pipeline's
+# test-idp jobs (test-idp/apply.sh) only, as test-idp-deploy. The namespace and
+# that account's Role in it are tacplus-dev/cluster's (deployments.yaml, the
+# deployment test-idp). Nothing here is shared with the fleet's namespaces, and
+# nothing here is secret: apply.sh writes the Secrets keycloak-admin (the admin
+# credential), keycloak-realms (the realms, rendered with their secrets) and
+# keycloak-tls (the certificate) from the pipeline's seeds and the certificate
+# secret tls-test-idp.
 #
-# Exposure: a GKE Ingress with its own external load balancer, on the reserved
-# global address `test-idp`, with a Google-managed certificate for its own
-# name only (never the fleet's letsencrypt). It forwards only the three test
-# realms and the login pages' static files: the master realm and the admin
-# console and API are not on the internet; apply.sh reaches them through a
-# port-forward.
+# Exposure (tacplus-dev/cloud#21, its README, The public entry): the TCP proxy
+# load balancer on the address `gateway` passes port 8443, TLS unopened, to the
+# NEG seatrials-test-idp, which the Service keycloak below names. TLS ends in
+# the pod, at the haproxy container, with the test IdP's own certificate for
+# idp.test.tacplus.dev only (never the fleet's). haproxy forwards only the three
+# test realms and the login pages' static files: the master realm and the admin
+# console and API are not on the internet. In the cluster, the admin Job
+# (test-idp/admin-job.yaml) reaches them through the Service keycloak-admin,
+# with the admin's credential: no NetworkPolicy (Jody, 2026-11-07: bearer
+# tokens isolate, not reachability).
+#
+# State: Keycloak's file database is in the pod (emptyDir). On every start it
+# imports the realms from keycloak-realms, users with their fixed ids, so every
+# sub stays the same. apply.sh rolls the Deployment out when the realms or the
+# certificate change.
 apiVersion: v1
-kind: Namespace
+kind: ConfigMap
 metadata:
-  name: test-idp
+  name: haproxy
+  namespace: tac-test-idp
   labels:
     app.kubernetes.io/part-of: test-idp
+data:
+  haproxy.cfg: |
+    global
+      maxconn 512
+      ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+    defaults
+      mode http
+      # No access log: Keycloak's redirects carry authorization codes.
+      option forwardfor
+      timeout connect 5s
+      timeout client 60s
+      timeout server 60s
+      timeout http-request 10s
+    frontend public
+      bind :8443 ssl crt /tls/tls.pem alpn h2,http/1.1
+      # Only the test realms and /resources pass. A path that a server could
+      # resolve elsewhere (dot segments, empty ones, percent-encoding, path
+      # parameters, backslashes) is refused first: Keycloak's own never has them.
+      acl test_realm path -m reg ^/realms/(google|microsoft|apple)(/|$)
+      acl resources path_beg /resources/
+      acl odd path_sub .. // /./ % ; \\
+      http-request deny deny_status 404 if odd || !test_realm !resources
+      http-request del-header Forwarded
+      http-request del-header X-Forwarded-Host
+      http-request set-header X-Forwarded-Proto https
+      http-request set-header X-Forwarded-Port 8443
+      default_backend keycloak
+    frontend health
+      bind :8404
+      monitor-uri /ready
+    backend keycloak
+      server keycloak 127.0.0.1:8080
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: keycloak
-  namespace: test-idp
+  namespace: tac-test-idp
   labels:
     app.kubernetes.io/name: keycloak
     app.kubernetes.io/part-of: test-idp
 spec:
   replicas: 1
-  serviceName: keycloak
+  # The new pod imports the realms and is ready before the old one goes.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
   selector:
     matchLabels:
       app.kubernetes.io/name: keycloak
@@ -40,16 +88,20 @@ spec:
       labels:
         app.kubernetes.io/name: keycloak
         app.kubernetes.io/part-of: test-idp
+      annotations:
+        # Set by apply.sh: a change rolls the pod out.
+        test-idp.tacplus.dev/realms: ""
+        test-idp.tacplus.dev/tls: ""
     spec:
       nodeSelector:
         kubernetes.io/arch: arm64
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 0
-        fsGroup: 0
         seccompProfile: { type: RuntimeDefault }
       automountServiceAccountToken: false
+      # No KEYCLOAK_ADMIN_* variables from the Service keycloak-admin: Keycloak
+      # would read KEYCLOAK_ADMIN as its admin's name.
+      enableServiceLinks: false
       terminationGracePeriodSeconds: 30
       containers:
         - name: keycloak
@@ -58,19 +110,18 @@ spec:
           # release fixes yet, are accepted until 2026-12-06
           # (security-exceptions.yaml): move it to the release that does.
           image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
-          args: [start]
+          args: [start, --import-realm]
           env:
-            # The file-backed database (H2) on the volume below: one replica,
-            # test data only.
+            # The file-backed database (H2), in the pod: one replica, test data
+            # only, the realms imported on every start.
             - { name: KC_DB, value: dev-file }
             - { name: KC_CACHE, value: local }
-            - { name: KC_HOSTNAME, value: "https://idp.test.tacplus.dev" }
-            # TLS ends at the load balancer, which sets X-Forwarded-*.
+            - { name: KC_HOSTNAME, value: "https://idp.test.tacplus.dev:8443" }
+            # TLS ends at haproxy, in this pod, which sets X-Forwarded-Proto.
             - { name: KC_HTTP_ENABLED, value: "true" }
             - { name: KC_PROXY_HEADERS, value: xforwarded }
             - { name: KC_HEALTH_ENABLED, value: "true" }
             - { name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=50" }
-            # Read on the first start only, when the database is empty.
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
             - name: KC_BOOTSTRAP_ADMIN_PASSWORD
@@ -93,79 +144,78 @@ spec:
             requests: { cpu: 250m, memory: 768Mi }
             limits: { memory: 1Gi }
           securityContext:
+            runAsUser: 1000
+            runAsGroup: 0
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
           volumeMounts:
             - { name: data, mountPath: /opt/keycloak/data }
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: [ReadWriteOnce]
-        storageClassName: standard-rwo
-        resources:
-          requests: { storage: 1Gi }
+            - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
+        - name: haproxy
+          # 3.2.26, the LTS line, the multi-arch index (arm64 among its images);
+          # the security job scans it for arm64.
+          image: haproxy:3.2.26-alpine@sha256:96ec3c75a9264ba94e733eeacb44051ed6e7b79bb77a73c2c36f236b6423f1f0
+          ports:
+            - { name: https, containerPort: 8443 }
+            - { name: health, containerPort: 8404 }
+          readinessProbe:
+            httpGet: { path: /ready, port: health }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ready, port: health }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            # The image's user haproxy, by number, for runAsNonRoot.
+            runAsUser: 99
+            runAsGroup: 99
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: haproxy, mountPath: /usr/local/etc/haproxy, readOnly: true }
+            - { name: tls, mountPath: /tls, readOnly: true }
+            - { name: haproxy-run, mountPath: /var/lib/haproxy }
+      volumes:
+        - { name: data, emptyDir: { sizeLimit: 512Mi } }
+        - { name: realms, secret: { secretName: keycloak-realms } }
+        - { name: haproxy, configMap: { name: haproxy } }
+        - { name: tls, secret: { secretName: keycloak-tls } }
+        - { name: haproxy-run, emptyDir: { sizeLimit: 16Mi } }
 ---
+# The public side: the NEG the load balancer's listener test-idp names
+# (tacplus-dev/cloud, modules/settings load_balancer: port 8443 of `gateway`,
+# endpoints on 8443).
 apiVersion: v1
 kind: Service
 metadata:
   name: keycloak
-  namespace: test-idp
+  namespace: tac-test-idp
   labels:
     app.kubernetes.io/part-of: test-idp
   annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "keycloak"}'
+    cloud.google.com/neg: '{"exposed_ports": {"8443": {"name": "seatrials-test-idp"}}}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - { name: https, port: 8443, targetPort: https }
+---
+# Keycloak's own HTTP, the admin API among it, inside the cluster only, for the
+# admin Job, which authenticates as the admin.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-admin
+  namespace: tac-test-idp
+  labels:
+    app.kubernetes.io/part-of: test-idp
 spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: keycloak
   ports:
     - { name: http, port: 8080, targetPort: http }
----
-# The load balancer's health check: the master realm's page answers on the
-# serving port once Keycloak is up (the LB reaches the pod directly; the
-# Ingress below does not forward /realms/master).
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: keycloak
-  namespace: test-idp
-spec:
-  healthCheck:
-    type: HTTP
-    port: 8080
-    requestPath: /realms/master
-    checkIntervalSec: 15
-    timeoutSec: 5
-  timeoutSec: 30
----
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: test-idp
-  namespace: test-idp
-spec:
-  domains: [idp.test.tacplus.dev]
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: keycloak
-  namespace: test-idp
-  labels:
-    app.kubernetes.io/part-of: test-idp
-  annotations:
-    kubernetes.io/ingress.class: gce
-    kubernetes.io/ingress.global-static-ip-name: test-idp
-    networking.gke.io/managed-certificates: test-idp
-    kubernetes.io/ingress.allow-http: "false"
-spec:
-  rules:
-    - host: idp.test.tacplus.dev
-      http:
-        paths:
-          - { path: /realms/google, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
-          - { path: /realms/microsoft, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
-          - { path: /realms/apple, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }
-          - { path: /resources, pathType: Prefix, backend: { service: { name: keycloak, port: { name: http } } } }

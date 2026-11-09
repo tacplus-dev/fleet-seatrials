@@ -1,7 +1,7 @@
 # The test IdP
 
 A test OIDC IdP that the pipeline owns end to end, so tacplus.dev's sign-in, linking and tenant flows can be
-tested with no person (#27). It is one Keycloak at **https://idp.test.tacplus.dev**, whose realms emulate the
+tested with no person (#27). It is one Keycloak at **https://idp.test.tacplus.dev:8443**, whose realms emulate the
 claim shapes of Google, Microsoft and Apple, with test users across a few test domains. tacplus.dev is not an
 IdP. It connects to this one like any other external provider: oauth's `Test Google`, `Test Microsoft` and
 `Test Apple` ([`deploy/bootstrap/services/oauth.yaml`](../deploy/bootstrap/services/oauth.yaml)).
@@ -12,29 +12,41 @@ value, derived from the pipeline's seeds and never printed.
 ## Where it runs
 
 - **Cluster:** the `dev` GKE cluster (tacplus-dev/cloud's dev stack: project tacplus-dev, us-central1-a),
-  namespace `test-idp`. Nothing is shared with the fleet's namespaces.
-- **Keycloak:** a single-replica StatefulSet, pinned by digest, with its file-backed database on a 1 GiB PVC
-  ([`keycloak.yaml`](keycloak.yaml)).
-- **Exposure:** a GKE Ingress with its own load balancer, on the reserved global address `test-idp`. TLS is a
-  Google-managed certificate for `idp.test.tacplus.dev` only, so the fleet's letsencrypt and its order budget are
-  never touched.
-- **What the internet reaches:** the Ingress forwards only `/realms/google`, `/realms/microsoft`,
-  `/realms/apple` and `/resources`. The master realm and the admin console and API are reached through a
-  port-forward, by the pipeline only.
-- **DNS:** the A record goes in the Cloud DNS zone `tacplus-dev`.
-- **Applied only from GitLab:** the deploy pipeline's `test-idp` job ([`apply.sh`](apply.sh)) runs as
-  `test-idp-deploy`, which can reach only this namespace and that record ([`rbac.yaml`](rbac.yaml),
-  [docs/deploy-pipeline.md](../docs/deploy-pipeline.md#the-test-idp)).
+  namespace `tac-test-idp`, which tacplus-dev/cluster gives the deployment `test-idp` (its `deployments.yaml`).
+  Nothing is shared with the fleet's namespaces. No VM: the only VMs are Kubernetes nodes (Jody, 2026-11-06).
+- **Keycloak:** a single-replica Deployment, pinned by digest ([`keycloak.yaml`](keycloak.yaml)). Its file
+  database is in the pod. On every start it imports the realms from the Secret `keycloak-realms`, with each
+  user's fixed id, so every `sub` stays the same across restarts and applies. The realms' signing keys and
+  sessions are new with each pod.
+- **Exposure:** port 8443 of the address `gateway`, the platform's one public IP. tacplus-dev/cloud's TCP proxy
+  load balancer passes it, TLS unopened, to the NEG `seatrials-test-idp`, which the Service `keycloak` names
+  (tacplus-dev/cloud#21, its README, The public entry). The test IdP has a port of its own because a TCP proxy does
+  not route by SNI, and 443 is the gateway's.
+- **TLS:** ends in the pod, at an haproxy container (3.2 LTS, by digest), with the test IdP's own Let's Encrypt
+  certificate for `idp.test.tacplus.dev` only, never the fleet's. The pipeline obtains and renews it with
+  [`ci/cert.sh`](../ci/cert.sh), as it does the fleet's, as versions of the secret `tls-test-idp`, with DNS-01 in
+  its own challenge zone `_acme-challenge.idp.test.tacplus.dev`.
+- **What the internet reaches:** haproxy forwards only `/realms/google`, `/realms/microsoft`, `/realms/apple`
+  and `/resources`, and refuses any path with dot segments, empty segments, percent-encoding or `;`. The master
+  realm and the admin console and API are not on the internet. In the cluster, the admin Job
+  ([`admin-job.yaml`](admin-job.yaml)) reaches them through the Service `keycloak-admin`, with the admin's
+  credential. There is no NetworkPolicy: bearer tokens isolate, not reachability (Jody, 2026-11-07).
+- **DNS:** `idp.test.tacplus.dev` is an A record to `gateway` in the zone `tacplus-dev`, written by
+  tacplus-dev/cloud's pipeline, its only writer.
+- **Applied only from GitLab:** the deploy pipeline's `test-idp` job and the start of `test-idp-signin`
+  ([`apply.sh`](apply.sh)) run as `test-idp-deploy`, which can reach only this namespace, the test IdP's
+  certificate secrets and its challenge zone ([docs/deploy-pipeline.md](../docs/deploy-pipeline.md#the-test-idp)).
 
 ## Realms and claim shapes
 
-Each realm's issuer is Keycloak's own, `https://idp.test.tacplus.dev/realms/<realm>`, and each has two clients:
+Each realm's issuer is Keycloak's own, `https://idp.test.tacplus.dev:8443/realms/<realm>`, and each has two clients:
 
 - `tacplus-dev`: tacplus.dev's confidential client, with a redirect under `https://seatrials.tacplus.dev/`.
 - `claims-check`: a public client with PKCE (S256). The sign-in checks use it to read the ID token the realm
   issues.
 
-Emulation covers the claims and the authorization-code flow, not the real issuers' URLs.
+Emulation covers the claims and the authorization-code flow, not the real issuers' URLs (nor their port: the
+real ones are on 443).
 
 | Realm | Issuer | ID token claims | Unlike the real one |
 | --- | --- | --- | --- |
@@ -53,7 +65,7 @@ Usernames sign in on the realm's login page. Passwords are derived (below), and 
 | --- | --- | --- |
 | google | `ada@alpha.test` | A Workspace account of alpha.test (`hd`). The same person is `ada@alpha.test` at microsoft too: **linking**. |
 | google | `una@personal.test` | A consumer account whose email is **not verified** (`email_verified: false`). |
-| google | `gone@personal.test` | The user **removed at the IdP**: `signin.sh` signs in as gone, removes the user and checks the next sign-in is refused. The next apply puts the user back. |
+| google | `gone@personal.test` | The user **removed at the IdP**: `signin.sh` signs in as gone, removes the user and checks the next sign-in is refused. Then it puts the user back, with the same id. |
 | microsoft | `ada@alpha.test` | alpha.test's directory, a verified domain (`xms_edov: true`). The same person as `ada@alpha.test` at google. |
 | microsoft | `bo@beta.test` | beta.test's directory. **The domain a tenant claims:** `/tenants/beta` claims `email_domain` beta.test from this realm ([`tenants/beta/oauth.yaml`](../deploy/bootstrap/tenants/beta/oauth.yaml)). |
 | microsoft | `nomail@beta.test` | An account with **no email**: the token has no `email`. |
@@ -66,34 +78,39 @@ addresses. `.test` is reserved, so none of them reaches anyone real.
 
 ## Secrets
 
-Two seeds are protected, masked and hidden variables of the GitLab project tacplus-dev/fleet-seatrials:
+Two seeds are kept together as the Secret Manager secret `test-idp-seeds` in `tacplus-dev` (tacplus-dev/cloud#32),
+each version two lines `NAME=value`:
 
-| Variable | Scope | Derives |
-| --- | --- | --- |
-| `TEST_IDP_SEED` | `test-idp` and `seatrials*` | every user's password (`user/<realm>/<username>`), the Keycloak admin's (`admin`) |
-| `TEST_IDP_CLIENT_SEED` | `test-idp` and `seatrials*` | the `tacplus-dev` clients' secrets (`client/<realm>/tacplus-dev`), the pairwise salt (`pairwise-salt/<realm>`) |
+| Seed | Derives |
+| --- | --- |
+| `TEST_IDP_SEED` | every user's password (`user/<realm>/<username>`), the Keycloak admin's (`admin`) |
+| `TEST_IDP_CLIENT_SEED` | the `tacplus-dev` clients' secrets (`client/<realm>/tacplus-dev`), the pairwise salt (`pairwise-salt/<realm>`) |
 
 A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), with no padding.
 
-- **Where they come from:** the `test-idp` job generates each seed the first time and stores it in the project
-  itself (`TEST_IDP_GITLAB_TOKEN`, docs/deploy-pipeline.md). No person ever sees it.
-- **Who uses them:** the functional suite's sign-in items (`deploy/e2e.yaml`, the `test` job) and
-  `deploy/signin-secrets.sh`, in the `seatrials` environment, derive what they need. That environment's jobs
-  can therefore derive the Keycloak admin's password too; they run for Maintainers only. A seed stored before
-  this needs its `seatrials*` copy added once, by the hub.
-- **The hub's manual checks:** the hub, a Maintainer, reads `TEST_IDP_SEED` from the project's settings into its
-  environment. Then `test-idp/testidp.py secret user/<realm>/<username>` prints that user's password. This is
-  never done in a job, whose log would keep it.
-- **Rotating:** delete a seed's variables and run `test-idp`, which generates a new one. Then run
-  `signin-secrets`. A new admin password takes effect only with a new PVC: Keycloak reads it on its first start.
+- **Where they come from:** the `test-idp` job's first run generates both and adds them as the secret's first
+  version, as `test-idp-deploy` through WIF. No GitLab token writes them, and no person ever sees them.
+- **Who reads them:** every job reads the latest version into its environment (`ci_test_idp_seeds`,
+  [`ci/lib.sh`](../ci/lib.sh)): the test IdP's jobs, and, in the `seatrials` environment, the functional suite's
+  sign-in items (`deploy/e2e.yaml`, the `test` job) and `deploy/signin-secrets.sh` (the `apply` and
+  `signin-secrets` jobs), which derive what they need. seatrials' jobs read it as `seatrials-deploy`, which needs
+  `secretAccessor` on the secret (docs/deploy-pipeline.md, the test IdP); without it they go on without the
+  seeds, saying so. Those jobs can derive the Keycloak admin's password too; they run for Maintainers only.
+- **The hub's manual checks:** the hub reads the secret's latest version into its environment, as an account
+  that may read it. Then `test-idp/testidp.py secret user/<realm>/<username>` prints that user's password. This
+  is never done in a job, whose log would keep it.
+- **Rotating:** not automated yet: the `test-idp` job generates seeds only while the secret has no version
+  (PROPOSALS.md, the test IdP's follow-ups). A new version, then `test-idp` and `signin-secrets`, rotates every
+  password and client secret; the realms, and the admin's password, change with the pod `test-idp` rolls out.
 
 ## Checks
 
 | What | Where | Checks |
 | --- | --- | --- |
 | [`testidp_test.sh`](testidp_test.sh) | `ci/checks.sh` (every pipeline) | Secret derivation, the render (secrets in, none in the files), the claim shapes, the login form, RS256, and that this README lists every user. |
-| [`local.sh`](local.sh) | by hand, before landing a realm change (needs docker) | Starts the pinned Keycloak locally and runs `signin.sh`'s IdP checks. A second sync must change nothing, and a recreated realm must keep every `sub`. |
-| [`signin.sh`](signin.sh) | the `test-idp-signin` job | Every realm's discovery answers. Every user signs in (code + PKCE) with its shape. `ada@alpha.test` (google), `bo@beta.test` (microsoft) and `cy@personal.test` (apple) sign in at tacplus.dev, get a kernel session, and the session names the realm and the user's `sub`. `gone@personal.test` is refused once removed. Before the first `test-idp` apply (no `TEST_IDP_SEED`), the job skips: the test IdP is not set up yet. |
+| [`apply_test.sh`](apply_test.sh) | `ci/checks.sh` (every pipeline) | `apply.sh`'s seeds, with stubs: generated and stored as one version of `test-idp-seeds` the first time, the Secrets derived from them, nothing stored when the job read them, one seed or a refused store failing before anything is written, no seed printed. |
+| [`local.sh`](local.sh) | by hand, before landing a realm change (needs docker) | Starts the pinned Keycloak locally, the realms imported as in the cluster, and runs `signin.sh`'s IdP checks. A second Keycloak, as a new pod would be, imports them again: every `sub` must be the same, and the removed user back. haproxy is not part of it. |
+| [`signin.sh`](signin.sh) | the `test-idp-signin` job, after `apply.sh` | Every realm's discovery answers, on the public port. Every user signs in (code + PKCE) with its shape. `ada@alpha.test` (google), `bo@beta.test` (microsoft) and `cy@personal.test` (apple) sign in at tacplus.dev, get a kernel session, and the session names the realm and the user's `sub`. `gone@personal.test` is refused once removed (the admin Job removes it, in the cluster), then put back. Before the first `test-idp` apply (no `TEST_IDP_SEED`), the job skips: the test IdP is not set up yet. |
 
 The sign-in is a headless browser in Python's standard library. It follows tacplus.dev's `Authorize` to the
 realm, posts the login form, captures the redirect back without loading it, and completes with
@@ -109,9 +126,7 @@ realm, posts the login form, captures the redirect back without loading it, and 
 3. If tacplus.dev should treat the case specially (a tenant claiming its domain, say), change
    `deploy/bootstrap/` too. Add a sign-in at tacplus.dev to `signin.sh`'s `signin_users` if the case is about
    tacplus.dev's handling.
-4. Run `test-idp/local.sh`, land, then run the pipeline's `test-idp` job; `test-idp-signin` follows in the
-   next pipeline.
+4. Run `test-idp/local.sh`, then land: the next pipeline's `test-idp-signin` applies it and checks it.
 
-A change to a realm's settings, clients or mappers recreates that realm on the next apply. Each `sub` stays the
-same; the realm's signing keys and sessions are new. A change to users alone keeps the realm. A user removed
-from a file is removed at the IdP.
+Any change to the realms rolls out a new pod, which imports them: each `sub` stays the same, and the realms'
+signing keys and sessions are new. A user removed from a file is gone from the IdP with it.

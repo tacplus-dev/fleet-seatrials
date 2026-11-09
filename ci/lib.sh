@@ -62,12 +62,45 @@ ci_kube() {
   echo "kube: $context"
 }
 
-# ci_test_idp_set_up: whether the environment test-idp has its seed, which the
-# manual test-idp job generates on its first run. Without it the test IdP is
+# ci_test_idp_seeds [optional]: the test IdP's seeds, TEST_IDP_SEED and
+# TEST_IDP_CLIENT_SEED (test-idp/README.md), into the environment, after ci_gcp:
+# the latest version of the Secret Manager secret test-idp-seeds in tacplus-dev
+# (tacplus-dev/cloud#32), two lines NAME=value. Seeds already in the
+# environment are kept. No version yet (NOT_FOUND) is a test IdP not set up:
+# neither is set, and the test-idp job's apply.sh stores the first. A refusal or
+# a version without both seeds fails, saying why; with `optional` (seatrials'
+# own jobs, which derive the Test providers' secrets and sign the test users in
+# with them) it is said and the job goes on without them. No seed is printed.
+ci_test_idp_seeds() {
+  local secret=test-idp-seeds file=$ci_tmp/test-idp-seeds seed client
+  [ -z "${TEST_IDP_SEED:-}" ] || [ -z "${TEST_IDP_CLIENT_SEED:-}" ] || return 0
+  if ! ( umask 077
+         gcloud secrets versions access latest --secret="$secret" --project="${GCP_PROJECT:-tacplus-dev}" \
+           --out-file="$file" 2>"$ci_tmp/seeds-err" ); then
+    rm -f "$file"
+    if grep -q NOT_FOUND "$ci_tmp/seeds-err"; then
+      echo "test idp: the secret $secret has no seeds yet (the test-idp job stores them)"
+      return 0
+    fi
+    echo "test idp: cannot read the secret $secret as $(gcloud config get account 2>/dev/null): $(grep -m1 '^ERROR' "$ci_tmp/seeds-err" || head -c 300 "$ci_tmp/seeds-err")" >&2
+    [ "${1:-}" = optional ] && return 0 || return 1
+  fi
+  seed=$(sed -n 's/^TEST_IDP_SEED=//p' "$file") client=$(sed -n 's/^TEST_IDP_CLIENT_SEED=//p' "$file")
+  rm -f "$file"
+  if [ -z "$seed" ] || [ -z "$client" ]; then
+    echo "test idp: the latest version of the secret $secret is not two lines TEST_IDP_SEED=... and TEST_IDP_CLIENT_SEED=..." >&2
+    [ "${1:-}" = optional ] && return 0 || return 1
+  fi
+  export TEST_IDP_SEED=$seed TEST_IDP_CLIENT_SEED=$client
+  echo "test idp: the seeds from the secret $secret"
+}
+
+# ci_test_idp_set_up: whether the test IdP has its seeds (ci_test_idp_seeds),
+# which the manual test-idp job generates on its first run. Without them it is
 # not set up yet (a dry run before that apply), and this says so (#31).
 ci_test_idp_set_up() {
   [ -n "${TEST_IDP_SEED:-}" ] && return 0
-  echo "skip: the test IdP is not set up yet (no TEST_IDP_SEED in the environment test-idp); run the manual test-idp job first (test-idp/README.md)"
+  echo "skip: the test IdP is not set up yet (no seeds in the secret test-idp-seeds); run the manual test-idp job first (test-idp/README.md)"
   return 1
 }
 

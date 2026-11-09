@@ -1,5 +1,5 @@
 # The Google-like realm of the test IdP (#27): its issuer is
-# https://idp.test.tacplus.dev/realms/google, and its ID tokens have the shape of
+# https://idp.test.tacplus.dev:8443/realms/google, and its ID tokens have the shape of
 # Google's (https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo):
 #
 #   sub             a decimal string (Google's account id); here the user's id

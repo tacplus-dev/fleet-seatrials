@@ -36,9 +36,11 @@
 #
 # and the test IdP (#27, test-idp/README.md), on the `dev` cluster:
 #
-#   test-idp         manual, protected environment test-idp: Keycloak, its realms, its DNS record
-#   test-idp-signin  every realm's discovery and claim shapes; one user per realm signs in
-#                    at tacplus.dev and gets a kernel session; the removed user is refused
+#   test-idp         manual, protected environment test-idp: its seeds (the first time), its
+#                    certificate, Keycloak and its realms
+#   test-idp-signin  the same apply (main's realms, the certificate renewed when due), then every
+#                    realm's discovery and claim shapes; one user per realm signs in at
+#                    tacplus.dev and gets a kernel session; the removed user is refused
 #
 # The fleet's key material and the sign-in secrets come from protected project
 # variables (never group variables: those reach the loopers' agents), GCP
@@ -299,9 +301,11 @@ apply:
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh
+      ci_test_idp_seeds optional
       deploy/signin-secrets.sh
 
-# Re-installs the sign-in secrets from the project variables, nothing else: a
+# Re-installs the sign-in secrets from the project variables (the Test
+# providers' from the test IdP's seeds, when it may read them), nothing else: a
 # rotated secret (the Microsoft one every 6 months, #6) is a variable updated
 # in the project and this job run.
 signin-secrets:
@@ -312,7 +316,7 @@ signin-secrets:
   when: manual
   allow_failure: true
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_kube && deploy/signin-secrets.sh
+    - cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds optional && ci_kube && deploy/signin-secrets.sh
 
 # A deployment's first run (#17): generates its key material, FLEET_CRYPTO_YAML
 # and FLEET_CA_PEM, and stores it in this project's variables, never printing it
@@ -336,7 +340,7 @@ test:
   environment: { name: seatrials, action: verify }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
+      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube && ci_test_idp_seeds optional
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate >/dev/null
@@ -349,9 +353,10 @@ test:
       junit: e2e.xml
 
 # The test IdP's jobs run as test-idp-deploy, which reaches the namespace
-# test-idp of the dev cluster and the record idp.test.tacplus.dev only
-# (test-idp/rbac.yaml, docs/deploy-pipeline.md), in the protected environment
-# test-idp, whose variables are the test IdP's seeds.
+# tac-test-idp of the dev cluster (tacplus-dev/cluster's deployments.yaml), the
+# test IdP's certificate secrets, its challenge zone and its seeds (the secret
+# test-idp-seeds) only (docs/deploy-pipeline.md, the test IdP), in the
+# protected environment test-idp.
 .test-idp:
   resource_group: test-idp
   variables:
@@ -365,7 +370,7 @@ test-idp:
   when: manual
   allow_failure: true
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_kube && test-idp/apply.sh
+    - cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds && ci_kube && test-idp/apply.sh
 
 test-idp-signin:
   extends: .test-idp
@@ -373,7 +378,9 @@ test-idp-signin:
   needs: [tools, checks]
   environment: { name: test-idp, action: verify }
   # Until the test-idp job has set the test IdP up, a skip, not a failure (#31).
+  # Then the apply first, so the test IdP is main's and its certificate is
+  # renewed when due by every pipeline, the daily schedule's too.
   script:
     - |
-      cd src && source ci/lib.sh
-      if ci_test_idp_set_up; then ci_gcp && ci_kube && test-idp/signin.sh; fi
+      cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds
+      if ci_test_idp_set_up; then ci_kube && test-idp/apply.sh && test-idp/signin.sh; fi

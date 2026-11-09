@@ -37,7 +37,7 @@ esac
 EOF
 cat > "$work/bin/yq" <<'EOF'
 #!/usr/bin/env bash
-echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev/realms/google","client_id":"tacplus-dev","enable":true}]'
+echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev:8443/realms/google","client_id":"tacplus-dev","enable":true}]'
 EOF
 # The test IdP's discovery: up unless STUB_TEST_IDP=down.
 cat > "$work/bin/curl" <<'EOF'

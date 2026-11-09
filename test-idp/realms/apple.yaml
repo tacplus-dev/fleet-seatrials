@@ -1,5 +1,5 @@
 # The Apple-like realm of the test IdP (#27): its issuer is
-# https://idp.test.tacplus.dev/realms/apple, and its ID tokens have the shape of
+# https://idp.test.tacplus.dev:8443/realms/apple, and its ID tokens have the shape of
 # Sign in with Apple's (https://developer.apple.com/documentation/signinwithapple/authenticating-users-with-sign-in-with-apple):
 #
 #   sub               the team-scoped user id, 000000.<32 hex>.0000

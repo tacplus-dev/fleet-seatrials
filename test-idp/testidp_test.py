@@ -97,16 +97,6 @@ class Realms(unittest.TestCase):
         t.render(r, ENV)
         self.assertNotIn("credentials", json.dumps(r))
 
-    def test_shape_hash_ignores_users_only(self):
-        r = realm("google")
-        h = t.render(r, ENV)["attributes"][t.SHAPE_ATTRIBUTE]
-        r["users"][0]["firstName"] = "Changed"
-        self.assertEqual(t.render(r, ENV)["attributes"][t.SHAPE_ATTRIBUTE], h)
-        r["accessTokenLifespan"] = 301
-        self.assertNotEqual(t.render(r, ENV)["attributes"][t.SHAPE_ATTRIBUTE], h)
-        other = dict(ENV, TEST_IDP_CLIENT_SEED="d" * 40)
-        self.assertNotEqual(t.render(realm("google"), other)["attributes"][t.SHAPE_ATTRIBUTE], h)
-
     def test_readme_lists_every_user(self):
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md")) as f:
             readme = f.read()

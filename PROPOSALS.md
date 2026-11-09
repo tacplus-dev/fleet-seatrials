@@ -12,7 +12,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   owns one `gke-l7-global-external-managed` Gateway naming `gateway`, each namespace (seatrials, the test IdP)
   attaches HTTPRoutes, tacplus-dev/operator renders the gateway's Service as its backend (NEG, `appProtocol`
   HTTP/2) instead of a LoadBalancer, and #35's certificate goes on the Gateway, with `idp.test.tacplus.dev`
-  covered too. Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
+  covered too. (tacplus-dev/cloud#21 since chose a TCP proxy, TLS passed through, and gave the test IdP port 8443 of
+  the address: #27 follows it, 2026-11-09.) Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
   stays pending instead of taking an ephemeral public IP.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
@@ -96,12 +97,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   trusts) in place of `client_secret`. It's an oauth change (tacplus-dev/oauth), with a design for the
   assertion's issuer and subject. The issuer must be publicly discoverable, which seatrials.tacplus.dev is.
   Until then, the secret is rotated by hand (docs/deploy-pipeline.md).
-- **A narrower writer for generated secrets** (2026-11-03, #17): `init-secrets` and `test-idp` write
-  variables with a Maintainer token (`FLEET_INIT_TOKEN`, `TEST_IDP_GITLAB_TOKEN`), which can read every
-  variable of the project. One bot user per deployment, with its token in the `init-secrets` scope only, keeps
-  it out of every other job. A writer that can't read would be better: a small service that only creates a
-  variable when it's absent, or GitLab's own feature if it ever has one. The two jobs should also share one
-  token and one `gitlab_variable` helper.
+- **A narrower writer for generated secrets** (2026-11-03, #17): `init-secrets` writes
+  variables with a Maintainer token (`FLEET_INIT_TOKEN`), which can read every variable of the project
+  (`test-idp` no longer does: its seeds are in Secret Manager since 2026-11-09, #27, as ROADMAP #44 has the
+  fleet's). One bot user per deployment, with its token in the `init-secrets` scope only, keeps it out of every
+  other job. A writer that can't read would be better: a small service that only creates a variable when it's
+  absent, or GitLab's own feature if it ever has one.
 - **A crypto.yaml that fits one variable** (2026-11-06, #17): crypto.yaml is some 23,000 bytes for this
   topology, so `init-secrets` stores it gzipped, base64-encoded and split into `FLEET_CRYPTO_YAML`,
   `FLEET_CRYPTO_YAML_2`, ... of GitLab's 10,000 characters each, which `ci_crypto` joins. The lasting fix is
@@ -183,11 +184,16 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **The test IdP's follow-ups** (2026-11-01, #27): (1) Apple's form post: oauth posts `response_mode=form_post`
   only for a provider with `apple` set, which needs a .p8 key, so `Test Apple` is plain OIDC. Neither the form
   post nor the name on first sign-in (the `user` field) is emulated. A Keycloak form-post realm, plus an oauth
-  `apple` mode with a client secret, would cover both. (2) The seeds are written with a Maintainer project access
-  token that can read every variable. A narrower writer (a GitLab feature, or a job in a separate project) would
-  remove it. Until then the hub revokes it after the first run. (3) Keycloak's signing keys rotate when a
-  realm's settings change (the realm is recreated). Importing fixed keys derived from the seed would keep them.
-  (4) `test-idp-signin` on a schedule, nightly beside the dry run, once it is green.
+  `apple` mode with a client secret, would cover both. (2) Done (2026-11-09): the seeds are in Secret Manager
+  (`test-idp-seeds`, tacplus-dev/cloud#32), written once by `test-idp-deploy` through WIF, with no GitLab token. (3) Keycloak's signing keys are new with every pod
+  (the realms are imported on each start, 2026-11-09). Importing fixed keys derived from the seed would keep them
+  across rollouts. (4) Done since #27's rework (2026-11-09): `test-idp-signin` runs in every pipeline, the daily
+  schedule's too, and applies first. (5) `test-idp/local.sh` runs Keycloak alone, not haproxy in front of it: the
+  path rules were checked by hand on 2026-11-09 (#27). haproxy in the same network namespace, or a second
+  container proxying to the first, would put them under the script, as a test the realm checks run through.
+  (6) Rotating the seeds (2026-11-09, #27): `test-idp` generates them only while `test-idp-seeds` has no version,
+  and `test-idp-deploy` may not disable or destroy one. A manual input (say `TEST_IDP_ROTATE_SEEDS=1`) that has
+  `apply.sh` add a new version would rotate every test password and client secret from GitLab.
 - **One signing path for the reader token** (2026-11-02, #30): `.github-reader` asks Cloud KMS as the job's
   federated principal, then, on a 401 or 403, as `fleet-seatrials-reader@`. Because the first dry run's error was
   dropped, nobody knew which path KMS accepts, so both are there. Once a dry run's log shows which one signs,

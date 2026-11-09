@@ -38,18 +38,18 @@ tests:
     waits_on: ["#27"]
     ready: &test-idp-seeds |
       [ -n "${TEST_IDP_SEED:-}" ] && [ -n "${TEST_IDP_CLIENT_SEED:-}" ] ||
-        { echo "the test IdP's seeds are not in this job's environment (docs/deploy-pipeline.md, the test IdP)"; false; }
-    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/google <(yq -o=json . test-idp/realms/google.yaml) ada@alpha.test
+        { echo "the test IdP's seeds are not in this job's environment (the secret test-idp-seeds; docs/deploy-pipeline.md, the test IdP)"; false; }
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev:8443/realms/google <(yq -o=json . test-idp/realms/google.yaml) ada@alpha.test
   - name: signin/microsoft-session
     what: a Microsoft-shaped user signs in through the gateway (test IdP) and gets a kernel session
     waits_on: ["#27"]
     ready: *test-idp-seeds
-    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/microsoft <(yq -o=json . test-idp/realms/microsoft.yaml) bo@beta.test
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev:8443/realms/microsoft <(yq -o=json . test-idp/realms/microsoft.yaml) bo@beta.test
   - name: signin/oidc-session
     what: a user of a plain OIDC provider (the test IdP's Apple-like realm) signs in through the gateway and gets a kernel session
     waits_on: ["#27"]
     ready: *test-idp-seeds
-    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev/realms/apple <(yq -o=json . test-idp/realms/apple.yaml) cy@personal.test
+    run: python3 test-idp/testidp.py tacplus "${SEATRIALS_HOST:-seatrials.tacplus.dev}" https://idp.test.tacplus.dev:8443/realms/apple <(yq -o=json . test-idp/realms/apple.yaml) cy@personal.test
 
   # Tenants.
   - name: tenants/create

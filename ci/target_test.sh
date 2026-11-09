@@ -82,10 +82,20 @@ want "images/service.cloudbuild.yaml's _TACPLUS_IMAGE" \
 want "coop's pigeonhost image" "$(yq '.kinds[] | select(.name == "echo.ping") | .image' "$here/deploy/bootstrap/services/coop.yaml")" \
   "$registry/schematic/pigeonhost:local"
 
-# The test IdP's account in the cluster's RBAC.
-users=$(yq -N 'select(.kind == "RoleBinding" or .kind == "ClusterRoleBinding") | .subjects[] | select(.kind == "User") | .name' \
-  "$here/test-idp/rbac.yaml" | sort -u)
-want "test-idp/rbac.yaml's user" "$users" "$test_idp_sa"
+# The test IdP (#27): the namespace tacplus-dev/cluster gives the deployment test-idp,
+# and the contract with tacplus-dev/cloud's listener test-idp, port 8443 of the
+# address gateway to the NEG seatrials-test-idp, endpoints on 8443.
+want "test-idp/*.yaml's namespace" \
+  "$(yq -N '.metadata.namespace' "$here/test-idp/keycloak.yaml" "$here/test-idp/admin-job.yaml" | sort -u)" tac-test-idp
+want "test-idp/apply.sh's namespace" "$(sed -n 's/^ns=//p' "$here/test-idp/apply.sh")" tac-test-idp
+want "test-idp/signin.sh's namespace" "$(sed -n 's/^ns=//p' "$here/test-idp/signin.sh")" tac-test-idp
+want "the test IdP's NEG" "$(yq 'select(.kind == "Service" and .metadata.name == "keycloak")
+  | .metadata.annotations["cloud.google.com/neg"]' "$here/test-idp/keycloak.yaml" | jq -c .)" \
+  '{"exposed_ports":{"8443":{"name":"seatrials-test-idp"}}}'
+want "the NEG's endpoints' port" "$(yq 'select(.kind == "Deployment") | .spec.template.spec.containers[]
+  | .ports[] | select(.name == "https") | .containerPort' "$here/test-idp/keycloak.yaml")" 8443
+want "the test IdP's issuers in oauth.yaml" "$(yq '.providers[] | select(.name == "Test *") | .issuer' \
+  "$here/deploy/bootstrap/services/oauth.yaml" | sed 's|[a-z]*$||' | sort -u)" "https://idp.test.tacplus.dev:8443/realms/"
 
 # Nothing names jody1-328023, or its project number, but the reader and its
 # KMS key, which stay there until they move (README), and the Google OAuth

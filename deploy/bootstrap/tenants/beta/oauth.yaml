@@ -8,6 +8,6 @@ claim_matchers:
   - provider_issuer_url: https://login.microsoftonline.com/common/v2.0
     claim_key: tid
     claim_value: ec3604c3-01c7-4537-aa2b-c39874000664
-  - provider_issuer_url: https://idp.test.tacplus.dev/realms/microsoft
+  - provider_issuer_url: https://idp.test.tacplus.dev:8443/realms/microsoft
     claim_key: email_domain
     claim_value: beta.test

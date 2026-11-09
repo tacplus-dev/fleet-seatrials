@@ -1,5 +1,5 @@
 # The Microsoft-like realm of the test IdP (#27): its issuer is
-# https://idp.test.tacplus.dev/realms/microsoft, and its ID tokens have the shape
+# https://idp.test.tacplus.dev:8443/realms/microsoft, and its ID tokens have the shape
 # of Entra ID's v2.0 tokens (https://learn.microsoft.com/entra/identity-platform/id-token-claims-reference):
 #
 #   ver                 "2.0"

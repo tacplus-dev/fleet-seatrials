@@ -77,7 +77,7 @@ check_signin() {
     if [ -z "$index" ]; then
       # deploy/signin-secrets.sh turns the test IdP's providers off while it is
       # down; its own job checks it (test-idp/signin.sh).
-      case "$issuer" in https://idp.test.tacplus.dev/realms/*)
+      case "$issuer" in https://idp.test.tacplus.dev:8443/realms/*)
         echo "skip signin: $name is off (the test IdP: test-idp/README.md)"; continue ;; esac
       bad "signin: $name is not listed (its credential is not in place?)"; continue
     fi
