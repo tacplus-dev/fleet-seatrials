@@ -19,3 +19,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-07 looper issue Deploy and test seatrials from GitLab: pipeline in gitlab.com/tacplus-dev/fleet-seatrials, secrets held by GitLab, nothing on a laptop (#17, 8ab4f54)
 - 2026-11-08 looper issue Retarget seatrials to the new cluster in seabeam.net: project tacplus-dev, cluster dev, deploy accounts, WIF provider, image registry, the gateway's reserved address (#39)
 - 2026-11-09 looper issue security job fails on main: CVE-2026-85091 and CVE-2026-76844 (zlib1g, HIGH) in the CI image build:2.3 (#45)
+- 2026-11-09 looper issue security job fails: CVE-2026-78661 (golang.org/x/net v0.60.0, HIGH) in the CI image build:2.3's gh (#43)
