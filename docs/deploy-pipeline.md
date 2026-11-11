@@ -48,9 +48,11 @@ runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
   Keycloak and haproxy, for the architecture its pod's `nodeSelector` picks (arm64), so a vulnerable pin fails the pipeline before
   `test-idp` applies it.
 
-The tools are pinned in [`ci/tools.sh`](../ci/tools.sh): lego by version and the SHA-256 of its release
-download, the others by module version and module hash (osv-scanner and Trivy built with a pinned Go toolchain, because
-osv-scanner's release's standard library has fixed vulnerabilities). opa, gitleaks, osv-scanner and Trivy are built
+The tools are pinned in [`ci/tools.sh`](../ci/tools.sh), each by module version and module hash, and all built
+with one pinned Go toolchain, not the CI image's go: the standard library is in every binary, and a fixed
+vulnerability in it fails the job (#49: GO-2026-6859, fixed in go1.27.4). Each binary is refused unless it reports
+that toolchain. lego is built from source as its release builds it, because its release binary's standard library
+had that vulnerability. opa, gitleaks, osv-scanner and Trivy are built
 from source, each in a module of its own that raises a dependency with a fixed vulnerability its release doesn't
 take yet (klauspost/compress, andybalholm/brotli, ulikunitz/xz; #40), each pinned by version and module hash too. **It fails** on any secret, and on any HIGH or
 CRITICAL finding with a fixed version, unless an unexpired entry of
@@ -115,7 +117,7 @@ holds or renews it: the in-cluster letsencrypt, its guard, `apply-letsencrypt` a
   covered (a wildcard covers one label); `invalid`, when the chain doesn't verify, the key isn't the leaf's,
   or it isn't valid yet. It prints the subject, issuer, serial and dates, never the key.
 - **The `cert` job**, [`ci/cert.sh`](../ci/cert.sh), with [`lego`](https://go-acme.github.io/lego/) (pinned by
-  version and SHA-256 in `ci/tools.sh`):
+  version and module hash in `ci/tools.sh`, built from source):
   - `missing`, `expired`, `wrong-hostname` or `invalid`: lego obtains a new certificate for `tacplus.dev` and
     `*.tacplus.dev` by ACME DNS-01. It writes the challenge in the Cloud DNS zone `acme-challenge-tacplus-dev`,
     which serves `_acme-challenge.tacplus.dev` by delegation (tacplus-dev/cloud#13). The deploy account may
