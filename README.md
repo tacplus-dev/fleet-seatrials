@@ -30,7 +30,9 @@ and rights the fleet has in it are tacplus-dev/cluster's: nothing here creates o
 **These stay in jody1-328023 until they move** (tacplus-dev/cloud#15): the `tacplus-reader` app's KMS key
 (`TACPLUS_READER_KMS_KEY`) and the reader's service account (`TACPLUS_READER_SA`), the reader path every job
 fetches this repository through, and the drift path; and the Google OAuth client `seatrials-web`
-(`deploy/bootstrap/services/oauth.yaml`). `ci/target_test.sh` checks that nothing else names that project.
+(`deploy/bootstrap/services/oauth.yaml`) until its successor in `tacplus-dev`, whose secret is the Secret
+Manager secret `google-signin-seatrials`, is made and committed (#46; [docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-google-sign-in-client)).
+`ci/target_test.sh` checks that nothing else names that project.
 The cutover's order and the grants still to come are in
 [docs/deploy-pipeline.md](docs/deploy-pipeline.md#gcp-workload-identity-federation-no-key-files).
 
@@ -47,7 +49,7 @@ The cutover's order and the grants still to come are in
   service build first builds it when that tag is missing.
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
   (CA and cluster PKI, once), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
-  variables), `diff.sh` (what an apply would change, by name), `apply.sh`
+  variables and Secret Manager), `google-client.sh` (Google's client, checked with Google), `diff.sh` (what an apply would change, by name), `apply.sh`
   (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
@@ -76,8 +78,8 @@ and it applies the render `diff` showed, by its digest (Jody, 2026-11-02; tacplu
 that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Two
 jobs stay manual, because neither approves the fleet:
 
-- `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables. `apply`
-  installs them anyway.
+- `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables or Secret
+  Manager. `apply` installs them anyway.
 - `test-idp`: the test IdP's one-time setup, which generates and stores its seeds.
 
 `ci/pipeline_test.sh` checks this on the rendered pipeline.

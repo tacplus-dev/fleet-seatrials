@@ -302,12 +302,14 @@ apply:
       deploy/secrets.sh
       deploy/apply.sh
       ci_test_idp_seeds optional
+      ci_google_signin
       deploy/signin-secrets.sh
 
 # Re-installs the sign-in secrets from the project variables (the Test
-# providers' from the test IdP's seeds, when it may read them), nothing else: a
-# rotated secret (the Microsoft one every 6 months, #6) is a variable updated
-# in the project and this job run.
+# providers' from the test IdP's seeds, when it may read them; Google's from the
+# secret google-signin-seatrials, #46), nothing else: a rotated secret (the
+# Microsoft one every 6 months, #6) is a variable updated in the project, or a
+# version added in Secret Manager, and this job run.
 signin-secrets:
   stage: apply
   needs: [tools]
@@ -316,7 +318,7 @@ signin-secrets:
   when: manual
   allow_failure: true
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds optional && ci_kube && deploy/signin-secrets.sh
+    - cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds optional && ci_google_signin && ci_kube && deploy/signin-secrets.sh
 
 # A deployment's first run (#17): generates its key material, FLEET_CRYPTO_YAML
 # and FLEET_CA_PEM, and stores it in this project's variables, never printing it

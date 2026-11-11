@@ -3,11 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Puts the sign-in providers' secrets in place on the cluster dev, from
-# the deploy pipeline's protected GitLab variables (docs/deploy-pipeline.md),
-# never from git, a file or clipboard on a laptop, a terminal echo or anyone's
-# chat. Each is optional; one that is unset keeps what the cluster holds now.
+# the deploy pipeline's protected GitLab variables and Secret Manager
+# (docs/deploy-pipeline.md), never from git, a file or clipboard on a laptop, a
+# terminal echo or anyone's chat. Each is optional; one that is unset keeps what
+# the cluster holds now.
 #
-#   FLEET_GOOGLE_CLIENT_SECRET      masked variable: the Google client secret
+#   GOOGLE_SIGNIN_FILE              the latest version of the secret google-signin-seatrials
+#                                   (ci/lib.sh, ci_google_signin; #46): the client JSON the
+#                                   Console downloads when the client is made, or the bare
+#                                   client secret (a rotation). Never a GitLab variable:
+#                                   FLEET_GOOGLE_CLIENT_SECRET is no longer read.
 #   FLEET_MICROSOFT_CLIENT_SECRET   masked variable: the Entra client secret VALUE
 #   FLEET_APPLE_KEY_P8              file variable: the Sign in with Apple .p8 key
 #   TEST_IDP_CLIENT_SEED            the seed of the test IdP's client secrets
@@ -18,6 +23,12 @@
 #
 # With none set, the override is just brought in step with
 # deploy/bootstrap/services/oauth.yaml.
+#
+# Google: a JSON version must be for the client oauth.yaml names (a new
+# client is switched to by committing its id there), and Google must take the
+# secret (deploy/google-client.sh secret): one it refuses is never installed,
+# since it would take Google sign-in down. If Google does not answer, the
+# secret is installed unchecked, saying so.
 #
 # Google and Microsoft: oauth's client secrets ride the kernel-config-override
 # ConfigMap, whose configs.oauth_config.providers REPLACES the bundle's
@@ -54,9 +65,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # Every check runs before anything is written, and none echoes a value.
-refuse() { echo "$1: fix the variable in the GitLab project and run again" >&2; exit 1; }
+refuse() { echo "$1: ${2:-fix the variable in the GitLab project and run again}" >&2; exit 1; }
 ms_secret=${FLEET_MICROSOFT_CLIENT_SECRET:-}
-google_secret=${FLEET_GOOGLE_CLIENT_SECRET:-}
 apple_key=${FLEET_APPLE_KEY_P8:-}
 # The Entra secret's Secret ID, a command line or a path have been taken for
 # its VALUE; Microsoft then refuses the client (AADSTS7000215) and sign-in
@@ -71,10 +81,34 @@ if [ -n "$ms_secret" ]; then
     refuse "$why is not 30-60 characters of A-Z a-z 0-9 _ . ~ - (Entra secret values are 40)"
 fi
 printf '%s' "$ms_secret" > "$tmp/ms_secret"
-if [ -n "$google_secret" ]; then
-  [[ "$google_secret" =~ [[:space:]] ]] && refuse "FLEET_GOOGLE_CLIENT_SECRET holds whitespace or a newline"
+[ -z "${FLEET_GOOGLE_CLIENT_SECRET:-}" ] ||
+  echo "google: FLEET_GOOGLE_CLIENT_SECRET is not read: Google's secret is the Secret Manager secret google-signin-seatrials (docs/deploy-pipeline.md); delete the variable"
+: > "$tmp/google_secret"
+if [ -n "${GOOGLE_SIGNIN_FILE:-}" ]; then
+  why="the latest version of the secret google-signin-seatrials"
+  google_fix="add a version that is (docs/deploy-pipeline.md, The Google sign-in client) and run again"
+  if [ "$(tr -d '[:space:]' < "$GOOGLE_SIGNIN_FILE" | head -c1)" = "{" ]; then
+    google_id=$(jq -r '.web.client_id // empty' "$GOOGLE_SIGNIN_FILE" 2>/dev/null) ||
+      refuse "$why is neither JSON nor a bare secret" "$google_fix"
+    want_id=$(yq -o=json '.providers' "$here/deploy/bootstrap/services/oauth.yaml" |
+      jq -r '[.[] | select(.name == "Google")][0].client_id // empty')
+    [ "$google_id" = "$want_id" ] ||
+      refuse "$why is the client JSON of ${google_id:-no client_id}, but deploy/bootstrap/services/oauth.yaml names $want_id" \
+        "commit ${google_id:-its client_id} as Google's client_id in deploy/bootstrap/services/oauth.yaml (the switch to a new client), or add the version of $want_id, and run again"
+    jq -j '.web.client_secret // empty' "$GOOGLE_SIGNIN_FILE" > "$tmp/google_secret"
+  else
+    printf '%s' "$(cat "$GOOGLE_SIGNIN_FILE")" > "$tmp/google_secret"
+  fi
+  [ -s "$tmp/google_secret" ] || refuse "$why holds no client secret" "$google_fix"
+  grep -q '[[:space:]]' "$tmp/google_secret" && refuse "$why holds a secret with whitespace in it" "$google_fix"
+  google_check=0
+  "$here/deploy/google-client.sh" secret "$tmp/google_secret" || google_check=$?
+  case "$google_check" in
+    0) ;;
+    3) echo "google: Google does not answer; the secret is installed unchecked" ;;
+    *) refuse "Google refuses $why" "add the client's current secret as a new version and run again" ;;
+  esac
 fi
-printf '%s' "$google_secret" > "$tmp/google_secret"
 if [ -n "${TEST_IDP_CLIENT_SEED:-}" ] && [ "${#TEST_IDP_CLIENT_SEED}" -lt 32 ]; then
   refuse "TEST_IDP_CLIENT_SEED is shorter than 32 characters"
 fi

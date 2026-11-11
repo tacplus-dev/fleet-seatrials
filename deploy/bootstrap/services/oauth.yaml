@@ -8,8 +8,9 @@ scopes:
   - email
 # Anyone with a Google, Microsoft or Apple account may sign in, and the test
 # IdP's test users (below); whether they are entitled to anything is tenant
-# membership, not the provider, so no provider lists domains. Client secrets are NOT here: Google's and
-# Microsoft's ride the kernel-config-override ConfigMap (ConfigOverride path
+# membership, not the provider, so no provider lists domains. Client secrets are NOT here: Google's (from the
+# Secret Manager secret google-signin-seatrials, #46) and Microsoft's ride the
+# kernel-config-override ConfigMap (ConfigOverride path
 # configs.oauth_config.providers, which replaces this whole list, so every
 # provider must be in it — deploy/signin-secrets.sh keeps the two in step), and
 # Apple's .p8 key rides the oauth-pipeline-secrets Secret. Git holds neither.
@@ -18,7 +19,10 @@ providers:
     name: Google
     issuer: https://accounts.google.com
     # OAuth client "seatrials-web" in GCP project jody1-328023 (2026-10-24),
-    # redirect URI https://seatrials.tacplus.dev/
+    # redirect URI https://seatrials.tacplus.dev/. Its successor in tacplus-dev is made
+    # in the Console and switched to by committing its id here (docs/deploy-pipeline.md,
+    # The Google sign-in client, #46). Google must have each allowed_redirect_uri_prefixes
+    # entry registered as a redirect URI (deploy/google-client.sh client).
     client_id: 23279701427-3nm40dmid06nd3niqufrq88sbl90p0n3.apps.googleusercontent.com
     allowed_redirect_uri_prefixes:
       - https://seatrials.tacplus.dev/

@@ -12,7 +12,9 @@
 # before it asks the cluster for anything; with the seeds it runs
 # test-idp/apply.sh and test-idp/signin.sh, and it fails, saying why, when
 # Secret Manager refuses them or a version lacks one. seatrials' jobs read the
-# seeds optional: refused, they go on without them (ci_test_idp_seeds). lib.sh runs from a copy, so its cleanup never touches
+# seeds optional: refused, they go on without them (ci_test_idp_seeds). ci_google_signin hands
+# them the latest version of google-signin-seatrials as GOOGLE_SIGNIN_FILE, and with
+# none yet, or refused, goes on without it, saying so (#46). lib.sh runs from a copy, so its cleanup never touches
 # this checkout. ci_cert installs the certificate version the cert job passed
 # on (CERT_SECRET, CERT_VERSION), that version and no other, as crypto.yaml's
 # edge_tls[0], and fails, saying so, without them or when the secret refuses.
@@ -44,6 +46,9 @@ case "\$1 \$2" in
     case " \$* " in *" --secret=test-idp-seeds "*)
       [ -z "\${SEEDS_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/test-idp-seeds] not found or has no versions." >&2; exit 1; }
       payload=$work/seeds\${SEEDS_BAD:+-bad} ;;
+    *" --secret=google-signin-seatrials "*)
+      [ -z "\${GOOGLE_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/google-signin-seatrials] not found or has no versions." >&2; exit 1; }
+      payload=$work/google-signin ;;
     esac
     for a in "\$@"; do case "\$a" in --out-file=*) cp "\$payload" "\${a#*=}" ;; esac; done ;;
   "container clusters")
@@ -75,6 +80,7 @@ cat "$work/leaf.crt" "$work/leaf.key" > "$work/payload.pem"
 # The test IdP's seeds, as the secret test-idp-seeds holds them; one line only is malformed.
 printf 'TEST_IDP_SEED=the-user-seed-0123456789\nTEST_IDP_CLIENT_SEED=the-client-seed-0123456789\n' > "$work/seeds"
 head -1 "$work/seeds" > "$work/seeds-bad"
+printf '{"web":{"client_id":"c","client_secret":"the-google-secret"}}\n' > "$work/google-signin"
 for t in apply signin; do
   printf '#!/usr/bin/env bash\necho "%s.sh ran on $(kubectl config current-context) with ${TEST_IDP_SEED:+the seed}/${TEST_IDP_CLIENT_SEED:+the client seed}"\n' "$t" > "$src/test-idp/$t.sh"
   chmod +x "$src/test-idp/$t.sh"
@@ -242,6 +248,35 @@ fi
 for j in apply signin-secrets test; do
   yq ".\"$j\".script | join(\"\n\")" "$here/ci/deploy.gitlab-ci.yml" | grep -q 'ci_gcp.*ci_test_idp_seeds optional\|^ *ci_test_idp_seeds optional' &&
     ok "$j reads the test IdP's seeds, optional" || fail "$j does not read the test IdP's seeds (ci_test_idp_seeds optional)"
+done
+
+# --- Google's client secret, from google-signin-seatrials (#46) ----------------
+
+google='cd src && source ci/lib.sh && ci_gcp && ci_google_signin && echo "next ran with ${GOOGLE_SIGNIN_FILE:+$(cat "$GOOGLE_SIGNIN_FILE")}"'
+if job -- "$google"; then
+  grep -qx 'next ran with {"web":{"client_id":"c","client_secret":"the-google-secret"}}' "$work/out" &&
+    grep -q -- '--secret=google-signin-seatrials --project=tacplus-dev' "$work/log/gcloud" &&
+    ! grep -v '^next ran' "$work/out" | grep -q the-google-secret &&
+    ok "ci_google_signin hands on the latest version of google-signin-seatrials" || fail "ci_google_signin: $(cat "$work/out")"
+else
+  fail "ci_google_signin: $(cat "$work/out")"
+fi
+if job GOOGLE_NONE=1 -- "$google"; then
+  grep -qx 'next ran with ' "$work/out" && grep -q 'google: the secret google-signin-seatrials has no version yet' "$work/out" &&
+    ok "ci_google_signin goes on without a version, saying so" || fail "ci_google_signin, no version: $(cat "$work/out")"
+else
+  fail "ci_google_signin failed with no version: $(cat "$work/out")"
+fi
+if job SM_REFUSE=1 -- "$google"; then
+  grep -qx 'next ran with ' "$work/out" && grep -q 'google: cannot read the secret google-signin-seatrials as .*PERMISSION_DENIED' "$work/out" &&
+    ok "ci_google_signin goes on when it may not read the secret, with Secret Manager's error" ||
+    fail "ci_google_signin, refused: $(cat "$work/out")"
+else
+  fail "ci_google_signin failed when refused: $(cat "$work/out")"
+fi
+for j in apply signin-secrets; do
+  yq ".\"$j\".script | join(\"\n\")" "$here/ci/deploy.gitlab-ci.yml" | grep -q 'ci_google_signin.*deploy/signin-secrets.sh\|^ *ci_google_signin' &&
+    ok "$j reads Google's secret from Secret Manager" || fail "$j does not read Google's secret (ci_google_signin)"
 done
 
 # ci_crypto places FLEET_CRYPTO_YAML as it is, or, when init-secrets stored it

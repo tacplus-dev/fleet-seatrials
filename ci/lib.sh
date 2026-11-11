@@ -95,6 +95,30 @@ ci_test_idp_seeds() {
   echo "test idp: the seeds from the secret $secret"
 }
 
+# ci_google_signin: Google's sign-in client secret for deploy/signin-secrets.sh,
+# after ci_gcp: the latest version of the Secret Manager secret
+# google-signin-seatrials in tacplus-dev, which Jody adds in the Console (Google
+# has no API that makes a client or its secret; docs/deploy-pipeline.md, The
+# Google sign-in client, #46), into a file of the job's, GOOGLE_SIGNIN_FILE. No
+# version yet, or a refusal, is said and the job goes on without it: oauth keeps
+# the Google secret the cluster holds. Nothing here prints it.
+ci_google_signin() {
+  local secret=google-signin-seatrials file=$ci_tmp/google-signin
+  if ! ( umask 077
+         gcloud secrets versions access latest --secret="$secret" --project="${GCP_PROJECT:-tacplus-dev}" \
+           --out-file="$file" 2>"$ci_tmp/google-err" ); then
+    rm -f "$file"
+    if grep -q NOT_FOUND "$ci_tmp/google-err"; then
+      echo "google: the secret $secret has no version yet (docs/deploy-pipeline.md, The Google sign-in client); Google keeps the cluster's secret"
+    else
+      echo "google: cannot read the secret $secret as $(gcloud config get account 2>/dev/null): $(grep -m1 '^ERROR' "$ci_tmp/google-err" || head -c 300 "$ci_tmp/google-err"); Google keeps the cluster's secret" >&2
+    fi
+    return 0
+  fi
+  export GOOGLE_SIGNIN_FILE=$file
+  echo "google: the client secret from the secret $secret"
+}
+
 # ci_test_idp_set_up: whether the test IdP has its seeds (ci_test_idp_seeds),
 # which the manual test-idp job generates on its first run. Without them it is
 # not set up yet (a dry run before that apply), and this says so (#31).

@@ -2,14 +2,18 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tests deploy/signin-secrets.sh against stub kubectl and yq. The secrets come
-# from the deploy pipeline's GitLab variables, never from a file or clipboard
-# on a laptop: a Microsoft value that is not an Entra secret value, or any
-# secret with whitespace in it, is refused (non-zero, saying why, never echoing
-# it) and nothing is written to the cluster; well-formed ones are written; an
-# unset one keeps the cluster's current secret; the Apple key restarts oauth
-# only when it differs from the one in place; the test IdP's providers get the
-# secrets derived from their seed and are on only while their realm answers.
+# Tests deploy/signin-secrets.sh against stub kubectl, yq and curl. The secrets
+# come from the deploy pipeline's GitLab variables and, Google's, from a version
+# of the Secret Manager secret google-signin-seatrials (#46), never from a file
+# or clipboard on a laptop: a Microsoft value that is not an Entra secret value,
+# or any secret with whitespace in it, is refused (non-zero, saying why, never
+# echoing it) and nothing is written to the cluster; well-formed ones are
+# written; an unset one keeps the cluster's current secret; the Apple key
+# restarts oauth only when it differs from the one in place; the test IdP's
+# providers get the secrets derived from their seed and are on only while their
+# realm answers. Google's version is the client JSON the Console downloads or a
+# bare secret; a JSON for another client than oauth.yaml's, or a secret Google
+# refuses, is refused, and the old GitLab variable is no longer read.
 # Needs bash, jq and python3.
 #
 #   deploy/signin-secrets_test.sh
@@ -37,12 +41,22 @@ esac
 EOF
 cat > "$work/bin/yq" <<'EOF'
 #!/usr/bin/env bash
-echo '[{"name":"Google","client_id":"g","enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev:8443/realms/google","client_id":"tacplus-dev","enable":true}]'
+echo '[{"name":"Google","issuer":"https://accounts.google.com","client_id":"g","allowed_redirect_uri_prefixes":["https://seatrials.tacplus.dev/"],"enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev:8443/realms/google","client_id":"tacplus-dev","enable":true}]'
 EOF
-# The test IdP's discovery: up unless STUB_TEST_IDP=down.
+# Google's token endpoint (deploy/google-client.sh): takes the secret unless
+# STUB_GOOGLE=reject, or does not answer with STUB_GOOGLE=down. The test IdP's
+# discovery: up unless STUB_TEST_IDP=down.
 cat > "$work/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 echo "curl $*" >> "$STUB_LOG"
+case "$*" in *https://oauth2.googleapis.com/token*)
+  case "${STUB_GOOGLE:-accept}" in
+    accept) echo '{"error": "invalid_grant", "error_description": "Malformed auth code."}' ;;
+    reject) echo '{"error": "invalid_client", "error_description": "The provided client secret is invalid."}' ;;
+    *) exit 7 ;;
+  esac
+  exit 0 ;;
+esac
 [ "${STUB_TEST_IDP:-up}" = up ] || exit 22
 for a in "$@"; do case "$a" in https://*/.well-known/openid-configuration)
   echo "{\"issuer\":\"${a%/.well-known/openid-configuration}\"}" ;; esac; done
@@ -55,10 +69,10 @@ fail() { echo "FAIL $1"; failures=$((failures + 1)); }
 # variable not given is unset. Leaves the log in $work/log and the override in
 # $work/override.json.
 run() {
-  local name=$1 want=$2 out status
+  local name=$1 want=$2 status
   shift 2
   : > "$work/log"; rm -f "$work/override.json"
-  out=$(env -u FLEET_MICROSOFT_CLIENT_SECRET -u FLEET_GOOGLE_CLIENT_SECRET -u FLEET_APPLE_KEY_P8 -u TEST_IDP_CLIENT_SEED \
+  out=$(env -u FLEET_MICROSOFT_CLIENT_SECRET -u FLEET_GOOGLE_CLIENT_SECRET -u GOOGLE_SIGNIN_FILE -u FLEET_APPLE_KEY_P8 -u TEST_IDP_CLIENT_SEED \
     PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_OVERRIDE="$work/override.json" "$@" \
     "$here/signin-secrets.sh" 2>&1)
   status=$?
@@ -72,6 +86,10 @@ run() {
         fi ;;
     esac
   done
+  # Google's secrets here all start GOCSPX-: none may be echoed or on a command line.
+  if [[ "$out" == *GOCSPX-* ]] || grep -q GOCSPX- "$work/log"; then
+    fail "$name: a Google secret is in the output or on a command line: out=[$out]"; return 1
+  fi
   case "$want" in
     refuse)
       if [ "$status" -eq 0 ] || $wrote || [ -z "$out" ]; then
@@ -109,10 +127,40 @@ run "with no variable, the current secrets are kept" write &&
   check "Google kept" "$(provider Google client_secret)" kept-google &&
   check "Microsoft kept" "$(provider Microsoft client_secret)" kept-microsoft &&
   check "Apple off without a key" "$(provider Apple enable)" false
-run "the Google variable is written" write FLEET_GOOGLE_CLIENT_SECRET=GOCSPX-abcdefghijklmnopqrstuvwxyz12 &&
-  check "the Google value is the variable's" "$(provider Google client_secret)" GOCSPX-abcdefghijklmnopqrstuvwxyz12 &&
-  check "Microsoft still kept" "$(provider Microsoft client_secret)" kept-microsoft
-run "a Google value with whitespace is refused" refuse FLEET_GOOGLE_CLIENT_SECRET="GOCSPX-abc def"
+
+# Google's secret: a version of google-signin-seatrials (ci_google_signin), the
+# client JSON the Console downloads when the client is made, or a bare secret
+# (a rotation), never the GitLab variable (#46).
+printf 'GOCSPX-bare-secret-0123456789\n' > "$work/google-bare"
+printf '{"web":{"client_id":"g","project_id":"tacplus-dev","client_secret":"GOCSPX-json-secret-0123456789","redirect_uris":["https://seatrials.tacplus.dev/"]}}\n' > "$work/google-json"
+printf '{"web":{"client_id":"the-new-client.apps.googleusercontent.com","client_secret":"GOCSPX-json-secret-0123456789"}}\n' > "$work/google-other"
+printf '{"web":{"client_id":"g"}}\n' > "$work/google-nosecret"
+printf 'GOCSPX-a b\n' > "$work/google-space"
+run "a bare Google secret from Secret Manager is written" write GOOGLE_SIGNIN_FILE="$work/google-bare" &&
+  check "the Google secret is the version's" "$(provider Google client_secret)" GOCSPX-bare-secret-0123456789 &&
+  check "Google on" "$(provider Google enable)" true &&
+  check "Microsoft still kept" "$(provider Microsoft client_secret)" kept-microsoft &&
+  check "Google was asked whether it takes the secret" "$(grep -c 'oauth2.googleapis.com/token' "$work/log")" 1
+run "the client JSON the Console downloads is written" write GOOGLE_SIGNIN_FILE="$work/google-json" &&
+  check "the Google secret is the JSON's" "$(provider Google client_secret)" GOCSPX-json-secret-0123456789
+if run "a client JSON for another client is refused" refuse GOOGLE_SIGNIN_FILE="$work/google-other"; then
+  [[ "$out" == *the-new-client.apps.googleusercontent.com*deploy/bootstrap/services/oauth.yaml* ]] &&
+    echo "ok   the refusal names the client id to commit" || fail "the refusal does not name the client: [$out]"
+fi
+run "a client JSON without a secret is refused" refuse GOOGLE_SIGNIN_FILE="$work/google-nosecret"
+run "a Google secret with whitespace is refused" refuse GOOGLE_SIGNIN_FILE="$work/google-space"
+run "an empty version is refused" refuse GOOGLE_SIGNIN_FILE=/dev/null
+run "a secret Google refuses is refused" refuse GOOGLE_SIGNIN_FILE="$work/google-bare" STUB_GOOGLE=reject
+printf -- '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n' > "$work/AuthKey.p8"
+run "a Google refusal writes no Apple key either" refuse GOOGLE_SIGNIN_FILE="$work/google-bare" STUB_GOOGLE=reject \
+  FLEET_APPLE_KEY_P8="$work/AuthKey.p8"
+run "Google not answering: the secret is written, saying so" write GOOGLE_SIGNIN_FILE="$work/google-bare" STUB_GOOGLE=down &&
+  check "the Google secret is the version's" "$(provider Google client_secret)" GOCSPX-bare-secret-0123456789
+if run "the GitLab variable FLEET_GOOGLE_CLIENT_SECRET is no longer read" write FLEET_GOOGLE_CLIENT_SECRET=GOCSPX-from-gitlab-0123; then
+  check "Google kept" "$(provider Google client_secret)" kept-google
+  [[ "$out" == *"FLEET_GOOGLE_CLIENT_SECRET is not read"* ]] && echo "ok   it says the variable is not read" ||
+    fail "no word on the ignored variable: [$out]"
+fi
 
 # The test IdP's providers (test-idp/README.md): each client secret is derived
 # from TEST_IDP_CLIENT_SEED, and a provider is on only with its secret and

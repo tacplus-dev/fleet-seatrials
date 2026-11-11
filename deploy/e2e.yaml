@@ -33,6 +33,9 @@ tests:
   - name: signin/providers-listed
     what: oauth lists every enabled provider, and Authorize sends each to its own IdP with its client id
     run: deploy/checks.sh signin
+  - name: signin/google-client
+    what: Google knows seatrials' OAuth client (oauth.yaml's client_id), and every redirect URI oauth may send it is registered (#46)
+    run: deploy/google-client.sh client
   - name: signin/google-session
     what: a Google-shaped user signs in through the gateway (test IdP) and gets a kernel session whose access token verifies with the host's JWKS
     waits_on: ["#27"]

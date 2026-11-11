@@ -25,7 +25,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM`, and the certificate version `cert` passed on installed as the gateway's, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials. It prints object **names** only, and the render's digest, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
 | apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
-| apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and nothing else, after a secret is rotated. |
+| apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and Secret Manager and nothing else, after a secret is rotated. |
 | generate | `init-secrets` | Manual, in the protected environment `init-secrets`. A deployment's first run: generates `FLEET_CRYPTO_YAML` and `FLEET_CA_PEM` and stores them in the project ([below](#generated-secrets-the-init-secrets-job)). |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP's seeds (the first time), its certificate, and Keycloak with its realms on the `dev` cluster ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | The same apply first (main's realms; the certificate renewed when due), then [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
@@ -81,7 +81,7 @@ that only Jody plays: [tacplus-dev/roadmap `PRODUCTION.md`](https://github.com/t
 
 Two jobs stay manual, because neither approves the fleet:
 
-- `signin-secrets`: run after a sign-in secret is rotated in the variables. `apply` installs them anyway.
+- `signin-secrets`: run after a sign-in secret is rotated in the variables or Secret Manager. `apply` installs them anyway.
 - `test-idp`: the test IdP's one-time setup. It generates and stores its seeds, so it runs on purpose.
 
 [`ci/pipeline_test.sh`](../ci/pipeline_test.sh), run by `checks`, renders the pipeline as GitLab does (anchors
@@ -180,13 +180,14 @@ its key aren't variables: they are versions in Secret Manager ([the certificate]
 | `FLEET_CRYPTO_YAML_2`, `_3`, ... | file, masked, hidden | `seatrials*` | The further parts of a generated `FLEET_CRYPTO_YAML`, which `ci_crypto` joins ([below](#generated-secrets-the-init-secrets-job)). |
 | `FLEET_CA_PEM` | file | `seatrials*` | `deploy/bootstrap/ca.pem` (already stored; scope as above). Generated with `FLEET_CRYPTO_YAML`. |
 | `FLEET_INIT_TOKEN` | masked, hidden | `init-secrets` | The deployment's bot user's personal access token (`api`). The bot is a Maintainer of this project only. `init-secrets` writes the generated variables with it ([below](#generated-secrets-the-init-secrets-job)). |
-| `FLEET_GOOGLE_CLIENT_SECRET` | masked | `seatrials*` | Google OAuth client `seatrials-web`. |
 | `FLEET_MICROSOFT_CLIENT_SECRET` | masked | `seatrials*` | The Entra client secret **value** of `seatrials-web` (`deploy/signin-secrets.sh` refuses a Secret ID). |
 | `FLEET_APPLE_KEY_P8` | file | `seatrials*` | The Sign in with Apple key `AuthKey_D9JNT33239.p8`. |
 | `FLEET_DEPLOY_COMMIT` | plain | optional | A full commit hash to deploy instead of main's head. |
 
 The `seatrials*` scope reaches the environment `seatrials`. The test IdP's seeds are not variables: they are
-the Secret Manager secret `test-idp-seeds` ([the test IdP](#the-test-idp)).
+the Secret Manager secret `test-idp-seeds` ([the test IdP](#the-test-idp)). Nor is Google's client secret: it is
+the Secret Manager secret `google-signin-seatrials` ([the Google sign-in client](#the-google-sign-in-client)).
+`FLEET_GOOGLE_CLIENT_SECRET` is no longer read (`signin-secrets.sh` says so while it exists): delete it.
 `deploy/signin-secrets.sh` keeps the cluster's current value of any sign-in secret whose variable is unset.
 Until all three are in GitLab, the secrets already on the cluster stay in place.
 
@@ -226,7 +227,7 @@ On a new deployment's first pipeline, `generate` fails because there's nothing t
 
 **Third-party secrets** are entered once per deployment, keyless where the provider allows. Apple's `.p8` is
 entered once (`FLEET_APPLE_KEY_P8`), and oauth mints the client-secret JWT from it for each request, so no Apple
-secret expires. Google's client secret is entered once. Microsoft without a secret (Entra federated credentials)
+secret expires. Google's client secret is added once, in Secret Manager ([below](#the-google-sign-in-client)). Microsoft without a secret (Entra federated credentials)
 needs oauth to authenticate to Entra with a client assertion, which it can't do yet (PROPOSALS.md). Until then,
 the secret is rotated by hand, as below.
 
@@ -238,6 +239,56 @@ the secret is rotated by hand, as below.
 4. Remove the old secret in Entra.
 
 Doing all of this inside the pipeline is the next step (PROPOSALS.md).
+
+### The Google sign-in client
+
+seatrials' Google sign-in is the OAuth web client `seatrials-web` in the project `tacplus-dev` (seabeam.net),
+beside the deployment's other resources (#46). Google has no public API that writes a consent screen, a web
+client, its redirect URIs or its secrets: the only one, IAP's OAuth Admin API, was shut down on 2026-03-19, and
+the Console shows a secret only once, when it is made. So **one step is Jody's, in the Console, once**; the
+pipeline does the rest, and checks with Google itself what it can't write.
+
+| | Who | How |
+| --- | --- | --- |
+| Consent screen (Google Auth Platform: branding, audience) | Jody, once | Console |
+| The client and its redirect URIs | Jody, once; the pipeline checks them | Console; `deploy/google-client.sh client`, the test stage's `signin/google-client` |
+| The secret | Jody adds it; the pipeline reads, checks and installs it | Secret Manager `google-signin-seatrials`; `ci_google_signin`, `deploy/signin-secrets.sh` |
+| Rotation | Jody, when wanted (Google's secrets don't expire) | Console, then a new version, as below |
+
+**Jody's one step**, in the Console of `tacplus-dev`, once tacplus-dev/cloud has made the secret
+`google-signin-seatrials` (no version; `seatrials-deploy` its reader; tacplus-dev/cloud#37):
+
+1. Google Auth Platform, *Branding*: app name `seatrials`, the support email, authorized domain `tacplus.dev`.
+   *Audience*: External, then *Publish app*. The scopes are `openid`, `email` and `profile` only, which Google
+   does not ask to verify.
+2. *Clients*, *Create client*: Web application, name `seatrials-web`, authorized redirect URI
+   `https://seatrials.tacplus.dev/` (each of the Google provider's `allowed_redirect_uri_prefixes` in
+   `deploy/bootstrap/services/oauth.yaml`: oauth sends Google the caller's callback as is). Then *Download JSON*
+   in the dialog that shows the secret.
+3. Secret Manager, `google-signin-seatrials`, *New version*, *Upload file*: that JSON. Delete the local file.
+
+Nothing is typed or pasted, and no agent sees the secret. Then the switch, by a commit: the next `apply` (or
+`signin-secrets`) refuses the JSON, naming its `client_id`, until that id is Google's `client_id` in `oauth.yaml`.
+Once that is committed and a Google sign-in works on the new client, the old client (in the project the
+thescottsweb.com org is closing) is deleted, and the GitLab variable `FLEET_GOOGLE_CLIENT_SECRET` with it.
+
+**What the pipeline does.** `apply` and `signin-secrets` read the latest version of `google-signin-seatrials`
+through WIF as `seatrials-deploy` (`ci_google_signin` in [`ci/lib.sh`](../ci/lib.sh)); with no version yet, or
+refused, they say so and oauth keeps the Google secret the cluster holds. A version is the client JSON the
+Console downloads, whose `client_id` must be `oauth.yaml`'s, or a bare secret. Before installing it,
+`deploy/signin-secrets.sh` asks Google whether it takes the secret (`deploy/google-client.sh secret`: the token
+endpoint answers a bogus code with `invalid_grant` for a good secret, `invalid_client` for a bad one), and refuses,
+installing nothing, a secret Google refuses, since it would take Google sign-in down. If Google does not answer,
+the secret is installed unchecked, saying so. After every deploy, `signin/google-client` asks Google's authorize
+endpoint whether it knows the client and each redirect URI (`deploy/google-client.sh client`: an unknown client
+or an unregistered URI is sent to `/signin/oauth/error`, `invalid_client` or `redirect_uri_mismatch`). Neither
+check needs a person or a user's account.
+
+**Rotating the Google secret** (no date forces it): on the client in the Console, *Add secret*; add the new secret
+as a new version of `google-signin-seatrials` (a bare secret, or a JSON `{"web": {"client_id": ..., "client_secret":
+...}}`); run `signin-secrets`, which checks it with Google and installs it; then *disable* the old secret on the
+client, and disable the old version. Google says it deletes OAuth clients that go unused for months, so a client
+seatrials stops using for long must be checked before it is relied on.
 
 **Who can read the variables:** the project's Maintainers and Owners, and the group's Owners, through the UI
 and the API. Before any secret is stored there, no token an agent holds may have Maintainer or higher on

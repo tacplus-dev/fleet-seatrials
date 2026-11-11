@@ -135,6 +135,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   (`contract_commit`), or from `build/proto`, as the README already says. That is new tacplus behaviour
   (tacplus `pkg/runner/depends.go`), so it needs design. Pinning by release line (#8, tacplus-dev/tacplus#180)
   narrows the drift but doesn't remove it.
+- **The Google secret's old versions disabled by the pipeline** (2026-11-10, #46): after a rotation (Jody adds
+  the new secret on the client in the Console and as a new version of `google-signin-seatrials`), the
+  pipeline could disable the older versions once `signin-secrets` has checked the new one with Google and
+  installed it, as decisions/secrets-by-pipeline-2026-11-05.md asks. That needs `secretVersionManager` on that
+  secret for `seatrials-deploy` (tacplus-dev/cloud), and still leaves disabling the old secret on the client
+  to the Console: Google has no API for it. Google's secrets don't expire, so nothing forces a rotation.
+- **A daily Google client check** (2026-11-10, #46): `signin/google-client` runs after each deploy. Google
+  says it deletes OAuth clients that go unused for long, and an unused seatrials (no deploy, no sign-in) would
+  not notice. Running `deploy/google-client.sh client` on the daily schedule, even without a deploy, would
+  say so first. Whether Google's authorize or token checks count as use is not documented.
 - **Rotate the Microsoft client secret inside the pipeline** (2026-10-29, #17, #6): today a rotation is by hand:
   a new Entra secret, pasted into `FLEET_MICROSOFT_CLIENT_SECRET`, then the `signin-secrets` job. Proposal: a
   scheduled job that does it all, well before expiry. It authenticates to Entra with the job's GitLab OIDC token
