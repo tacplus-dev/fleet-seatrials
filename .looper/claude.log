@@ -1,0 +1,201 @@
+= init
+> Bash gh issue view 48 --repo tacplus-dev/fleet-seatrials --comments | tail -30; grep -n "48\|cloud#30" ROADMAP.md; grep -rn "jody1-328023" --exclude=HISTORY.md --exclude=ROADMAP.md . | grep -v "^./.git"
+< author:	tacplus-manager association:	none edited:	false status:	none -- The manager merged [`looper/fleet-seatrials-48`](https://github.com/tacplus-dev/fleet-seatrials/tree/looper/fleet-seatrials-48) on main: 113643d..af9eb02, on the gates full (no gates.yaml): green. The branch is deleted. Its gate...
+> Bash sed -n 1,15p ci/target_test.sh; sed -n 95,120p ci/target_test.sh; sed -n 45,75p ci/github_reader_test.sh; sed -n 15,30p ci/gitlab-project.gitlab-ci.yml; sed -n 68,85p ci/deploy.gitlab-ci.yml; sed -n 25,40p README.md
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # Tests where the pipeline deploys (#39): the project tacplus-dev, the cluster # dev (us-central1-a), the deploy accounts (and init-secrets'), and the image registry of # tacplus-dev/cloud's dev stack in seab...
+= thinking_tokens
+= thinking_tokens
+Tests first.
+> Bash python3 - <<'EOF' import re p='ci/github_reader_test.sh'; s=open(p).read() s=s.replace('''  [ "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$deploy")" != null ] &&   ok "both pipelines name the same KMS key"''','''  [ "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$deploy")" = projects/tacplus-ci/locations...
+< Exit code 127  ci/github_reader_test.sh |  4 ++--  ci/target_test.sh        | 14 +++++++-------  2 files changed, 9 insertions(+), 9 deletions(-) ls: cannot access '/builds/looper/fleet-seatrials/homes/looper-48/bin': No such file or directory /bin/bash: line 47: yq: command not found
+> Bash grep -n -i "yq" ci/tools.sh | head; ls /tmp | head
+< 10:#   bin/yq, bin/govulncheck  built from pinned module versions, each refused unless its module's hash 35:yq_version=v4.54.1 yq_h1=h1:wFk+RhKFcx6fU6tkjC9z069vLTL4uDoXi9R4SytFB8s= 43:compress_fix=github.com/klauspost/compress@v1.20.3=h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=   # GO-2026-6865,...
+> Bash which go; go version; mkdir -p ~/yqbin && GOBIN=~/yqbin GOFLAGS=-mod=mod go install github.com/mikefarah/yq/v4@v4.54.1 2>&1 | tail -3; ~/yqbin/yq --version
+= task_started
+= task_notification
+< /usr/local/go/bin/go go version go1.26.11 linux/arm64 go: downloading github.com/mitchellh/go-wordwrap v1.0.1 go: downloading github.com/google/go-cmp v0.6.0 go: downloading github.com/apparentlymart/go-textseg/v15 v15.0.0 yq (https://github.com/mikefarah/yq/) version v4.54.1
+> Bash export PATH=$PATH:~/yqbin; bash ci/github_reader_test.sh 2>&1 | grep -i -e fail -e passed | head; bash ci/target_test.sh 2>&1 | grep -i -A20 -e fail | head -30
+< FAIL TACPLUS_READER_KMS_KEY is missing or differs FAIL TACPLUS_READER_SA is missing or differs ok   a KMS refusal fails the job before GitHub, with KMS's status and error ok   both refused: the job fails before GitHub, with both errors ok   GitHub's refusal fails the job, with GitHub's status and me...
+= thinking_tokens
+= thinking_tokens
+Tests fail as expected. Now the change: pipeline variables.
+> Bash python3 - <<'EOF' for p in ['ci/gitlab-project.gitlab-ci.yml','ci/deploy.gitlab-ci.yml']:     s=open(p).read()     s=s.replace('projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader','projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader')     s=s...
+< diff --git a/ci/deploy.gitlab-ci.yml b/ci/deploy.gitlab-ci.yml index a9ed3fd..d1fce2e 100644 --- a/ci/deploy.gitlab-ci.yml +++ b/ci/deploy.gitlab-ci.yml @@ -72,13 +72,11 @@ variables:    # The fleet's images: images/build.sh pushes them there, and the operator    # renders them from there (SCHEMATIC...
+> Bash sed -n 438,475p docs/deploy-pipeline.md; grep -n -i "signing path\|reader" PROPOSALS.md | head -20
+< ([below](#the-test-idp)) (tacplus-dev/cloud#20, applied 2026-11-08).  ### The cutover to `dev`  In order (#39):  1. **The hub** sets the project's protected `GCP_WIF_PROVIDER` to the provider above (and `GCP_DEPLOY_SA`, if    the project carries it, to `seatrials-deploy@tacplus-dev.iam.gserviceaccou...
+> Bash sed -n 55,70p PROPOSALS.md; sed -n 230,245p PROPOSALS.md
+<   the security job fails on the CI image. A build image patch on go1.27.4, moved to in the four references (as   above), fixes both. Until then the service images could be built with `GOTOOLCHAIN` pinned, as `ci/tools.sh`   now does. Why: the scan does not cover the service images (below), so nothin...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Now the docs.
+> Bash python3 - <<'EOF' p='docs/deploy-pipeline.md'; s=open(p).read() def rep(a,b):     global s     assert a in s, a[:60]     s=s.replace(a,b) rep('''2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us`, in jody1-328023 until    it moves, tacplus-dev/cloud#15), which ne...
+< diff --git a/README.md b/README.md index a581902..483591a 100644 --- a/README.md +++ b/README.md @@ -27,9 +27,10 @@ the registry `us-central1-docker.pkg.dev/tacplus-dev/seatrials`. The test IdP's  `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`. The cluster is tacplus-dev/cloud's, and the name...
+= thinking_tokens
+= thinking_tokens
+Let me verify the cloud facts I cite against cloud@3f90124.
+> Bash gh api "repos/tacplus-dev/cloud/contents/modules/projects/ci/github-apps.tf?ref=main" -H 'Accept: application/vnd.github.raw' 2>&1 | grep -n -i -B2 -A12 "reader" | head -90
+< 40- 41-moved { 42:  from = google_kms_key_ring.reader 43-  to   = google_kms_key_ring.looper 44-} 45- 46-# The GitHub App's key is GitHub's: it is imported, never generated here, so the key has no version until then 47-# (RS256, which a GitHub App's JWT is signed with). 48-resource "google_kms_crypt...
+> Bash gh api "repos/tacplus-dev/cloud/contents/modules/projects/ci/github-apps.tf?ref=main" -H 'Accept: application/vnd.github.raw' | sed -n 80,160p; gh api "repos/tacplus-dev/cloud/contents/modules/projects/ci/github-apps.tf?ref=main" -H 'Accept: application/vnd.github.raw' | sed -n 180,400p | grep -n -i...
+< # The importers' one permission on a key: creating its version, the import. Nothing else, no read, no IAM. resource "google_project_iam_custom_role" "key_version_importer" {   project     = google_project.ci.project_id   role_id     = "kmsKeyVersionImporter"   title       = "KMS key version importer...
+= thinking_tokens
+= thinking_tokens
+> Bash gh api "repos/tacplus-dev/cloud/contents/modules/projects/ci?ref=main" --jq '.[].name'; gh api "repos/tacplus-dev/cloud/contents/stacks?ref=main" --jq '.[].name'; for f in $(gh api "repos/tacplus-dev/cloud/contents/modules/projects/ci?ref=main" --jq '.[].name'); do gh api "repos/tacplus-dev/cloud/co...
+= task_started
+= task_notification
+< files github-apps.tf main.tf outputs.tf runners.tf storage.tf variables.tf versions.tf ci dev folder gitlab main.tf:23:    "iamcredentials.googleapis.com",
+= thinking_tokens
+= thinking_tokens
+IAM Credentials API is enabled in tacplus-ci (cloud `modules/projects/ci/main.tf:23`). Now STATE.md.
+> Bash python3 - <<'EOF' p='STATE.md'; s=open(p).read() def rep(a,b):     global s     assert s.count(a)==1, a[:60]     s=s.replace(a,b) rep("The reader's KMS key and account and the Google OAuth client stay in jody1-328023 until they move.",     "The reader's KMS key and account are tacplus-ci's (#48, tac...
+< ok   a job holding a stored GitHub token is refused ok   no id_token: refused OK STATE.md:9:- **Known gaps:** The certificate: the `cert` job has never run, and its acceptance on the cluster (a staging renewal, a new version, an apply, every gateway serving the new serial with no restart) waits on t...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+The exemption previously hid every line mentioning "reader", including STATE.md's long lines. I'll rephrase the prose so only the OAuth client's own lines name the old project.
+> Bash python3 - <<'EOF' def edit(p, pairs):     s=open(p).read()     for a,b in pairs:         assert s.count(a)==1,(p,a[:60]); s=s.replace(a,b)     open(p,'w').write(s) edit('STATE.md',[("Only the Google OAuth client stays in jody1-328023 until it moves.","Only the Google OAuth client stays in its old GC...
+< and rights the fleet has in it are tacplus-dev/cluster's: nothing here creates or deletes a cluster.  The `tacplus-reader` app's KMS key (`TACPLUS_READER_KMS_KEY`) and the reader's service account (`TACPLUS_READER_SA`), the reader path every job fetches this repository through, and the drift path, a...
+= thinking_tokens
+= thinking_tokens
+Both gates pass. Now PROPOSALS.md: the #48 entry is built, and "One signing path" has its answer.
+> Bash grep -n "^## \|^- 2026" PROPOSALS.md | head -30
+< 6:## Open 240:## Promoted / declined 241:- 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
+> Bash python3 - <<'EOF' p='PROPOSALS.md'; s=open(p).read() a=s.index('- **The reader\'s key and account move to tacplus-ci**'); b=s.index('- **Scan the fleet\'s own service images**') s=s[:a]+s[b:] old='''  If it is the service account, tacplus-dev/build and tacplus-dev/looper probably need the same chang...
+<  PROPOSALS.md                    | 17 +++++------  README.md                       |  9 +++---  STATE.md                        |  4 +--  ci/deploy.gitlab-ci.yml         |  6 ++--  ci/github_reader_test.sh        |  4 +--  ci/gitlab-project.gitlab-ci.yml |  4 +--  ci/target_test.sh               | 1...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash /usr/local/bin/looper-trace check 2>&1 | tail -5; grep -n "gates" HISTORY.md | tail -5; gh issue list --repo tacplus-dev/fleet-seatrials --state closed -L 5 --json number --jq '.[].number' | head -3 | while read n; do gh issue view $n --repo tacplus-dev/fleet-seatrials --comments | grep -m2 "landing...
+< Exit code 1 looper-trace: /builds/looper/fleet-seatrials/issues/48 verdict: pass (0 handlers, 0 findings)
+> Bash for n in 44 49 46 39; do gh api repos/tacplus-dev/fleet-seatrials/issues/$n/comments --jq '.[].body' | grep -o "the gates full ([^)]*)[^,]*" | head -2; done
+< the gates full (no gates.yaml): green. The branch is deleted. Its gates: job https://gitlab.com/tacplus-dev/looper/-/jobs/17933088453. Manager: job https://gitlab.com/tacplus-dev/looper/-/jobs/17933088454. the gates full (no gates.yaml): green. The branch is deleted. Its gates: job https://gitlab.co...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash /usr/local/bin/repo-looper --help 2>&1 | grep -i -A3 gate | head -30; sed -n 1,30p /builds/looper/fleet-seatrials/issues/48/ci/tools.sh | grep -n "bin\|usage\|#   " 
+<                                       queued lands merged onto looper/staging, their gates run, staging                                       pushed, the verdict written to DIR; never main   repo-looper --repo NAME --merge DIR    its manager job: main fast-forwarded to the staging the verdict       ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+I'll verify the exact self-contained gate command (no apostrophes; the first land broke on one).
+> Bash G='GOBIN=/tmp/yq-gate-48 go install github.com/mikefarah/yq/v4@v4.54.1 && PATH=$PATH:/tmp/yq-gate-48 bash ci/github_reader_test.sh && PATH=$PATH:/tmp/yq-gate-48 bash ci/target_test.sh'; bash -c "$G" > /tmp/gate48.log 2>&1; echo rc=$?; tail -3 /tmp/gate48.log; grep -c FAIL /tmp/gate48.log
+= task_started
+= task_notification
+< rc=0 ok   the test IdP's issuers in oauth.yaml: https://idp.test.tacplus.dev:8443/realms/ ok   jody1-328023 is named only for the OAuth client target tests passed 0
+> Bash grep -n "OK$" /tmp/gate48.log | tail -1; git add -A && git status --short && git commit -q -F - <<'EOF' The reader's key and account move to tacplus-ci (#48)  Every job mints its tacplus-reader token through TACPLUS_READER_KMS_KEY, falling back to TACPLUS_READER_SA; both still pointed at jody1-32802...
+< 33:OK M  PROPOSALS.md M  README.md M  STATE.md M  ci/deploy.gitlab-ci.yml M  ci/github_reader_test.sh M  ci/gitlab-project.gitlab-ci.yml M  ci/target_test.sh M  docs/deploy-pipeline.md df797f6 The reader's key and account move to tacplus-ci (#48) remote:      https://github.com/tacplus-dev/fleet-sea...
+= thinking_tokens
+= thinking_tokens
+> Bash nohup /usr/local/bin/repo-looper --repo fleet-seatrials --issue 48 --land --gates 'GOBIN=/tmp/yq-gate go install github.com/mikefarah/yq/v4@v4.54.1 && PATH=$PATH:/tmp/yq-gate bash ci/github_reader_test.sh && PATH=$PATH:/tmp/yq-gate bash ci/target_test.sh' > /tmp/land48.log 2>&1 & echo $!
+< 10313
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+While the land runs, let me look at what the proof run involves (cloud README step 2) and what I can reach.
+> Bash gh api repos/tacplus-dev/cloud/contents/README.md -H 'Accept: application/vnd.github.raw' | grep -n -i -A25 "off jody1-328023" | head -60; env | grep -i -o "^[A-Z_]*GITLAB[A-Z_]*\|^GL[A-Z_]*" ; which glab
+< 39:  **paused**: moving the runners off jody1-328023 is a later issue), and the read-only memberships of other projects, 40-  each with an expiry: `tacplus-looper-bot` a Reporter of tacplus-dev/build, for the looper's nightly recap (below, 41-  Memberships); and tacplus-dev/build's `.gitlab-ci.yml`,...
+> Bash gh api repos/tacplus-dev/cloud/contents/README.md -H 'Accept: application/vnd.github.raw' | sed -n 577,615p; glab auth status 2>&1 | head -5; tail -3 /tmp/land48.log
+= task_started
+= task_notification
+< ```sh k=tacplus-reader openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in $k.private-key.pem -out $k.der gcloud kms keys versions import --import-job=$k-import --keyring=looper --location=us-central1 --project=tacplus-ci \   --key=$k --algorithm=rsa-sign-pkcs1-2048-sha256 --target-key-file=$...
+= thinking_tokens
+= thinking_tokens
+No GitLab API token here, so I can't start the proof pipeline myself. Checking how the GitLab project picks up `ci/gitlab-project.gitlab-ci.yml` (whether the hub must re-pin it):
+> Bash sed -n 1,14p ci/gitlab-project.gitlab-ci.yml; grep -n "FLEET_COMMIT\|re-pin\|pin" ci/gitlab-project.gitlab-ci.yml | head
+< # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # The .gitlab-ci.yml of the GitLab project gitlab.com/tacplus-dev/fleet-seatrials, # kept here (github.com/tacplus-dev/fleet-seatrials ci/gitlab-project.gitlab-ci.yml) # and copied into that project as is: the project holds the ...
+= thinking_tokens
+= thinking_tokens
+> Bash curl -s -o /tmp/gl48.yml -w '%{http_code}\n' https://gitlab.com/api/v4/projects/tacplus-dev%2Ffleet-seatrials/repository/files/.gitlab-ci.yml/raw?ref=main; grep -n TACPLUS_READER /tmp/gl48.yml | head
+< 404
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> ToolSearch {"query":"select:Monitor","max_results":1}
+< 
+> Bash until ! kill -0 10313 2>/dev/null; do sleep 5; done; tail -8 /tmp/land48.log
+= background_tasks_changed
+= task_started
+< Command running in background with ID: br3fixk0n. Output is being written to: /builds/looper/fleet-seatrials/homes/looper-48/tmp/claude-61000/-builds-looper-fleet-seatrials-issues-48/171fadf7-9a26-45ea-990c-6621da203f91/tasks/br3fixk0n.output. You will be notified when it completes. To check interim...
+I'll be notified when the land process exits.
+= success: I'll be notified when the land process exits.
+= task_updated
+= task_notification
+= background_tasks_changed
+= init
+> Bash tail -15 /tmp/land48.log; cd /builds/looper/fleet-seatrials/issues/48 && git fetch -q origin && git log --oneline -3 origin/main
+< [2026-11-11T20:18:46Z] checkpoint of #48 (land queued) pushed to looper/fleet-seatrials-48:  11 files changed, 347 insertions(+), 80 deletions(-) [2026-11-11T20:18:48Z] queued: the manager of fleet-seatrials merges looper/fleet-seatrials-48 after the lands queued before it, one at a time, and says o...
+= thinking_tokens
+= thinking_tokens
+The land merged as df797f6. Now the outcome comment. The proof Jody asked for needs the hub, so the issue stays open.
+> Bash cat > /tmp/c48.md <<'EOF' ## Landed: df797f6 (7ea9dfc..df797f6); the proof mint still waits on the hub  **What changed** (one commit, df797f6): - `ci/gitlab-project.gitlab-ci.yml` and `ci/deploy.gitlab-ci.yml`: `TACPLUS_READER_KMS_KEY` is now `projects/tacplus-ci/locations/us-central1/keyRings/loope...
+= task_started
+= task_notification
+< https://github.com/tacplus-dev/fleet-seatrials/issues/48#issuecomment-6806386796 https://github.com/tacplus-dev/fleet-seatrials/issues/48
+> Bash /usr/local/bin/repo-looper --repo fleet-seatrials --issue 48 --checkpoint "Landed df797f6. Left: the hub copies ci/gitlab-project.gitlab-ci.yml into the GitLab project, runs a pipeline on main and posts fleet-plan's mint log; then close #48. needs-decision added (no GitLab API access here)." 2>&1 | ...
+< [2026-11-11T20:22:57Z] checkpoint of #48 (a step) pushed to looper/fleet-seatrials-48:  2 files changed, 363 insertions(+)
+> Bash git status --short | head
+< (Bash completed with no output)
+The switch to the tacplus-ci key and account is on main as df797f6, but I haven't shown the mint Jody asked for, so issue #48 stays open. I couldn't start or read a GitLab pipeline: the GitLab project is private and `glab` gets a 401 here.
+
+**What changed:**
+- **Pipeline variables:** both pipeline files now set `TACPLUS_READER_KMS_KEY` to `projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader` and `TACPLUS_READER_SA` to `fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com`. The "stay in jody1-328023" comment is gone.
+- **Tests, written first and failing before the change:** `ci/github_reader_test.sh` pins the new key and account. `ci/target_test.sh` no longer exempts lines mentioning the reader or KMS. That exemption had been hiding any line containing the word "reader", including two long lines in STATE.md, so I reworded those and the README and docs prose to say "the old GCP project". Now only the OAuth client's line in `deploy/bootstrap/services/oauth.yaml` names jody1-328023 (HISTORY.md and ROADMAP.md aren't checked).
+- **Docs:** the hand-run gcloud setup in `docs/deploy-pipeline.md` is replaced by a pointer to cloud's Terraform, where the key's and account's bindings now live. A grant made by hand would just be undone by cloud's next apply. README.md and STATE.md are updated to match.
+- **PROPOSALS.md:** the #48 entry moved to Promoted. "One signing path" now has its answer: jobs sign as the service account, because the key's signer list doesn't include the job's own identity. So every job gets one 403 before it falls back. I also added a note that the block always signs with key version 1, so a future re-import of the key would be ignored.
+
+**Checks:**
+- **Gates:** the land ran `github_reader_test.sh` and `target_test.sh` as the full set (no gates.yaml) and they passed. The last lines were `OK` and `target tests passed`. The gate command installs yq v4.54.1 itself.
+- **IAM Credentials API:** it is enabled in tacplus-ci (cloud's `modules/projects/ci/main.tf:23`), which the service-account path needs.
+- **Trace check:** no service handler is touched, and `looper-trace check` found 0 handlers and 0 findings.
+
+**What's left, for the hub:**
+1. Copy `ci/gitlab-project.gitlab-ci.yml` at df797f6 into the GitLab project's `.gitlab-ci.yml`. That file is a copy, so until it's replaced `fleet-plan` still signs with the old key. The child jobs read their file from main and have switched already.
+2. Start a pipeline on main and post `fleet-plan`'s log on the issue. Expect a 403 "as the job itself", then `signing as the service account fleet-seatrials-reader@tacplus-ci… instead`, then the fetch. The pipeline runs every stage, not just `fleet-plan`.
+
+The old key pair must stay on the App until that log exists. Reverting df797f6 rolls this back, but only while the App still holds the old key.
+
+I posted all of this on #48 and added `needs-decision` so the looper doesn't keep re-running an issue it can't finish. Close #48 once the log shows the mint, or give the looper a GitLab token scoped to starting pipelines.
+= success: The switch to the tacplus-ci key and account is on main as df797f6, but I haven't shown the mint Jody asked for, so issue #48 stays open. I couldn't start or read a GitLab pipeline: the GitLab project is private and `glab` gets a 401 here.
+
+**What changed:**
+- **Pipeline variables:** both pipeline files now set `TACPLUS_READER_KMS_KEY` to `projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader` and `TACPLUS_READER_SA` to `fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com`. The "stay in jody1-328023" comment is gone.
+- **Tests, written first and failing before the change:** `ci/github_reader_test.sh` pins the new key and account. `ci/target_test.sh` no longer exempts lines mentioning the reader or KMS. That exemption had been hiding any line containing the word "reader", including two long lines in STATE.md, so I reworded those and the README and docs prose to say "the old GCP project". Now only the OAuth client's line in `deploy/bootstrap/services/oauth.yaml` names jody1-328023 (HISTORY.md and ROADMAP.md aren't checked).
+- **Docs:** the hand-run gcloud setup in `docs/deploy-pipeline.md` is replaced by a pointer to cloud's Terraform, where the key's and account's bindings now live. A grant made by hand would just be undone by cloud's next apply. README.md and STATE.md are updated to match.
+- **PROPOSALS.md:** the #48 entry moved to Promoted. "One signing path" now has its answer: jobs sign as the service account, because the key's signer list doesn't include the job's own identity. So every job gets one 403 before it falls back. I also added a note that the block always signs with key version 1, so a future re-import of the key would be ignored.
+
+**Checks:**
+- **Gates:** the land ran `github_reader_test.sh` and `target_test.sh` as the full set (no gates.yaml) and they passed. The last lines were `OK` and `target tests passed`. The gate command installs yq v4.54.1 itself.
+- **IAM Credentials API:** it is enabled in tacplus-ci (cloud's `modules/projects/ci/main.tf:23`), which the service-account path needs.
+- **Trace check:** no service handler is touched, and `looper-trace check` found 0 handlers and 0 findings.
+
+**What's left, for the hub:**
+1. Copy `ci/gitlab-project.gitlab-ci.yml` at df797f6 into the GitLab project's `.gitlab-ci.yml`. That file is a copy, so until it's replaced `fleet-plan` still signs with the old key. The child jobs read their file from main and have switched already.
+2. Start a pipeline on main and post `fleet-plan`'s log on the issue. Expect a 403 "as the job itself", then `signing as the service account fleet-seatrials-reader@tacplus-ci… instead`, then the fetch. The pipeline runs every stage, not just `fleet-plan`.
+
+The old key pair must stay on the App until that log exists. Reverting df797f6 rolls this back, but only while the App still holds the old key.
+
+I posted all of this on #48 and added `needs-decision` so the looper doesn't keep re-running an issue it can't finish. Close #48 once the log shows the mint, or give the looper a GitLab token scoped to starting pipelines.
