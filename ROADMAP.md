@@ -21,6 +21,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - init-secrets writes the fleet CA and crypto file to Secret Manager through WIF; deploy reads them there (#44). Agent, at Jody's request, 2026-11-08 (tacplus-dev/cloud#28, option D).
 - Google sign-in client out of jody1 into seabeam.net, created and maintained by the pipeline, its secret in Secret Manager; design first (#46). Agent, at Jody's request, 2026-11-09.
 - Drop kmaker from the fleet: retired, the operator no longer renders it (#47). Agent, at Jody's request, 2026-11-10.
+- The tacplus-reader key and account move to tacplus-ci: TACPLUS_READER_KMS_KEY and TACPLUS_READER_SA (#48). Agent, at Jody's request, 2026-11-11 (tacplus-dev/cloud#30).
 
 ## Later
 - Move the fleet to tacplus 2.4 (#1): blocked on the 2.4 floor in blobstore#1, coop#1, doppelganger#1, kmaker#1, letsencrypt#1, opa#1, operator#1, pigeon#1, tenantecho#1.
