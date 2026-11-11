@@ -32,9 +32,10 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
   (2026-11-09, #43): the CI image is `build:2.6.4` by digest (every `image:` of `ci/*.gitlab-ci.yml`,
   `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`
-  checks they are one image). Its `gh` and `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until
-  2026-12-04). When a line image moves them, move the four references to its patch and digest and drop them from
-  GO-2026-5932's reason. Each build image patch is now a commit here: no tag moves under the jobs.
+  checks they are one image), and `build.lock` pins that image (#42; `ci/build_lock_test.sh`). Its `gh` and
+  `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until 2026-12-04). When a line image moves them,
+  move the four references and `build.lock` to its patch and digest and drop them from GO-2026-5932's reason.
+  Each build image patch is now a commit here: no tag moves under the jobs.
 - **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
   builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8
   and xz v0.5.17, because no release of theirs requires them yet. Each override is checked on every build

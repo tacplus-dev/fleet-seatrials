@@ -1,0 +1,7 @@
+# The build image of tacplus-dev/fleet-seatrials, by digest (#42; looper#71): the deploy pipeline's CI image,
+# ghcr.io/tacplus-dev/tacplus/build:2.6.4 (#43, #45), which every job of ci/*.gitlab-ci.yml and the GitHub security
+# workflow run in, and in which the gates (gates.yaml) run without Docker. This repository builds no tacplus project
+# of its own, so it has no tacplus.lock; the build pipeline (looper-build plan) reads this pin the way it reads one.
+# A new digest is a change like any other: it moves with the CI image (ci/build_lock_test.sh) and lands on the
+# full gates.
+build_image: ghcr.io/tacplus-dev/tacplus/build:2.6.4@sha256:3c5d7fe2c00e1c4be9c53e576904ad32e63242dbb4a5489d137a34d95887c324

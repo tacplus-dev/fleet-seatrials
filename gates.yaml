@@ -1,0 +1,7 @@
+# The gate map of tacplus-dev/fleet-seatrials (#42; looper#48, #71): the gates a land runs and the build
+# pipeline runs in build.lock's image, without Docker. One set: every land runs it. Its run is a shell command
+# at the root of the checkout: the tools into bin/ (ci/tools.sh), the script tests and the secrets scan
+# (ci/checks.sh), and the security job (ci/security.sh).
+full:
+  run: ci/tools.sh && export PATH=$PWD/bin:$PATH && ci/checks.sh && ci/security.sh
+  minutes: 60

@@ -58,6 +58,9 @@ The cutover's order and the grants still to come are in
   pipeline owns the public certificate, checks it (`ci/cert-check.sh`) and has `lego` obtain or renew it by
   DNS-01 into Secret Manager, and every job that renders installs that version as the gateway's
   ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-certificate)).
+- `build.lock`, `gates.yaml` — the build pin (#42): the CI image by digest, in which tacplus-dev/build runs
+  `gates.yaml`'s `full` gates without Docker. To move it, change the digest with the CI image's tag
+  (`ci/build_lock_test.sh` checks they agree); it is a change like any other, landed on the full gates.
 - `test-idp/` — the test IdP at idp.test.tacplus.dev:8443: a Keycloak whose realms emulate Google's, Microsoft's
   and Apple's claim shapes, with test users and domains, applied and checked by the pipeline, so sign-in is tested
   with no person: [test-idp/README.md](test-idp/README.md).
