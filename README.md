@@ -27,10 +27,11 @@ the registry `us-central1-docker.pkg.dev/tacplus-dev/seatrials`. The test IdP's 
 `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`. The cluster is tacplus-dev/cloud's, and the namespaces
 and rights the fleet has in it are tacplus-dev/cluster's: nothing here creates or deletes a cluster.
 
-**These stay in jody1-328023 until they move** (tacplus-dev/cloud#15): the `tacplus-reader` app's KMS key
-(`TACPLUS_READER_KMS_KEY`) and the reader's service account (`TACPLUS_READER_SA`), the reader path every job
-fetches this repository through, and the drift path; and the Google OAuth client `seatrials-web`
-(`deploy/bootstrap/services/oauth.yaml`) until its successor in `tacplus-dev`, whose secret is the Secret
+The `tacplus-reader` app's KMS key (`TACPLUS_READER_KMS_KEY`) and the reader's service account
+(`TACPLUS_READER_SA`), the reader path every job fetches this repository through, and the drift path, are
+tacplus-ci's, made by tacplus-dev/cloud's `stacks/ci` (#48, tacplus-dev/cloud#30).
+**Only the Google OAuth client `seatrials-web` stays in the old GCP project**, the one
+`deploy/bootstrap/services/oauth.yaml` names, until its successor in `tacplus-dev`, whose secret is the Secret
 Manager secret `google-signin-seatrials`, is made and committed (#46; [docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-google-sign-in-client)).
 `ci/target_test.sh` checks that nothing else names that project.
 The cutover's order and the grants still to come are in

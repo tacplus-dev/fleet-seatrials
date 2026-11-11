@@ -20,10 +20,10 @@ stages: [plan, deploy]
 
 variables:
   # The tacplus-reader app's key, in Cloud KMS (.github-reader).
-  TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
+  TACPLUS_READER_KMS_KEY: projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader
   # The service account the block signs as when KMS does not accept the job's
   # federated principal (#30; docs/deploy-pipeline.md, GitHub).
-  TACPLUS_READER_SA: fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com
+  TACPLUS_READER_SA: fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com
 
 workflow:
   rules:

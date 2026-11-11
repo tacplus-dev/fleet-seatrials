@@ -54,10 +54,10 @@ block=$(yq '.".github-reader"' "$deploy")
   [ "$(yq '.fleet-plan.id_tokens.GCP_ID_TOKEN.aud' "$project")" = 'https://iam.googleapis.com/$GCP_WIF_PROVIDER' ] &&
   ok "fleet-plan and every child job have GCP_ID_TOKEN" || fail "a job that fetches has no id_tokens GCP_ID_TOKEN"
 [ "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$deploy")" = "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$project")" ] &&
-  [ "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$deploy")" != null ] &&
+  [ "$(yq '.variables.TACPLUS_READER_KMS_KEY' "$deploy")" = projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader ] &&
   ok "both pipelines name the same KMS key" || fail "TACPLUS_READER_KMS_KEY is missing or differs"
 [ "$(yq '.variables.TACPLUS_READER_SA' "$deploy")" = "$(yq '.variables.TACPLUS_READER_SA' "$project")" ] &&
-  [ "$(yq '.variables.TACPLUS_READER_SA' "$deploy")" = fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com ] &&
+  [ "$(yq '.variables.TACPLUS_READER_SA' "$deploy")" = fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com ] &&
   ok "both pipelines name the same service account to fall back to" || fail "TACPLUS_READER_SA is missing or differs"
 
 # --- the block, against stubs -------------------------------------------------

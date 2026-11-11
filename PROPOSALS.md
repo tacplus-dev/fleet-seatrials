@@ -55,16 +55,6 @@ the looper then marks it `promoted` or `declined` here with the date.
   the security job fails on the CI image. A build image patch on go1.27.4, moved to in the four references (as
   above), fixes both. Until then the service images could be built with `GOTOOLCHAIN` pinned, as `ci/tools.sh`
   now does. Why: the scan does not cover the service images (below), so nothing would fail on them.
-- **The reader's key and account move to tacplus-ci** (2026-11-11, #48; tacplus-dev/cloud#30, Jody 2026-11-08;
-  approved in the hub's triage, 2026-11-11; unblocked by tacplus-dev/cloud#38, closed): `TACPLUS_READER_KMS_KEY`
-  becomes `projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader` and
-  `TACPLUS_READER_SA` becomes `fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com`, in both pipeline files.
-  `ci/github_reader_test.sh` pins both, `ci/target_test.sh` drops its reader/KMS exemption, so only the OAuth client
-  may still name the old project, and the README's and docs/deploy-pipeline.md's hand-run reader setup there gives
-  way to cloud's Terraform. The new key's signer binding is authoritative and does not name this project's own
-  principal, so every job is refused once as itself and signs as the account. "One signing path" (below) can drop
-  the direct call afterwards. Why: until seatrials signs with the new key, the old key cannot be revoked on the App
-  and the old project cannot be drained. Proof: a pipeline on main whose `fleet-plan` signs as the new account.
 - **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
   deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them
@@ -236,8 +226,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   keep that one: drop the other path from the block, and drop its binding (the key's principalSet binding, or the
   service account and its two bindings). Then every job makes one KMS call and has one binding fewer.
   If it is the service account, tacplus-dev/build and tacplus-dev/looper probably need the same change.
+  Since #48 the key is tacplus-ci's, and its signer binding (tacplus-dev/cloud, authoritative) names the account
+  and not this project's own principal: the answer is the service account. Every job is refused once as itself
+  (a guaranteed 403 and one STS/KMS round trip); drop `kms_sign direct` from both copies of the block, its stub
+  tests and the docs' description of both paths, after a pipeline's `fleet-plan` has signed as the account.
+  Also: the block always signs with `cryptoKeyVersions/1`, so a re-import of the key (a rotation, version 2)
+  would be ignored; it could take the key's primary or newest enabled version instead.
 
 ## Promoted / declined
+- 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
 - **`ci_gcp` fails silently too** (2026-11-02, #31): every job calls `ci/lib.sh`'s helpers in an `&&` list, where
   bash turns errexit off inside the functions, so a failed step inside one is ignored unless the function returns

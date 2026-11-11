@@ -72,13 +72,11 @@ variables:
   # The fleet's images: images/build.sh pushes them there, and the operator
   # renders them from there (SCHEMATIC_LOCAL_IMAGES).
   REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
-  # The reader and its KMS key stay in jody1-328023 until they move
-  # (tacplus-dev/cloud#15; README).
   # The tacplus-reader app's key, in Cloud KMS (.github-reader).
-  TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
+  TACPLUS_READER_KMS_KEY: projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader
   # The service account the block signs as when KMS does not accept the job's
   # federated principal (#30; docs/deploy-pipeline.md, GitHub).
-  TACPLUS_READER_SA: fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com
+  TACPLUS_READER_SA: fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com
   # The fleet's public certificate (#35, ci/cert.sh): its secret and the ACME
   # account's, in the project the cloud pipeline made them in (tacplus-dev/cloud#6),
   # the names it asks Let's Encrypt for, and the Cloud DNS zone delegated for

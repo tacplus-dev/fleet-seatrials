@@ -324,10 +324,11 @@ code is the `.github-reader` block, the same in both pipeline files:
 
 1. The job's GitLab ID token (`GCP_ID_TOKEN`) is exchanged through Workload Identity Federation, in the pool
    below, as the job itself (no service account).
-2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us`, in jody1-328023 until
-   it moves, tacplus-dev/cloud#15), which never leaves KMS. The job asks as itself first. If KMS refuses that principal (HTTP 401 or 403), the job asks again as
-   the service account `fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com` (`TACPLUS_READER_SA`),
-   which it may impersonate (#30). Each refusal is logged with KMS's HTTP status and error, for example
+2. Cloud KMS signs the app's JWT with the key `tacplus-reader` (key ring `looper`, `us-central1`, in tacplus-ci,
+   `TACPLUS_READER_KMS_KEY`; #48, tacplus-dev/cloud#30), which never leaves KMS. The job asks as itself first. If KMS refuses that principal (HTTP 401 or 403), the job asks again as
+   the service account `fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com` (`TACPLUS_READER_SA`),
+   which it may impersonate (#30). The key's signers do not include the job's own principal, so today every job
+   is refused once as itself and signs as the service account. Each refusal is logged with KMS's HTTP status and error, for example
    `Cloud KMS refused to sign with … as the job itself: HTTP 403 PERMISSION_DENIED: Permission
    'cloudkms.cryptoKeyVersions.useToSign' denied …`. A token, the JWT and the request are never logged. Any
    other refusal (a missing or disabled key version, say) is not retried: the service account would get it too.
@@ -340,48 +341,16 @@ Everything else the jobs fetch from GitHub (tacplus, operator, launcher and ever
 that no pipeline file references a static GitHub token, and runs the block against a stub WIF, KMS and
 GitHub.
 
-**What the hub sets up** (once; the key and the app already exist for tacplus-dev/build):
+**What is set up**, and where:
 
+- The key, the service account and both their bindings are tacplus-dev/cloud's Terraform (its `stacks/ci`,
+  `modules/projects/ci/github-apps.tf`; tacplus-dev/cloud#30), not a hand-run step. The key's
+  `roles/cloudkms.signer` binding is authoritative and names `fleet-seatrials-reader@tacplus-ci`; the account's
+  `roles/iam.workloadIdentityUser` admits this project's protected main through tacplus-dev's pool `gitlab-com`
+  (`GCP_WIF_PROVIDER`). A grant made by hand there is drift, which cloud's next apply removes: change them in
+  tacplus-dev/cloud. The key is import-only; Jody imported the app's private key as its version 1
+  (tacplus-dev/cloud#38), the version the block signs with.
 - The `tacplus-reader` app installed on tacplus-dev/fleet-seatrials, if its installation selects repositories.
-- The key's binding for this project's protected main. The job federates through `GCP_WIF_PROVIDER`, tacplus-dev's
-  pool `gitlab-com`, whose provider admits only tacplus-dev/fleet-seatrials on protected `main`. The KMS key is
-  still in jody1-328023 (KMS keys stay until they move), so its binding names the principal of that other
-  project's pool (**Jody**: the key's IAM is his).
-  It is a step of the cutover ([below](#the-cutover-to-dev)): with only the old pool's binding, every job fails
-  to fetch this repository once `GCP_WIF_PROVIDER` is the new provider:
-
-  ```sh
-  kms_project=jody1-328023   # the KMS key's project, until it moves
-  principal=principalSet://iam.googleapis.com/projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/fleet-seatrials
-  gcloud kms keys add-iam-policy-binding tacplus-reader --keyring=looper --location=us --project=$kms_project \
-    --role=roles/cloudkms.signer --member="$principal"
-  ```
-
-- If the dry run's log shows the direct principal refused (the first dry run, pipeline 3015778552, failed
-  there; #30): the service account the job falls back to. It has no role but signing with this one key, and
-  only this project's protected main may impersonate it. **The hub** creates it and lets the pool's
-  principalSet impersonate it (an IAM change, with Jody's OK, as for `seatrials-deploy` below). It is not
-  `seatrials-deploy`, which also holds Cloud Build and the cluster:
-
-  ```sh
-  reader_project=jody1-328023   # the reader's project, until it moves
-  sa=fleet-seatrials-reader@$reader_project.iam.gserviceaccount.com
-  principal=principalSet://iam.googleapis.com/projects/1038314073791/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/fleet-seatrials
-  gcloud services enable iamcredentials.googleapis.com --project=$reader_project   # if it is not already
-  gcloud iam service-accounts create fleet-seatrials-reader --project=$reader_project \
-    --display-name="fleet-seatrials: signs as the tacplus-reader app"   # if it does not exist yet
-  gcloud iam service-accounts add-iam-policy-binding $sa --project=$reader_project --role=roles/iam.workloadIdentityUser \
-    --member="$principal"
-  ```
-
-  **Jody** binds it to the key (the key's IAM is his):
-
-  ```sh
-  gcloud kms keys add-iam-policy-binding tacplus-reader --keyring=looper --location=us --project=jody1-328023 \
-    --role=roles/cloudkms.signer --member=serviceAccount:fleet-seatrials-reader@jody1-328023.iam.gserviceaccount.com
-  ```
-
-  Once the job signs through one path, the other path's binding can be removed (PROPOSALS.md).
 - `TACPLUS_READER_APP_ID` and `TACPLUS_READER_INSTALLATION_ID` in the project (the table above): the same
   values tacplus-dev/build holds.
 
@@ -398,7 +367,7 @@ which admits only this project's protected `main`. No key file exists. Nothing h
 account, its provider and its roles are tacplus-dev/cloud's (the `dev` stack's deployment `seatrials`), and
 its rights in the cluster are tacplus-dev/cluster's (`deployments.yaml`). The pipeline file names the target
 (`GCP_PROJECT`, `CLUSTER`, `ZONE`, `GCP_DEPLOY_SA`, `REGISTRY`); `ci/target_test.sh` checks it, the scripts'
-defaults, and that nothing else names jody1-328023 but the reader and its KMS key.
+defaults, and that nothing else names the old GCP project but the Google OAuth client (#46).
 
 `GCP_DEPLOY_SA` is the pipeline file's. If the project sets it as a variable too, scope it to `seatrials*`: an
 unscoped project variable overrides every job's own, the test IdP's jobs' `test-idp-deploy` included.
@@ -443,9 +412,8 @@ In order (#39):
 
 1. **The hub** sets the project's protected `GCP_WIF_PROVIDER` to the provider above (and `GCP_DEPLOY_SA`, if
    the project carries it, to `seatrials-deploy@tacplus-dev.iam.gserviceaccount.com`, scoped to `seatrials*`).
-   **Jody** binds the new pool's principal on the `tacplus-reader` key, and the hub on `fleet-seatrials-reader`
-   if the jobs sign as it ([above](#github-the-tacplus-reader-app-no-stored-token)), the same day: from then
-   on, the jobs federate through tacplus-dev's pool, and the reader is asked as that principal.
+   From then on, the jobs federate through tacplus-dev's pool, and the reader is asked as that principal; the
+   reader's account in tacplus-ci admits it ([above](#github-the-tacplus-reader-app-no-stored-token), #48).
 2. This repository's retarget lands (#39).
 3. **The hub** re-pins the project's `.gitlab-ci.yml`.
 
@@ -467,7 +435,7 @@ Deploy jobs never share a VM with agent jobs. Every job here, `fleet-plan` inclu
 ## One-time setup (the hub, #18)
 
 1. Make the GCP side above (Jody's OK). Set `GCP_WIF_PROVIDER` in the project. Then the GitHub side: the
-   `tacplus-reader` key's binding and the app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
+   app's installation ([above](#github-the-tacplus-reader-app-no-stored-token)).
 2. Register the deploy runner and turn off group runners on the project.
 3. Create the protected environments `seatrials` and `init-secrets`, both deployable by Maintainers
    (`seatrials-letsencrypt` is retired with letsencrypt, #35: delete it). `init-secrets` needs no variable: its
