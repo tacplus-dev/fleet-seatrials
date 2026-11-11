@@ -15,6 +15,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   covered too. (tacplus-dev/cloud#21 since chose a TCP proxy, TLS passed through, and gave the test IdP port 8443 of
   the address: #27 follows it, 2026-11-09.) Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
   stays pending instead of taking an ephemeral public IP.
+- **Room for gateway's Rust build on Cloud Build** (2026-11-10, #23): on build:2.6.4, one rustc for gateway's
+  generated crate `gateway-model-types` needs more than 4 GB (the looper's container limit killed it, and with one
+  job and one codegen unit it thrashed there). The service builds ask for `E2_HIGHCPU_8`, 8 GB, with cargo running
+  up to 8 jobs; whether that is enough is unknown until the first pipeline's `images` job builds gateway. If it
+  runs out of memory: give the Rust builds `E2_HIGHCPU_32` (32 GB; `--machine-type` for Rust services only in `images/build.sh`,
+  rather than for all 13, which costs more) or a `CARGO_BUILD_JOBS` low enough to fit.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
