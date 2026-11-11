@@ -20,7 +20,6 @@ topology:
     kernel_nodes: 1
     eventbus_nodes: 1
     gateway_nodes: 1
-    kmaker_nodes: 1
     oauth_nodes: 1
     opa_nodes: 1
     stratum_nodes: 3 # the durability floor: a node restoring from peers needs two durable copies besides itself

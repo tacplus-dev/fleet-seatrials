@@ -32,9 +32,6 @@ services:
   # people/tenant code and the gateway reference its contract directly.
   - name: oauth
     repo: https://github.com/tacplus-dev/oauth.git
-  # kmaker: the operator always renders the key maker (kernel's signing CA path).
-  - name: kmaker
-    repo: https://github.com/tacplus-dev/kmaker.git
   - name: llmproxy
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger

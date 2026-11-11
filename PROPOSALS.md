@@ -63,6 +63,7 @@ the looper then marks it `promoted` or `declined` here with the date.
     letsencrypt from `fleet.yaml` and `fleet.lock` (relock) and ask for its registry entry's removal. The pinned
     gateway (32cd7a6) still imports `LetsEncryptState`, so the closure keeps letsencrypt's contract until then.
     Both new pins declare the tacplus 2.5 floor, and this fleet is on 2.2, so this waits on #1.
+    The same relock drops kmaker (#47) from `fleet.lock` and `build/proto`: `fleet.yaml` no longer names it.
   - **Reference the version in the uni-config** once #28 (operator#17) lands, in place of `edge_tls[0]` in
     memory: the gateway's part of the uni-config names `tls-seatrials` and the version.
   - **The gateway's `root_ca`**: in `CERT_CHAIN` mode the operator also hands the gateway the fleet's private
