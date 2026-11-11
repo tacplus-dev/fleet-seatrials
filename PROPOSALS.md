@@ -55,6 +55,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   the security job fails on the CI image. A build image patch on go1.27.4, moved to in the four references (as
   above), fixes both. Until then the service images could be built with `GOTOOLCHAIN` pinned, as `ci/tools.sh`
   now does. Why: the scan does not cover the service images (below), so nothing would fail on them.
+- **The reader's key and account move to tacplus-ci** (2026-11-11, #48; tacplus-dev/cloud#30, Jody 2026-11-08;
+  approved in the hub's triage, 2026-11-11; unblocked by tacplus-dev/cloud#38, closed): `TACPLUS_READER_KMS_KEY`
+  becomes `projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader` and
+  `TACPLUS_READER_SA` becomes `fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com`, in both pipeline files.
+  `ci/github_reader_test.sh` pins both, `ci/target_test.sh` drops its reader/KMS exemption, so only the OAuth client
+  may still name the old project, and the README's and docs/deploy-pipeline.md's hand-run reader setup there gives
+  way to cloud's Terraform. The new key's signer binding is authoritative and does not name this project's own
+  principal, so every job is refused once as itself and signs as the account. "One signing path" (below) can drop
+  the direct call afterwards. Why: until seatrials signs with the new key, the old key cannot be revoked on the App
+  and the old project cannot be drained. Proof: a pipeline on main whose `fleet-plan` signs as the new account.
 - **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
   deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them
