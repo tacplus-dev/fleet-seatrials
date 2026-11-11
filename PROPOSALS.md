@@ -111,18 +111,20 @@ the looper then marks it `promoted` or `declined` here with the date.
   trusts) in place of `client_secret`. It's an oauth change (tacplus-dev/oauth), with a design for the
   assertion's issuer and subject. The issuer must be publicly discoverable, which seatrials.tacplus.dev is.
   Until then, the secret is rotated by hand (docs/deploy-pipeline.md).
-- **A narrower writer for generated secrets** (2026-11-03, #17): `init-secrets` writes
-  variables with a Maintainer token (`FLEET_INIT_TOKEN`), which can read every variable of the project
-  (`test-idp` no longer does: its seeds are in Secret Manager since 2026-11-09, #27, as ROADMAP #44 has the
-  fleet's). One bot user per deployment, with its token in the `init-secrets` scope only, keeps it out of every
-  other job. A writer that can't read would be better: a small service that only creates a variable when it's
-  absent, or GitLab's own feature if it ever has one.
-- **A crypto.yaml that fits one variable** (2026-11-06, #17): crypto.yaml is some 23,000 bytes for this
-  topology, so `init-secrets` stores it gzipped, base64-encoded and split into `FLEET_CRYPTO_YAML`,
-  `FLEET_CRYPTO_YAML_2`, ... of GitLab's 10,000 characters each, which `ci_crypto` joins. The lasting fix is
-  the operator's: keep only the root CA as the stored secret and derive the cluster PKI from it in a stable
-  way, so one variable holds it. That's an operator change, best settled by the uni-config design
-  (tacplus-dev/operator#17, #28).
+- **A narrower writer for generated secrets** (2026-11-03, #17): `init-secrets` wrote variables with a
+  Maintainer token (`FLEET_INIT_TOKEN`), which could read every variable of the project; a writer that can't
+  read was the ask. Done (2026-11-10, #44): it adds versions to Secret Manager as `seatrials-init-secrets`
+  through WIF, which may add and list versions of its two secrets and read none (tacplus-dev/cloud#28).
+- **The fleet's key material in one secret** (2026-11-06, #17; 2026-11-10, #44): the CA and the cluster PKI are
+  `fleet-crypto-seatrials` in Secret Manager, about 23,000 bytes for this topology, which fits (Secret Manager
+  takes 64 KiB), so GitLab's 10,000-character limit and the split into parts are gone with #44. The lasting
+  improvement is still the operator's: keep only the root CA as the stored secret and derive the cluster PKI
+  from it in a stable way, so a topology change needs no new secret. That's an operator change, best settled
+  by the uni-config design (tacplus-dev/operator#17, #28).
+- **Rotating the fleet's CA** (2026-11-10, #44): `init-secrets` generates the pair once and skips it after. A
+  rotation (a new version of both, rendered and applied together) has no job yet; today the hub disables both
+  secrets' versions and runs `init-secrets`, and every client trusting the old `ca.pem` breaks. A designed
+  rotation, with the old and new CA trusted side by side for a while, needs the operator's support.
 - **The applied render's digest is the uni-config record's** (2026-11-03, #34, #28): `apply` now runs by
   itself and applies only the render whose digest `diff` recorded. Until #28, that digest is a SHA-256 of
   `schematic-operator apply --dry-run`, recomputed in `apply` before the operator renders again for the real

@@ -48,7 +48,8 @@ The cutover's order and the grants still to come are in
   in is `ci/tacplus-build:fp-<fingerprint>` over its pinned commits, Dockerfile and Cloud Build config; every
   service build first builds it when that tag is missing.
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
-  (CA and cluster PKI, once), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
+  (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI generated once
+  into Secret Manager), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
   variables and Secret Manager), `google-client.sh` (Google's client, checked with Google), `diff.sh` (what an apply would change, by name), `apply.sh`
   (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
@@ -75,12 +76,26 @@ diff, then apply, then the post-deploy checks.
 **Apply is automatic on main.** seatrials isn't production, so `apply` starts by itself once `diff` succeeds,
 and it applies the render `diff` showed, by its digest (Jody, 2026-11-02; tacplus-dev/roadmap
 `decisions/deterministic-deployments-2026-11-02.md`, addendum; #34). A production fleet keeps a manual apply
-that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Two
-jobs stay manual, because neither approves the fleet:
+that only Jody plays ([`PRODUCTION.md`](https://github.com/tacplus-dev/roadmap/blob/main/PRODUCTION.md)). Three
+jobs stay manual, because none approves the fleet:
 
 - `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables or Secret
   Manager. `apply` installs them anyway.
 - `test-idp`: the test IdP's one-time setup, which generates and stores its seeds.
+- `init-secrets`: a deployment's first run, which generates the fleet's CA and crypto file into Secret Manager.
+
+**Where each secret lives** ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#secrets)):
+
+| Secret | Where | Written by | Read by |
+| --- | --- | --- | --- |
+| The fleet's CA and cluster PKI (`crypto.yaml`) | Secret Manager `fleet-crypto-seatrials` (tacplus-dev) | `init-secrets`, as `seatrials-init-secrets` through WIF | `generate`, `diff`, `apply`, `test`, as `seatrials-deploy` |
+| The root CA's certificate (`ca.pem`) | Secret Manager `fleet-ca-seatrials` (tacplus-dev) | the same | the same |
+| The public certificate and the ACME account | Secret Manager `tls-seatrials`, `acme-account-seatrials` | `cert` | every job that renders |
+| The test IdP's seeds | Secret Manager `test-idp-seeds` | `test-idp` | the test IdP's jobs, seatrials' (optional) |
+| Google's client secret | Secret Manager `google-signin-seatrials` | Jody, in the Console | `apply`, `signin-secrets`, as `seatrials-deploy` |
+| Microsoft's and Apple's sign-in secrets | the GitLab project's protected variables | Jody, in the GitLab UI | `apply`, `signin-secrets` |
+
+No GitLab variable holds the CA or the crypto file (#44), and no GitLab or GitHub token is stored.
 
 `ci/pipeline_test.sh` checks this on the rendered pipeline.
 
@@ -93,7 +108,7 @@ never restarted no longer applies: there is nothing left to restart. (letsencryp
 as a contract the pinned gateway imports, until the gateway pin moves past its retirement: PROPOSALS.md.) The first time, on a new cluster:
 
 ```
-deploy/init.sh && images/build.sh tacplus   # then crypto.yaml and ca.pem into the GitLab project
+images/build.sh tacplus   # then the manual init-secrets job: the CA and crypto file into Secret Manager
 # the pipeline: images, generate, diff, apply (by itself), test
 cd client && tacplus build && go build -o seatrials ./cmd/seatrials   # generate, then build; public TLS: no SEATRIALS_CA needed
 ./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again

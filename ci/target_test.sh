@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Tests where the pipeline deploys (#39): the project tacplus-dev, the cluster
-# dev (us-central1-a), the deploy accounts and the image registry of
+# dev (us-central1-a), the deploy accounts (and init-secrets'), and the image registry of
 # tacplus-dev/cloud's dev stack in seabeam.net, in the pipeline file and in the
 # defaults of every script it runs; and that nothing in the repository still
 # names jody1-328023 but the reader and its KMS key (and the Google OAuth
@@ -21,6 +21,7 @@ cluster=dev
 zone=us-central1-a
 deploy_sa=seatrials-deploy@tacplus-dev.iam.gserviceaccount.com
 test_idp_sa=test-idp-deploy@tacplus-dev.iam.gserviceaccount.com
+init_secrets_sa=seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com
 registry=us-central1-docker.pkg.dev/tacplus-dev/seatrials
 build_bucket=gs://tacplus-dev-seatrials-build
 
@@ -46,9 +47,10 @@ want "the pipeline's GCP_DEPLOY_SA" "$(var GCP_DEPLOY_SA)" "$deploy_sa"
 want "the pipeline's REGISTRY" "$(var REGISTRY)" "$registry"
 
 # Every job reaches the dev cluster in tacplus-dev; the seatrials jobs as
-# seatrials-deploy, the test IdP's as its own account.
+# seatrials-deploy, the test IdP's as its own account, init-secrets as the
+# account that may only add the fleet's key material (#44; tacplus-dev/cloud#28).
 for j in $(jq -r 'keys[]' <<<"$jobs"); do
-  case $j in test-idp|test-idp-signin) sa=$test_idp_sa ;; *) sa=$deploy_sa ;; esac
+  case $j in test-idp|test-idp-signin) sa=$test_idp_sa ;; init-secrets) sa=$init_secrets_sa ;; *) sa=$deploy_sa ;; esac
   got="$(job_var "$j" GCP_PROJECT) $(job_var "$j" CLUSTER) $(job_var "$j" ZONE) $(job_var "$j" GCP_DEPLOY_SA)"
   [ "$got" = "$project $cluster $zone $sa" ] || fail "$j targets [$got], want [$project $cluster $zone $sa]"
 done

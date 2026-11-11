@@ -18,7 +18,10 @@
 # this checkout. ci_cert installs the certificate version the cert job passed
 # on (CERT_SECRET, CERT_VERSION), that version and no other, as crypto.yaml's
 # edge_tls[0], and fails, saying so, without them or when the secret refuses.
-# ci_gcp hands its credential to Application Default Credentials (lego). Needs
+# ci_gcp hands its credential to Application Default Credentials (lego).
+# ci_crypto places the fleet's key material from Secret Manager, and it and the
+# init-secrets job refuse a job that still holds a GitLab variable of the old
+# way (#44). Needs
 # bash, yq and openssl.
 #
 #   ci/lib_test.sh
@@ -49,6 +52,9 @@ case "\$1 \$2" in
     *" --secret=google-signin-seatrials "*)
       [ -z "\${GOOGLE_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/google-signin-seatrials] not found or has no versions." >&2; exit 1; }
       payload=$work/google-signin ;;
+    *" --secret=fleet-crypto-seatrials "*|*" --secret=fleet-ca-seatrials "*)
+      [ -z "\${FLEET_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/fleet-crypto-seatrials] not found or has no versions." >&2; exit 1; }
+      case " \$* " in *fleet-crypto-*) payload=$work/fleet-crypto ;; *) payload=$work/fleet-ca ;; esac ;;
     esac
     for a in "\$@"; do case "\$a" in --out-file=*) cp "\$payload" "\${a#*=}" ;; esac; done ;;
   "container clusters")
@@ -279,36 +285,70 @@ for j in apply signin-secrets; do
     ok "$j reads Google's secret from Secret Manager" || fail "$j does not read Google's secret (ci_google_signin)"
 done
 
-# ci_crypto places FLEET_CRYPTO_YAML as it is, or, when init-secrets stored it
-# gzipped and base64-encoded (to fit GitLab's 10,000-character limit, #17),
-# decoded, joined first with its parts FLEET_CRYPTO_YAML_2 and on; a value that
-# decodes to nothing is refused.
-printf 'pki:\n  root_ca: x\n' > "$work/crypto-plain"
-gzip -9nc "$work/crypto-plain" | base64 -w0 > "$work/crypto-gz"
-echo 'H4sIbroken' > "$work/crypto-bad"
-echo CA > "$work/ca"
-head -c 7 "$work/crypto-gz" > "$work/crypto-gz-1"
-tail -c +8 "$work/crypto-gz" | head -c 9 > "$work/crypto-gz-2"
-tail -c +17 "$work/crypto-gz" > "$work/crypto-gz-3"
-crypto() { # FILE [VAR=VALUE...]: ci_crypto with FLEET_CRYPTO_YAML=FILE, the placed crypto.yaml in $work/placed
-  local f=$1; shift
-  rm -f "$work/placed"
-  ( cd "$src" && env "$@" FLEET_CRYPTO_YAML=$f FLEET_CA_PEM=$work/ca bash -c \
-      'source ci/lib.sh && ci_crypto && cp deploy/bootstrap/crypto.yaml "$0"' "$work/placed" ) > "$work/out" 2>&1
-}
-mkdir -p "$src/deploy/bootstrap"
-crypto "$work/crypto-plain" && cmp -s "$work/placed" "$work/crypto-plain" &&
-  ok "ci_crypto places a plain crypto.yaml as it is" || fail "ci_crypto, plain: $(cat "$work/out")"
-crypto "$work/crypto-gz" && cmp -s "$work/placed" "$work/crypto-plain" &&
-  ok "ci_crypto decodes a gzipped, base64-encoded crypto.yaml" || fail "ci_crypto, encoded: $(cat "$work/out")"
-crypto "$work/crypto-gz-1" FLEET_CRYPTO_YAML_2="$work/crypto-gz-2" FLEET_CRYPTO_YAML_3="$work/crypto-gz-3" &&
-  cmp -s "$work/placed" "$work/crypto-plain" &&
-  ok "ci_crypto joins FLEET_CRYPTO_YAML_2, _3 and decodes them" || fail "ci_crypto, parts: $(cat "$work/out")"
-if crypto "$work/crypto-gz-1" FLEET_CRYPTO_YAML_2=/nonexistent; then fail "ci_crypto accepts a part that is not a file"
-else grep -q "FLEET_CRYPTO_YAML_2 must be a file variable" "$work/out" && ok "ci_crypto refuses a part that is not a file" ||
-  fail "ci_crypto, part not a file: $(cat "$work/out")"; fi
-if crypto "$work/crypto-bad"; then fail "ci_crypto accepts an encoded value that does not decode"
-else grep -q "does not decode" "$work/out" && ok "ci_crypto refuses an encoded value that does not decode" ||
-  fail "ci_crypto, bad: $(cat "$work/out")"; fi
+# --- ci_crypto, and the init-secrets job (#44) ----------------------------------
+
+# ci_crypto places the latest versions of the Secret Manager secrets
+# fleet-crypto-seatrials and fleet-ca-seatrials (init-secrets adds them) as
+# deploy/bootstrap/crypto.yaml and ca.pem, printing neither; with no version
+# yet it fails, naming the init-secrets job; refused, it fails with Secret
+# Manager's error. A job that still holds one of the GitLab variables that
+# held them (or the bot's token that wrote them) fails, naming it: no GitLab
+# variable holds the CA or the crypto file.
+printf 'pki:\n  root_ca: THE-ROOT-KEY\n' > "$work/fleet-crypto"
+echo THE-CA-CERT > "$work/fleet-ca"
+crypto_job='cd src && source ci/lib.sh && ci_gcp && ci_crypto && cp deploy/bootstrap/crypto.yaml ../placed-crypto &&
+  cp deploy/bootstrap/ca.pem ../placed-ca && echo "next ran"'
+rm -f "$work/job/placed-"*
+if job GCP_DEPLOY_SA=seatrials-deploy@tacplus-dev.iam.gserviceaccount.com -- "$crypto_job"; then
+  grep -q 'next ran' "$work/out" && cmp -s "$work/job/placed-crypto" "$work/fleet-crypto" && cmp -s "$work/job/placed-ca" "$work/fleet-ca" &&
+    ok "ci_crypto places the fleet's crypto.yaml and ca.pem from Secret Manager" || fail "ci_crypto: $(cat "$work/out")"
+  grep -q '^gcloud secrets versions access latest --secret=fleet-crypto-seatrials --project=tacplus-dev ' "$work/log/gcloud" &&
+    grep -q '^gcloud secrets versions access latest --secret=fleet-ca-seatrials --project=tacplus-dev ' "$work/log/gcloud" &&
+    ok "ci_crypto reads the latest version of each secret in tacplus-dev" || fail "ci_crypto read: $(cat "$work/log/gcloud")"
+  ! grep -q 'THE-ROOT-KEY\|THE-CA-CERT' "$work/out" && ok "ci_crypto prints nothing secret" || fail "ci_crypto printed the key material"
+else
+  fail "ci_crypto: $(cat "$work/out")"
+fi
+if job FLEET_NONE=1 -- "$crypto_job"; then
+  fail "ci_crypto succeeded with no version: $(cat "$work/out")"
+else
+  ! grep -q 'next ran' "$work/out" && grep -q 'fleet-crypto-seatrials has no version yet: run the manual init-secrets job' "$work/out" &&
+    ok "ci_crypto fails, naming the init-secrets job, when the secrets have no version yet" || fail "ci_crypto, no version: $(cat "$work/out")"
+fi
+if job SM_REFUSE=1 -- "$crypto_job"; then
+  fail "ci_crypto succeeded when Secret Manager refused: $(cat "$work/out")"
+else
+  ! grep -q 'next ran' "$work/out" && grep -q 'cannot read the secret fleet-crypto-seatrials' "$work/out" &&
+    grep -q PERMISSION_DENIED "$work/out" &&
+    ok "ci_crypto fails with Secret Manager's error" || fail "ci_crypto, refused: $(cat "$work/out")"
+fi
+for v in FLEET_CRYPTO_YAML FLEET_CRYPTO_YAML_2 FLEET_CA_PEM FLEET_INIT_TOKEN; do
+  if job "$v=/builds/tmp/$v" -- "$crypto_job"; then
+    fail "ci_crypto succeeded with the GitLab variable $v set: $(cat "$work/out")"
+  else
+    ! grep -q 'next ran' "$work/out" && grep -q "the job holds the GitLab variable $v: delete it from the project" "$work/out" &&
+      ok "ci_crypto refuses a job that holds the GitLab variable $v" || fail "ci_crypto, $v: $(cat "$work/out")"
+  fi
+done
+
+# The init-secrets job: GCP through WIF (its account is the job's GCP_DEPLOY_SA,
+# ci/pipeline_test.sh), then deploy/init-secrets.sh; refused while a GitLab
+# variable of the old way is left.
+printf '#!/usr/bin/env bash\necho "init-secrets.sh ran as $(gcloud config get account)"\n' > "$src/deploy/init-secrets.sh"
+chmod +x "$src/deploy/init-secrets.sh"
+script=$(yq '."init-secrets".script | join("\n")' "$here/ci/deploy.gitlab-ci.yml")
+if job -- "$script"; then
+  grep -q '^init-secrets.sh ran as ' "$work/out" && grep -q '^gcloud iam workload-identity-pools create-cred-config' "$work/log/gcloud" &&
+    ok "init-secrets runs deploy/init-secrets.sh through WIF" || fail "init-secrets job: $(cat "$work/out")"
+else
+  fail "init-secrets job: $(cat "$work/out")"
+fi
+if job FLEET_INIT_TOKEN=glpat-x -- "$script"; then
+  fail "init-secrets ran with FLEET_INIT_TOKEN set: $(cat "$work/out")"
+else
+  ! grep -q 'init-secrets.sh ran' "$work/out" && grep -q 'the job holds the GitLab variable FLEET_INIT_TOKEN' "$work/out" &&
+    ! grep -q glpat-x "$work/out" &&
+    ok "init-secrets refuses a job that still holds FLEET_INIT_TOKEN, never printing it" || fail "init-secrets, token: $(cat "$work/out")"
+fi
 
 [ "$failed" = 0 ] && echo "lib tests passed" || { echo "lib tests failed"; exit 1; }

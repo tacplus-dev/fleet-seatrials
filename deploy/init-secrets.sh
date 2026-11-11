@@ -2,80 +2,64 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The deploy pipeline's init-secrets job (#17; Jody, 2026-11-01): on a
-# deployment's first run, generates the fleet's key material and writes it
-# into the GitLab project's own CI/CD variables, so no person ever holds it and
-# a rebuilt cluster needs nothing from anyone:
+# The deploy pipeline's init-secrets job (#17, #44; Jody, 2026-11-08,
+# tacplus-dev/cloud#28 option D): on a deployment's first run, generates the
+# fleet's key material and adds it to Google Secret Manager, so no person ever
+# holds it and a rebuilt cluster needs nothing from anyone:
 #
-#   FLEET_CRYPTO_YAML   file variables: deploy/bootstrap/crypto.yaml, the root CA
-#   [_2 ... _9]         and the cluster PKI (schematic-operator init ca, then
-#                       init cluster for operator.yaml's fqdn, as deploy/init.sh)
-#   FLEET_CA_PEM        file variable: deploy/bootstrap/ca.pem, the root CA's certificate
+#   fleet-crypto-seatrials   deploy/bootstrap/crypto.yaml as it is: the root CA and
+#   (FLEET_CRYPTO_SECRET)    the cluster PKI (schematic-operator init ca, then init
+#                            cluster for operator.yaml's fqdn, as deploy/init.sh)
+#   fleet-ca-seatrials       deploy/bootstrap/ca.pem, the root CA's certificate
+#   (FLEET_CA_SECRET)
 #
-# Each is protected, of the deployment's environment scope (FLEET_SECRETS_SCOPE,
-# default seatrials*). crypto.yaml (some 23,000 bytes for this topology) is
-# gzipped and base64-encoded on one line, which can be masked and hidden, and
-# split into parts of at most GitLab's limit of 10,000 characters on a value
-# (this topology's comes to about 10,000): FLEET_CRYPTO_YAML, then
-# FLEET_CRYPTO_YAML_2 and on, which ci/lib.sh's ci_crypto joins and decodes.
-# More than nine parts is refused, and so is a part left from an earlier run,
-# which ci_crypto would join to this one's; either writes nothing.
-# ca.pem, a certificate, holds no secret; a PEM's lines cannot be masked.
-# Both exist: nothing is generated or written. One only: refused, since a CA and
-# its crypto.yaml are a pair, and the hub restores or deletes the other.
+# Both in GCP_PROJECT (tacplus-dev), made with no version by tacplus-dev/cloud.
+# The job runs as seatrials-init-secrets, through Workload Identity Federation
+# (ci_gcp): it may add a version to these two and list their versions, nothing
+# else, and no token is stored anywhere. The deploy jobs read them as
+# seatrials-deploy (ci_crypto in ci/lib.sh).
 #
-# The writes need FLEET_INIT_TOKEN: the token of the deployment's bot user, a
-# Maintainer of this one project only (gitlab.com Free has no project access
-# tokens; docs/deploy-pipeline.md), a protected variable of the init-secrets
-# environment, which only this job uses. It is only ever in a header file. Nothing
-# here prints a generated value or an answer of the API that holds one.
+# Both have an enabled version: nothing is generated or added. One only:
+# refused, since a CA and its crypto.yaml are a pair, and the hub disables the
+# one that is there (or restores the other). Neither: generated in a scratch
+# directory, and one version added to each, the crypto file first. Nothing here
+# prints a generated value; the account may not read one.
 #
-#   deploy/init-secrets.sh    # needs bin/schematic-operator and yq, CI_API_V4_URL, CI_PROJECT_ID
+#   deploy/init-secrets.sh    # needs bin/schematic-operator, yq and gcloud logged in (ci_gcp)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
-scope=${FLEET_SECRETS_SCOPE:-seatrials*}
-: "${FLEET_INIT_TOKEN:?FLEET_INIT_TOKEN is not set (environment init-secrets): the token of the bot user, docs/deploy-pipeline.md}"
-: "${CI_API_V4_URL:?}" "${CI_PROJECT_ID:?}"
-api=$CI_API_V4_URL/projects/$CI_PROJECT_ID/variables
-scope_uri=$(jq -rn --arg s "$scope" '$s | @uri')
+project=${GCP_PROJECT:-tacplus-dev}
+crypto_secret=${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials}
+ca_secret=${FLEET_CA_SECRET:-fleet-ca-seatrials}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 umask 077
-printf 'PRIVATE-TOKEN: %s\n' "$FLEET_INIT_TOKEN" > "$tmp/header"
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 die() { echo "init-secrets: $*" >&2; exit 1; }
+gcloud_error() { grep -m1 '^ERROR' "$tmp/err" || head -c 300 "$tmp/err"; }
 
-# exists KEY: whether the project has KEY in the scope. The answer holds the
-# value, so only its status is read.
-exists() {
-  local code
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -H @"$tmp/header" \
-    "$api/$1?filter%5Benvironment_scope%5D=$scope_uri") || code=none
-  case $code in
-    200) return 0 ;;
-    404) return 1 ;;
-    *) die "asking the project for $1 (scope $scope): HTTP $code" ;;
-  esac
+# version SECRET: the number of the secret's latest enabled version, or nothing.
+version() {
+  gcloud secrets versions list "$1" --project="$project" --filter=state:enabled --limit=1 \
+      --format='value(name.basename())' 2>"$tmp/err" ||
+    die "listing the versions of $1 (project $project): $(gcloud_error)"
 }
-# store KEY FILE MASKED WHAT [ON-FAILURE]: FILE's content as a protected file
-# variable of the scope, masked and hidden when MASKED is true.
-store() {
-  local code
-  code=$(curl -sS -o "$tmp/answer" -w '%{http_code}' -H @"$tmp/header" \
-    --data-urlencode "key=$1" --data-urlencode "value@$2" --data-urlencode "environment_scope=$scope" \
-    -d variable_type=file -d protected=true -d masked="$3" -d masked_and_hidden="$3" -d raw=true \
-    --data-urlencode "description=$4, generated by the init-secrets job (#17); docs/deploy-pipeline.md" \
-    "$api") || code=none
-  [ "$code" = 201 ] || die "storing $1 (scope $scope): HTTP $code${5:-}"
-  echo "init-secrets: $1 generated and stored (protected file variable, scope $scope)"
+# add SECRET FILE [ON-FAILURE]: FILE as a new version of SECRET.
+add() {
+  local n
+  gcloud secrets versions add "$1" --project="$project" --data-file="$2" >/dev/null 2>"$tmp/err" ||
+    die "adding a version to $1 (project $project): $(gcloud_error)${3:-}"
+  n=$(sed -n 's/^Created version \[\([0-9]*\)\].*/\1/p' "$tmp/err")
+  echo "init-secrets: $1: version ${n:-?} added (project $project)"
+  added=$n
 }
 
-crypto=0 ca=0
-exists FLEET_CRYPTO_YAML && crypto=1
-exists FLEET_CA_PEM && ca=1
-case $crypto$ca in
-  11) echo "init-secrets: FLEET_CRYPTO_YAML and FLEET_CA_PEM exist (scope $scope): nothing to generate"; exit 0 ;;
-  10) die "FLEET_CRYPTO_YAML exists but FLEET_CA_PEM does not (scope $scope): they are a pair; restore FLEET_CA_PEM, or delete FLEET_CRYPTO_YAML to generate both" ;;
-  01) die "FLEET_CA_PEM exists but FLEET_CRYPTO_YAML does not (scope $scope): they are a pair; restore FLEET_CRYPTO_YAML, or delete FLEET_CA_PEM to generate both" ;;
+crypto=$(version "$crypto_secret")
+ca=$(version "$ca_secret")
+case ${crypto:+1}${ca:+2} in
+  12) echo "init-secrets: $crypto_secret (version $crypto) and $ca_secret (version $ca) exist (project $project): nothing to generate"; exit 0 ;;
+  1) die "$crypto_secret has a version but $ca_secret has none (project $project): they are a pair; restore $ca_secret, or disable $crypto_secret's versions to generate both" ;;
+  2) die "$ca_secret has a version but $crypto_secret has none (project $project): they are a pair; restore $crypto_secret, or disable $ca_secret's versions to generate both" ;;
 esac
 
 # A copy of deploy/bootstrap: init rewrites operator.yaml, and the checkout's
@@ -90,22 +74,9 @@ schematic-operator init ca > "$tmp/init.log" 2>&1 &&
   die "schematic-operator init failed: $(grep -m3 -i 'error' "$tmp/init.log" || echo 'no error line')"
 [ -s "$tmp/bootstrap/crypto.yaml" ] && [ -s "$tmp/bootstrap/ca.pem" ] || die "schematic-operator init wrote no crypto.yaml or ca.pem"
 
-gzip -9nc "$tmp/bootstrap/crypto.yaml" | base64 -w0 > "$tmp/crypto.gz.b64"
-mkdir "$tmp/parts"
-split -b 10000 -d -a 3 "$tmp/crypto.gz.b64" "$tmp/parts/"
-parts=$(ls "$tmp/parts" | wc -l)
-[ "$parts" -le 9 ] ||
-  die "FLEET_CRYPTO_YAML is $(wc -c < "$tmp/crypto.gz.b64") characters gzipped and base64-encoded, over nine parts of GitLab's 10,000: nothing stored"
-for i in 2 3 4 5 6 7 8 9; do
-  ! exists "FLEET_CRYPTO_YAML_$i" ||
-    die "FLEET_CRYPTO_YAML_$i exists without FLEET_CRYPTO_YAML (scope $scope): a part of an earlier run; delete it and run this job again"
-done
-# FLEET_CRYPTO_YAML first: once it exists, a run that stops part-way is
-# refused next time (a pair, or a stale part), never stored twice.
-for i in $(seq 1 "$parts"); do
-  key=FLEET_CRYPTO_YAML; [ "$i" = 1 ] || key=FLEET_CRYPTO_YAML_$i
-  store "$key" "$tmp/parts/$(printf %03d $((i - 1)))" true "the fleet's root CA and cluster PKI, gzip and base64, part $i of $parts" \
-    ": the parts stored so far are incomplete; delete FLEET_CRYPTO_YAML and its parts and run this job again"
-done
-store FLEET_CA_PEM "$tmp/bootstrap/ca.pem" false "the fleet's root CA certificate" \
-  ": FLEET_CRYPTO_YAML is stored without it; delete FLEET_CRYPTO_YAML and its parts and run this job again"
+# The crypto file first: once it has a version, a run that stops before the
+# CA's is refused next time (a half pair), never generated twice.
+added=
+add "$crypto_secret" "$tmp/bootstrap/crypto.yaml"
+add "$ca_secret" "$tmp/bootstrap/ca.pem" \
+  "; $crypto_secret has version $added without its CA: disable it (gcloud secrets versions disable $added --secret=$crypto_secret --project=$project) and run this job again"

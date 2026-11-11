@@ -11,7 +11,10 @@
 # render `diff` showed is the one applied. The jobs that stay manual are the
 # ones that are not approval of the fleet: `test-idp`, `signin-secrets` and
 # `init-secrets` (#17: a deployment's generated key material, in its own
-# environment).
+# environment, written to Secret Manager as seatrials-init-secrets through WIF,
+# #44). No GitLab variable holds the CA or the crypto file: every job that
+# renders reads them from Secret Manager (ci_crypto, after ci_gcp), and no
+# script reads FLEET_CRYPTO_YAML, FLEET_CA_PEM or FLEET_INIT_TOKEN.
 # The pipeline owns the certificate (#35): `cert` (ci/cert.sh) runs before
 # `generate` and `diff`, and hands the secret version to every job that
 # renders, which installs that version (ci_cert); `apply-letsencrypt` and its
@@ -76,11 +79,24 @@ for j in test-idp signin-secrets init-secrets; do
 done
 check "no other job is manual" \
   '[to_entries[] | select(.value.when == "manual") | .key] | sort == ["init-secrets", "signin-secrets", "test-idp"]'
-check "init-secrets is the only job of the environment init-secrets, which holds the bot user's token" \
+check "init-secrets is the only job of the environment init-secrets, whose jobs alone become seatrials-init-secrets" \
   '[to_entries[] | select(.value.environment.name == "init-secrets") | .key] == ["init-secrets"]'
 check "init-secrets needs only the tools, so it runs before the first generate" '."init-secrets".needs == ["tools"]'
 check "init-secrets runs deploy/init-secrets.sh, and no apply" \
   '."init-secrets".script | join("\n") | test("deploy/init-secrets.sh") and (test("apply.sh|ci_kube|ci_crypto") | not)'
+check "init-secrets reaches Secret Manager as seatrials-init-secrets, through WIF (#44)" \
+  '(."init-secrets".script | join("\n") | test("ci_gcp && deploy/init-secrets.sh")) and
+   ."init-secrets".variables.GCP_DEPLOY_SA == "seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com"'
+[ "$(yq '.variables.FLEET_CRYPTO_SECRET + " " + .variables.FLEET_CA_SECRET' "$here/ci/deploy.gitlab-ci.yml")" = \
+  "fleet-crypto-seatrials fleet-ca-seatrials" ] &&
+  ok "the fleet's key material is the secrets fleet-crypto-seatrials and fleet-ca-seatrials (tacplus-dev/cloud#28)" ||
+  fail "the pipeline's FLEET_CRYPTO_SECRET and FLEET_CA_SECRET are not fleet-crypto-seatrials and fleet-ca-seatrials"
+# No GitLab variable holds the CA or the crypto file (#44): nothing reads one,
+# save ci_no_gitlab_key_material, which refuses a job that still holds one.
+readers=$(grep -rlE 'FLEET_(CRYPTO_YAML|CA_PEM|INIT_TOKEN)' "$here/ci" "$here/deploy" "$here/images" "$here/test-idp" |
+  grep -vE '/ci/lib\.sh$|_test\.sh$')
+[ -z "$readers" ] && ok "no script reads the GitLab variables that held the key material (#44)" ||
+  fail "the GitLab variables that held the key material are still read: $readers"
 check "apply-letsencrypt is retired (#35)" 'has("apply-letsencrypt") | not'
 grep -q 'SEATRIALS_ALLOW_LETSENCRYPT\|letsencrypt-guard' "$here/ci/deploy.gitlab-ci.yml" "$here/deploy/diff.sh" &&
   fail "the letsencrypt guard is still in the pipeline" || ok "the letsencrypt guard is retired (#35)"
@@ -100,8 +116,8 @@ check "no two pipelines write the certificate at once" '.cert.resource_group != 
 for j in generate diff apply test; do
   check "$j waits for cert and takes its version" \
     "[.$j.needs[] | if type == \"object\" then select(.artifacts != false) | .job else . end] | index(\"cert\") != null"
-  check "$j installs the version cert passed on (ci_cert), after the fleet's key material" \
-    ".$j.script | join(\"\\n\") | test(\"ci_crypto && .*ci_gcp && ci_cert\")"
+  check "$j installs the version cert passed on (ci_cert), after the fleet's key material from Secret Manager (ci_crypto, after ci_gcp)" \
+    ".$j.script | join(\"\\n\") | test(\"ci_gcp && ci_crypto && ci_cert\")"
 done
 check "diff waits for cert (the certificate is in the render it shows)" \
   '[.diff.needs[] | if type == "object" then .job else . end] | index("cert") != null'

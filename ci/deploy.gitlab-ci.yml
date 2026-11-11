@@ -28,7 +28,7 @@
 #
 # Manual, because none of them is approval of the fleet: signin-secrets (a rotated secret),
 # test-idp (the test IdP's one-time setup), init-secrets (a deployment's first run: its key
-# material generated into the project's variables).
+# material generated into Secret Manager).
 #
 # A daily pipeline schedule on main runs all of it (docs/deploy-pipeline.md, the
 # schedule): when cert renews the certificate, the new version is rendered,
@@ -42,9 +42,10 @@
 #                    realm's discovery and claim shapes; one user per realm signs in at
 #                    tacplus.dev and gets a kernel session; the removed user is refused
 #
-# The fleet's key material and the sign-in secrets come from protected project
-# variables (never group variables: those reach the loopers' agents), GCP
-# through GitLab OIDC and Workload Identity Federation (no key file), this
+# The sign-in secrets come from protected project variables (never group
+# variables: those reach the loopers' agents), the fleet's key material from
+# Secret Manager (#44), GCP through GitLab OIDC and Workload Identity
+# Federation (no key file), this
 # repository through the keyless tacplus-reader GitHub App (.github-reader: no
 # stored GitHub token). Nothing
 # secret is written to the repository, an artifact or a job log: no job runs
@@ -87,6 +88,10 @@ variables:
   ACME_ACCOUNT_SECRET: acme-account-seatrials
   CERT_DOMAINS: "tacplus.dev,*.tacplus.dev"
   CERT_DNS_ZONE: acme-challenge-tacplus-dev
+  # The fleet's key material (#44; tacplus-dev/cloud#28): crypto.yaml and ca.pem,
+  # the secrets init-secrets adds a version to and ci_crypto reads, in GCP_PROJECT.
+  FLEET_CRYPTO_SECRET: fleet-crypto-seatrials
+  FLEET_CA_SECRET: fleet-ca-seatrials
   # The commit being deployed: the parent pipeline writes it here (pipeline
   # variables are forbidden in the group).
   FLEET_COMMIT: ""
@@ -265,7 +270,7 @@ generate:
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate
@@ -277,7 +282,7 @@ diff:
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube
       RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
   # RENDER_DIGEST, the digest of the render diff showed, for apply.
   artifacts:
@@ -297,7 +302,7 @@ apply:
   resource_group: seatrials
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh
@@ -320,21 +325,25 @@ signin-secrets:
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds optional && ci_google_signin && ci_kube && deploy/signin-secrets.sh
 
-# A deployment's first run (#17): generates its key material, FLEET_CRYPTO_YAML
-# and FLEET_CA_PEM, and stores it in this project's variables, never printing it
-# (deploy/init-secrets.sh). It skips both when they exist, and refuses when only
-# one does. Manual, in the protected environment init-secrets, the only one
-# that holds FLEET_INIT_TOKEN, the bot user's token. It needs only the tools,
-# so it runs while generate, with nothing to generate from yet, has failed;
-# then run the pipeline again.
+# A deployment's first run (#17, #44): generates its key material and adds a
+# version to each of the Secret Manager secrets FLEET_CRYPTO_SECRET and
+# FLEET_CA_SECRET, never printing it (deploy/init-secrets.sh). It skips both
+# when they have a version, and refuses when only one does. Manual, in the
+# protected environment init-secrets, the only one whose jobs WIF lets become
+# seatrials-init-secrets, which may add versions to these two secrets and
+# nothing else (tacplus-dev/cloud#28): no token is stored. It needs only the
+# tools, so it runs while generate, with nothing to generate from yet, has
+# failed; then run the pipeline again.
 init-secrets:
   stage: generate
   needs: [tools]
   environment: { name: init-secrets, action: prepare }
   when: manual
   allow_failure: true
+  variables:
+    GCP_DEPLOY_SA: seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com
   script:
-    - cd src && source ci/lib.sh && deploy/init-secrets.sh
+    - cd src && source ci/lib.sh && ci_no_gitlab_key_material && ci_gcp && deploy/init-secrets.sh
 
 test:
   stage: test
@@ -342,7 +351,7 @@ test:
   environment: { name: seatrials, action: verify }
   script:
     - |
-      cd src && source ci/lib.sh && ci_crypto && ci_gcp && ci_cert && ci_kube && ci_test_idp_seeds optional
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube && ci_test_idp_seeds optional
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate >/dev/null

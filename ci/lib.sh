@@ -128,34 +128,46 @@ ci_test_idp_set_up() {
   return 1
 }
 
+# ci_no_gitlab_key_material: fails, naming it, when the job holds a GitLab
+# variable that held the fleet's key material, or the bot user's token that
+# wrote them (#17): FLEET_CRYPTO_YAML (and its parts _2 and on), FLEET_CA_PEM,
+# FLEET_INIT_TOKEN. The key material is in Secret Manager since #44, and no
+# GitLab variable holds it: the hub deletes them. Never prints a value.
+ci_no_gitlab_key_material() {
+  local v
+  for v in $(compgen -e); do
+    case $v in FLEET_CRYPTO_YAML|FLEET_CRYPTO_YAML_[0-9]*|FLEET_CA_PEM|FLEET_INIT_TOKEN)
+      echo "the job holds the GitLab variable $v: delete it from the project, nothing reads it; the fleet's key material is in Secret Manager (docs/deploy-pipeline.md)" >&2
+      return 1 ;;
+    esac
+  done
+}
+
 # ci_crypto: the fleet's key material into deploy/bootstrap, where
-# schematic-operator reads it, from the protected file variables
-# FLEET_CRYPTO_YAML and FLEET_CA_PEM (environment scope seatrials). Both paths
-# are in .gitignore and in no job's artifacts. FLEET_CRYPTO_YAML is crypto.yaml
-# as it is, or, as the init-secrets job stores it, gzipped and base64-encoded
-# on one line ("H4sI", gzip's magic), which can be masked, and split into parts
-# of at most GitLab's 10,000-character limit on a value: FLEET_CRYPTO_YAML, then
-# the file variables FLEET_CRYPTO_YAML_2 and on, joined in order up to the first
-# that is not set (#17, deploy/init-secrets.sh).
+# schematic-operator reads it, after ci_gcp: the latest versions of the Secret
+# Manager secrets FLEET_CRYPTO_SECRET (crypto.yaml) and FLEET_CA_SECRET (ca.pem)
+# in GCP_PROJECT, which the init-secrets job adds (#44, deploy/init-secrets.sh).
+# Both paths are in .gitignore and in no job's artifacts. Every job calls it in
+# an && list, so it returns on its own failures: no version yet (run
+# init-secrets), or a refusal, with Secret Manager's error.
 ci_crypto() {
-  : "${FLEET_CRYPTO_YAML:?the file variable FLEET_CRYPTO_YAML is not set (environment seatrials)}"
-  : "${FLEET_CA_PEM:?the file variable FLEET_CA_PEM is not set (environment seatrials)}"
-  [ -f "$FLEET_CRYPTO_YAML" ] && [ -f "$FLEET_CA_PEM" ] ||
-    { echo "FLEET_CRYPTO_YAML and FLEET_CA_PEM must be file variables" >&2; exit 1; }
-  ( umask 077
-    if [ "$(head -c4 "$FLEET_CRYPTO_YAML")" = H4sI ]; then
-      parts=("$FLEET_CRYPTO_YAML") i=2
-      while part=$(printenv "FLEET_CRYPTO_YAML_$i"); do
-        [ -f "$part" ] || { echo "FLEET_CRYPTO_YAML_$i must be a file variable" >&2; exit 1; }
-        parts+=("$part") i=$((i + 1))
-      done
-      cat "${parts[@]}" | base64 -d 2>/dev/null | gunzip > "$fleet/deploy/bootstrap/crypto.yaml" 2>/dev/null &&
-        [ -s "$fleet/deploy/bootstrap/crypto.yaml" ] ||
-        { echo "FLEET_CRYPTO_YAML is encoded but does not decode (gzip, base64)" >&2; exit 1; }
-    else
-      cp "$FLEET_CRYPTO_YAML" "$fleet/deploy/bootstrap/crypto.yaml"
+  local secret file
+  ci_no_gitlab_key_material || return 1
+  for secret in "${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials}:crypto.yaml" "${FLEET_CA_SECRET:-fleet-ca-seatrials}:ca.pem"; do
+    file=${secret#*:} secret=${secret%%:*}
+    if ! ( umask 077
+           gcloud secrets versions access latest --secret="$secret" --project="${GCP_PROJECT:-tacplus-dev}" \
+             --out-file="$fleet/deploy/bootstrap/$file" 2>"$ci_tmp/crypto-err" ); then
+      rm -f "$fleet/deploy/bootstrap/$file"
+      if grep -q NOT_FOUND "$ci_tmp/crypto-err"; then
+        echo "crypto: the secret $secret has no version yet: run the manual init-secrets job, then this pipeline again (docs/deploy-pipeline.md)" >&2
+      else
+        echo "crypto: cannot read the secret $secret as $(gcloud config get account 2>/dev/null): $(grep -m1 '^ERROR' "$ci_tmp/crypto-err" || head -c 300 "$ci_tmp/crypto-err")" >&2
+      fi
+      return 1
     fi
-    cp "$FLEET_CA_PEM" "$fleet/deploy/bootstrap/ca.pem" ) || exit 1
+  done
+  echo "crypto: the fleet's key material from the secrets ${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials} and ${FLEET_CA_SECRET:-fleet-ca-seatrials}"
 }
 
 # ci_cert: the fleet's public certificate into crypto.yaml, after ci_crypto and
