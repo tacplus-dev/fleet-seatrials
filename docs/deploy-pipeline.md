@@ -288,6 +288,11 @@ Nothing is typed or pasted, and no agent sees the secret. Then the switch, by a 
 Once that is committed and a Google sign-in works on the new client, the old client (in the project the
 thescottsweb.com org is closing) is deleted, and the GitLab variable `FLEET_GOOGLE_CLIENT_SECRET` with it.
 
+Jody did this step on 2026-11-13: the client's id is in `oauth.yaml`, and its JSON is version 1 of
+`google-signin-seatrials`. The app is still *Testing*, not published (publishing needs a home page and a
+privacy policy URL), so only the test users listed under *Audience* can sign in with Google until it is
+(PROPOSALS.md).
+
 **What the pipeline does.** `apply` and `signin-secrets` read the latest version of `google-signin-seatrials`
 through WIF as `seatrials-deploy` (`ci_google_signin` in [`ci/lib.sh`](../ci/lib.sh)); with no version yet, or
 refused, they say so and oauth keeps the Google secret the cluster holds. A version is the client JSON the

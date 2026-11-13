@@ -155,6 +155,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   says it deletes OAuth clients that go unused for long, and an unused seatrials (no deploy, no sign-in) would
   not notice. Running `deploy/google-client.sh client` on the daily schedule, even without a deploy, would
   say so first. Whether Google's authorize or token checks count as use is not documented.
+- **Publish seatrials' Google app** (2026-11-13, #46): the Google Auth Platform app `seatrials` in `tacplus-dev`
+  is *Testing*, so only the test users listed under *Audience* can sign in with Google (anyone else is refused
+  by Google). *Publish app* needs a home page and a privacy policy
+  URL on an authorized domain (`tacplus.dev`), which seatrials does not serve yet. The scopes (`openid`,
+  `email`, `profile`) need no verification. Needs the two pages (where, and who writes the policy: Jody), then
+  his *Publish app* in the Console.
 - **Rotate the Microsoft client secret inside the pipeline** (2026-10-29, #17, #6): today a rotation is by hand:
   a new Entra secret, pasted into `FLEET_MICROSOFT_CLIENT_SECRET`, then the `signin-secrets` job. Proposal: a
   scheduled job that does it all, well before expiry. It authenticates to Entra with the job's GitLab OIDC token

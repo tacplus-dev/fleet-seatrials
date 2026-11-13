@@ -6,8 +6,8 @@
 # dev (us-central1-a), the deploy accounts (and init-secrets'), and the image registry of
 # tacplus-dev/cloud's dev stack in seabeam.net, in the pipeline file and in the
 # defaults of every script it runs; and that nothing in the repository still
-# names jody1-328023 but the Google OAuth client, which stays there until its
-# successor is made (#46); the reader and its KMS key are tacplus-ci's (#48).
+# names jody1-328023: the Google OAuth client is tacplus-dev's (#46), the reader
+# and its KMS key are tacplus-ci's (#48).
 # Needs bash, git, jq and yq.
 #
 #   ci/target_test.sh
@@ -100,16 +100,16 @@ want "the NEG's endpoints' port" "$(yq 'select(.kind == "Deployment") | .spec.te
 want "the test IdP's issuers in oauth.yaml" "$(yq '.providers[] | select(.name == "Test *") | .issuer' \
   "$here/deploy/bootstrap/services/oauth.yaml" | sed 's|[a-z]*$||' | sort -u)" "https://idp.test.tacplus.dev:8443/realms/"
 
-# Nothing names jody1-328023, or its project number, but the Google OAuth
-# client seatrials-web, which is jody1-328023's (deploy/bootstrap/services/oauth.yaml)
-# until its successor is made (#46). The reader and its KMS key are tacplus-ci's (#48).
-# HISTORY.md and ROADMAP.md record the past and are not this repository's to edit; this test names it.
-stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' ':!ci/target_test.sh' |
-  grep -v -e '^deploy/bootstrap/services/oauth\.yaml:[0-9]*: *# OAuth client "seatrials-web" in GCP project jody1-328023' \
-    -e '^deploy/bootstrap/services/oauth\.yaml:[0-9]*: *client_id: 23279701427-' \
-    -e '^deploy/checks_test\.sh:[0-9]*:.*client_id=23279701427-')
-[ -z "$stray" ] && ok "jody1-328023 is named only for the OAuth client" ||
+# Nothing names jody1-328023, or its project number: the Google OAuth client,
+# the last thing there, is tacplus-dev's (#46), and the reader and its KMS key are
+# tacplus-ci's (#48). HISTORY.md and ROADMAP.md record the past and are not this
+# repository's to edit; this test names it.
+stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' ':!ci/target_test.sh' || true)
+[ -z "$stray" ] && ok "nothing names jody1-328023" ||
   fail "these still name jody1-328023 (or 23279701427):
 $stray"
+want "Google's OAuth client is tacplus-dev's (project number 1038314073791)" \
+  "$(yq '.providers[] | select(.name == "Google") | .client_id' "$here/deploy/bootstrap/services/oauth.yaml" | cut -d- -f1)" \
+  1038314073791
 
 [ "$failed" = 0 ] && echo "target tests passed" || { echo "target tests failed"; exit 1; }

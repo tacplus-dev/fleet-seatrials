@@ -63,7 +63,7 @@ for i in 3:google 4:microsoft 5:apple; do
   echo "{\"redirectUrl\":\"https://idp.test.tacplus.dev:8443/realms/${i#*:}/protocol/openid-connect/auth?client_id=tacplus-dev&state=s\"}" \
     > "$h/oauth_Auth_Authorize-${i%%:*}"
 done
-echo '{"redirectUrl":"https://accounts.google.com/o/oauth2/v2/auth?client_id=23279701427-3nm40dmid06nd3niqufrq88sbl90p0n3.apps.googleusercontent.com&state=s"}' \
+echo '{"redirectUrl":"https://accounts.google.com/o/oauth2/v2/auth?client_id=1038314073791-777evp53ndtuopfukbhla2kvbqpl3onq.apps.googleusercontent.com&state=s"}' \
   > "$h/oauth_Auth_Authorize-0"
 echo '{"redirectUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=deee63f8-1d3b-46c8-aa3a-f7b2d7eb3f85&state=s"}' \
   > "$h/oauth_Auth_Authorize-1"

@@ -30,10 +30,9 @@ and rights the fleet has in it are tacplus-dev/cluster's: nothing here creates o
 The `tacplus-reader` app's KMS key (`TACPLUS_READER_KMS_KEY`) and the reader's service account
 (`TACPLUS_READER_SA`), the reader path every job fetches this repository through, and the drift path, are
 tacplus-ci's, made by tacplus-dev/cloud's `stacks/ci` (#48, tacplus-dev/cloud#30).
-**Only the Google OAuth client `seatrials-web` stays in the old GCP project**, the one
-`deploy/bootstrap/services/oauth.yaml` names, until its successor in `tacplus-dev`, whose secret is the Secret
-Manager secret `google-signin-seatrials`, is made and committed (#46; [docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-google-sign-in-client)).
-`ci/target_test.sh` checks that nothing else names that project.
+The Google OAuth client `seatrials-web` that `deploy/bootstrap/services/oauth.yaml` names is `tacplus-dev`'s too,
+its secret the Secret Manager secret `google-signin-seatrials` (#46; [docs/deploy-pipeline.md](docs/deploy-pipeline.md#the-google-sign-in-client)).
+`ci/target_test.sh` checks that nothing names the old GCP project.
 The cutover's order and the grants still to come are in
 [docs/deploy-pipeline.md](docs/deploy-pipeline.md#gcp-workload-identity-federation-no-key-files).
 

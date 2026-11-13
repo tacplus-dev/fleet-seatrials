@@ -18,12 +18,12 @@ providers:
   - enable: true
     name: Google
     issuer: https://accounts.google.com
-    # OAuth client "seatrials-web" in GCP project jody1-328023 (2026-10-24),
-    # redirect URI https://seatrials.tacplus.dev/. Its successor in tacplus-dev is made
-    # in the Console and switched to by committing its id here (docs/deploy-pipeline.md,
+    # OAuth client "seatrials-web" in GCP project tacplus-dev (seabeam.net, Jody in
+    # the Console, 2026-11-13), redirect URI https://seatrials.tacplus.dev/; its secret
+    # is the Secret Manager secret google-signin-seatrials (docs/deploy-pipeline.md,
     # The Google sign-in client, #46). Google must have each allowed_redirect_uri_prefixes
     # entry registered as a redirect URI (deploy/google-client.sh client).
-    client_id: 23279701427-3nm40dmid06nd3niqufrq88sbl90p0n3.apps.googleusercontent.com
+    client_id: 1038314073791-777evp53ndtuopfukbhla2kvbqpl3onq.apps.googleusercontent.com
     allowed_redirect_uri_prefixes:
       - https://seatrials.tacplus.dev/
     scopes:
