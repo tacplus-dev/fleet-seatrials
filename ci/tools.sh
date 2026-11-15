@@ -15,7 +15,8 @@
 #                            klauspost/compress; GO-2026-6888, andybalholm/brotli; GO-2025-3922, ulikunitz/xz).
 #                            govulncheck, osv-scanner and trivy are the security job's (ci/security.sh, #36)
 #   bin/lego                 the cert job's ACME client (ci/cert.sh, #35): the same, as its release builds it
-#                            (#49: its release binary holds go1.27.3's fixed GO-2026-6859)
+#                            (#49: its release binary holds go1.27.3's fixed GO-2026-6859), with x/crypto
+#                            raised to v0.59.0 (#52: GO-2026-5932, x/crypto openpgp)
 #
 # Every one is built with the pinned Go toolchain, go_toolchain, not the CI image's
 # go: the standard library is in each binary, and govulncheck fails a fixed
@@ -43,6 +44,7 @@ go_toolchain=go1.27.4   # every tool's: GO-2026-6859 (net/http) is fixed in go1.
 compress_fix=github.com/klauspost/compress@v1.20.3=h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=   # GO-2026-6865, fixed in v1.20.2
 brotli_fix=github.com/andybalholm/brotli@v1.2.8=h1:H9F6r7RNwzSRsx/lytpIYkbjNFMt2yNBwsJ2+0gpx78=   # GO-2026-6888, fixed in v1.2.7
 xz_fix=github.com/ulikunitz/xz@v0.5.17=h1:flR0y/x1hgM8EGV1AW3Xll6T413G0glV8UfBwR617V4=   # GO-2025-3922, fixed in v0.5.15
+crypto_fix=golang.org/x/crypto@v0.59.0=h1:xS2jhqYbzNrpvkWP2YTDf4TJwBy3ykR03i8vFDxEc7c=   # GO-2026-5932 (openpgp), fixed in 0.58.1-0.20261009181718-2f1f834330b2
 lego_version=v5.6.0 lego_h1=h1:tdr1k0mPExMhqFUee09aAD8kSDcM7rha9k8IBs1wuX0=
 mkdir -p "$here/bin"
 tmp=$(mktemp -d)
@@ -115,7 +117,7 @@ CGO_ENABLED=0 go_build_fixed trivy github.com/aquasecurity/trivy/cmd/trivy githu
 # lego as its release builds it (.goreleaser.yml: its tags, trimmed paths), its symbols kept for govulncheck.
 CGO_ENABLED=0 GOFLAGS="-trimpath -tags=urfave_cli_no_template,ozzo_validation_no_template,grpcnotrace,validator_novalidatefn" \
   go_build_fixed lego github.com/go-acme/lego/v5 github.com/go-acme/lego/v5 "$lego_version" "$lego_h1" \
-  "-w -X main.version=${lego_version#v}"
+  "-w -X main.version=${lego_version#v}" "$crypto_fix"
 for b in "$here"/bin/*; do
   v=$(go version "$b" | awk '{print $2}') || die "${b#"$here"/}: not a Go binary"
   [ "$v" = "$go_toolchain" ] || die "${b#"$here"/} is built with $v, not the pinned $go_toolchain"
