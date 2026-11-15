@@ -487,9 +487,11 @@ which only this project's jobs in the environment `test-idp`, on protected `main
 the job's environment, and the binding names this project and that environment together, since the pool
 `gitlab-com` is shared by tacplus-dev's projects), with `roles/container.clusterViewer` conditioned on the cluster
 `dev`; the record `idp.test.tacplus.dev`; the listener `test-idp`, `ready = false` (no backend). Filed by the hub
-(2026-11-09):
+(2026-11-09) and landed since (tacplus-dev/cloud#32 on 2026-11-11, tacplus-dev/cluster#17 on 2026-11-15):
 
-- **tacplus-dev/cloud#32, the dev stack:**
+- **tacplus-dev/cloud#32, the dev stack** (landed, and applied: the zone `tacplus-dev` delegates
+  `_acme-challenge.idp.test.tacplus.dev` to its challenge zone, and port 8443 of `gateway` accepts a connection and
+  closes it, a listener with no backend yet):
   - the secrets `tls-test-idp` and `acme-account-test-idp` in `tacplus-dev`, `test-idp-deploy` their only
     `secretVersionAdder` and `secretAccessor`, as `seatrials-deploy` is for its own;
   - the zone `acme-challenge-idp-test-tacplus-dev` for `_acme-challenge.idp.test.tacplus.dev.`, delegated from
@@ -500,7 +502,8 @@ the job's environment, and the binding names this project and that environment t
     2026-11-09, as tacplus-dev/cloud#28's option D does for the fleet's secrets);
   - once the first apply has made the NEG `seatrials-test-idp` (`apply.sh` prints its status), `ready = true`
     for the listener `test-idp`.
-- **tacplus-dev/cluster#17:** the deployment `test-idp` in `deployments.yaml` (`deployAccount`
+- **tacplus-dev/cluster#17** (landed; on `dev` once cluster's first `apply` on main is green, tacplus-dev/cluster#18,
+  which no pipeline has reached yet): the deployment `test-idp` in `deployments.yaml` (`deployAccount`
   `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, `gitlabProject` tacplus-dev/fleet-seatrials, `quota: {}`),
   which gives the namespace `tac-test-idp` and the account's `fleet-deploy` Role in it. It has no operator, so
   `operator` becomes optional in `render.sh` and `ci/policy.sh` (no deploymentproxy Role and no operator binding
@@ -514,11 +517,17 @@ need the seeds too: `apply` and `signin-secrets` derive the `Test *` providers' 
 with `ci_test_idp_seeds optional` ([`ci/lib.sh`](../ci/lib.sh)): refused, they say so and go on without it, the
 `Test *` providers off and the suite's test-IdP sign-ins waiting.
 
-Then, in the GitLab project:
+Then, the hub, in order:
 
 1. The protected environment `test-idp`, deployable by Maintainers (made by hand since #18).
-2. Run `test-idp`. It generates the two seeds and adds them as the first version of `test-idp-seeds`.
-3. Run `signin-secrets`, so that oauth's `Test *` providers get their secrets.
+2. Once tacplus-dev/cluster#18 has `tac-test-idp` on `dev`, run `test-idp` on main. It generates the two seeds
+   and adds them as the first version of `test-idp-seeds`, obtains the certificate, applies, and prints the NEG
+   `seatrials-test-idp` (`neg: {...}`).
+3. Name the NEG on tacplus-dev/cloud#42, which sets the listener `test-idp` `ready`. Until then port 8443 of
+   `gateway` accepts a connection and closes it (the TLS handshake gets EOF), and no realm's discovery answers.
+   cloud#42 waits on #27 for that signal, so #27 does not wait on cloud#42.
+4. Run `signin-secrets`, so that oauth's `Test *` providers get their secrets (once `seatrials-deploy` reads the
+   seeds, above).
 
 **tacplus.dev's side:** oauth lists `Test Google`, `Test Microsoft` and `Test Apple`
 (`deploy/bootstrap/services/oauth.yaml`), with the issuers `https://idp.test.tacplus.dev:8443/realms/<realm>`.
