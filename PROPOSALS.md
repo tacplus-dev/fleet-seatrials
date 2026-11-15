@@ -25,7 +25,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
   them. lego 5.6.0 carries GO-2026-5932 (x/crypto openpgp): bump it to the first release with the fix and drop
-  the entry. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
+  the entry (2026-11-15: x/crypto v0.59.0 has the fix and no lego release takes it; #52 builds lego with it, as
+  #40 does for the other tools, and the entry stays for the operator pin and the CI image's gh and docker-buildx). Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`).
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
@@ -46,7 +47,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   33.7.2), sqlite-libs CVE-2026-119373 and CVE-2026-119586 and OpenJDK CVE-2026-91403 (Red Hat 9.8, no fix yet).
   They are accepted until 2026-12-06. When a Keycloak release ships the fixes, move `test-idp/keycloak.yaml` to it
   by tag and digest, run `test-idp/local.sh`, and remove the four entries; otherwise every pipeline fails from
-  2026-12-06 until they are decided again.
+  2026-12-06 until they are decided again. Nightly scan, 2026-11-15: Red Hat's CVE data
+  (`access.redhat.com/hydra/rest/securitydata/cve/<id>.json`) marks `java-21-openjdk` **Will not fix** for
+  CVE-2026-91403 and `sqlite` still Affected for CVE-2026-119373 and CVE-2026-119586, so no Keycloak rebuild on
+  Red Hat 9 will clear the OpenJDK one: on 2026-12-06 it has to be decided again as a longer acceptance, or the
+  test IdP moves to a Keycloak image on another base. Keycloak 26.8.2 (26.8.2-0, -1, -2 on quay.io) is still the
+  latest release and ships the same Guava.
 - **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
   deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them
