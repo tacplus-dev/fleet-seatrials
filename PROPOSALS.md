@@ -15,7 +15,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   covered too. (tacplus-dev/cloud#21 since chose a TCP proxy, TLS passed through, and gave the test IdP port 8443 of
   the address: #27 follows it, 2026-11-09.) Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
   stays pending instead of taking an ephemeral public IP.
-- **Room for gateway's Rust build on Cloud Build** (2026-11-10, #23): on build:2.6.4, one rustc for gateway's
+- **Room for gateway's Rust build on Cloud Build** (2026-11-10, #23): on the CI image 2.6.4 (2.6.12 since #50, untried), one rustc for gateway's
   generated crate `gateway-model-types` needs more than 4 GB (the looper's container limit killed it, and with one
   job and one codegen unit it thrashed there). The service builds ask for `E2_HIGHCPU_8`, 8 GB, with cargo running
   up to 8 jobs; whether that is enough is unknown until the first pipeline's `images` job builds gateway. If it
@@ -30,7 +30,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
 - **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
-  (2026-11-09, #43): the CI image is `build:2.6.4` by digest (every `image:` of `ci/*.gitlab-ci.yml`,
+  (2026-11-09, #43): the CI image is `build:2.6.12` by digest (#50; every `image:` of `ci/*.gitlab-ci.yml`,
   `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`
   checks they are one image). Its `gh` and `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until
   2026-12-04). When a line image moves them, move the four references to its patch and digest and drop them from
@@ -47,14 +47,6 @@ the looper then marks it `promoted` or `declined` here with the date.
   They are accepted until 2026-12-06. When a Keycloak release ships the fixes, move `test-idp/keycloak.yaml` to it
   by tag and digest, run `test-idp/local.sh`, and remove the four entries; otherwise every pipeline fails from
   2026-12-06 until they are decided again.
-- **The service images and the CI image still hold go1.27.3** (2026-11-11, #49): `ci/tools.sh` now builds
-  every tool with its pinned toolchain (go1.27.4, GO-2026-6859 in net/http). But the service images are built
-  in the CI image, `build:2.6.4` (`images/tacplus-build.Dockerfile`), with its go, go1.27.3, and they are the
-  HTTP servers seatrials runs. The CI image's own Go binaries (go, gh, docker-buildx) have it too. Trivy did not
-  report it in the image on 2026-11-11, probably only because its database does not have it yet; when it does,
-  the security job fails on the CI image. A build image patch on go1.27.4, moved to in the four references (as
-  above), fixes both. Until then the service images could be built with `GOTOOLCHAIN` pinned, as `ci/tools.sh`
-  now does. Why: the scan does not cover the service images (below), so nothing would fail on them.
 - **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
   deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them

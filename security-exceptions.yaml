@@ -14,8 +14,9 @@
 #
 # Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh
 # builds them from source with the fixed dependencies (#40). build:2.3's ImageMagick and apt CVEs (#40) are fixed:
-# the CI image is ghcr.io/tacplus-dev/tacplus/build:2.6.4 by digest (#43, #45), with ImageMagick deb13u14, apt 3.0.4,
-# zlib1g deb13u1 (CVE-2026-85091 76844) and a gh on x/net v0.62.0 (CVE-2026-78661). Trivy's scan of it still finds
+# the CI image is ghcr.io/tacplus-dev/tacplus/build:2.6.12 by digest (#43, #45, #50), with ImageMagick deb13u14, apt 3.0.4,
+# zlib1g deb13u1 (CVE-2026-85091 76844), a gh on x/net v0.62.0 (CVE-2026-78661), OpenEXR 3.2.12-1~deb13u1
+# (CVE-2026-42216 42217 and 14 HIGH) and ASP.NET Core 10.0.15 (CVE-2026-114146 114147 114149). Trivy's scan of it still finds
 # gh's and docker-buildx's x/crypto v0.58.0; when a line image moves them, move the CI image (every image: of
 # ci/*.gitlab-ci.yml, .github/workflows/security.yml and images/tacplus-build.Dockerfile's BUILD_IMAGE) to it and
 # remove them from GO-2026-5932, above.
@@ -82,7 +83,7 @@ exceptions:
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp, in schematic-operator (#11), lego 5.6.0 (ci/tools.sh, its latest release; the cert job's ACME client, #35), and gh and docker-buildx in the CI image (build:2.6.4, Trivy's scan): none handles an OpenPGP key or message from outside (lego talks ACME and Cloud DNS; no job runs gh or buildx). The fix is an untagged x/crypto pseudo-version; no operator pin, lego release or rebuilt CI image carries it yet."
+    reason: "x/crypto/openpgp, in schematic-operator (#11), lego 5.6.0 (ci/tools.sh, its latest release; the cert job's ACME client, #35), and gh and docker-buildx in the CI image (build:2.6.12, Trivy's scan): none handles an OpenPGP key or message from outside (lego talks ACME and Cloud DNS; no job runs gh or buildx). The fix is an untagged x/crypto pseudo-version; no operator pin, lego release or rebuilt CI image carries it yet."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-6061
@@ -134,7 +135,7 @@ exceptions:
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119373
-    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.6.4, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
+    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.6.12, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119586
