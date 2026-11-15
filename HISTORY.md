@@ -23,3 +23,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-11 looper issue Security job fails on main: every pinned tool binary is built with go1.27.3, GO-2026-6859 (net/http, fixed in go1.27.4) (#49, cbd8a29)
 - 2026-11-11 looper issue init-secrets writes the fleet CA and crypto file to Secret Manager through WIF, not GitLab variables; deploy reads them from there (#44, a6527df)
 - 2026-11-13 looper issue STATE.md: Blocked on names closed #18 and tacplus-dev/looper#25 (#51, 564bcb9)
+- 2026-11-15 looper issue Security job fails on main: trivy CVE-2026-42216 et al. (OpenEXR, CRITICAL) and CVE-2026-114146 et al. (ASP.NET Core, HIGH) in the CI image build:2.6.4; build:2.6.10 is clean (#50, 5f96a16)
