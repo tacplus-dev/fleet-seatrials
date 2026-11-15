@@ -22,7 +22,7 @@ value, derived from the pipeline's seeds and never printed.
   load balancer passes it, TLS unopened, to the NEG `seatrials-test-idp`, which the Service `keycloak` names
   (tacplus-dev/cloud#21, its README, The public entry). The test IdP has a port of its own because a TCP proxy does
   not route by SNI, and 443 is the gateway's.
-- **TLS:** ends in the pod, at an haproxy container (3.2 LTS, by digest), with the test IdP's own Let's Encrypt
+- **TLS:** ends in the pod, at an haproxy container (3.4, the latest LTS line, by digest), with the test IdP's own Let's Encrypt
   certificate for `idp.test.tacplus.dev` only, never the fleet's. The pipeline obtains and renews it with
   [`ci/cert.sh`](../ci/cert.sh), as it does the fleet's, as versions of the secret `tls-test-idp`, with DNS-01 in
   its own challenge zone `_acme-challenge.idp.test.tacplus.dev`.

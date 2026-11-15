@@ -152,9 +152,9 @@ spec:
             - { name: data, mountPath: /opt/keycloak/data }
             - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
         - name: haproxy
-          # 3.2.26, the LTS line, the multi-arch index (arm64 among its images);
-          # the security job scans it for arm64.
-          image: haproxy:3.2.26-alpine@sha256:96ec3c75a9264ba94e733eeacb44051ed6e7b79bb77a73c2c36f236b6423f1f0
+          # 3.4.7, the latest LTS line (3.4), the multi-arch index (arm64 among
+          # its images); the security job scans it for arm64.
+          image: haproxy:3.4.7-alpine@sha256:b9fe316f718d5015c5cfebd8ca019591f3e44656f61d93cb8b59a1028961e530
           ports:
             - { name: https, containerPort: 8443 }
             - { name: health, containerPort: 8404 }
