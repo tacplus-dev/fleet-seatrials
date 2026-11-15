@@ -25,3 +25,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-13 looper issue STATE.md: Blocked on names closed #18 and tacplus-dev/looper#25 (#51, 564bcb9)
 - 2026-11-15 looper issue Security job fails on main: trivy CVE-2026-42216 et al. (OpenEXR, CRITICAL) and CVE-2026-114146 et al. (ASP.NET Core, HIGH) in the CI image build:2.6.4; build:2.6.10 is clean (#50, 5f96a16)
 - 2026-11-15 looper issue ci/tools.sh: lego 5.6.0 carries GO-2026-5932 (x/crypto openpgp); x/crypto v0.59.0 (2026-11-11) has the fix: build lego with it, as #40 does for the other tools (#52)
+- 2026-11-15 looper issue test-idp: haproxy pinned to the 3.2 line as "the LTS line"; 3.4 is the latest LTS line (2026-06-03, supported to 2031-Q2) (#53)
