@@ -502,8 +502,8 @@ the job's environment, and the binding names this project and that environment t
     2026-11-09, as tacplus-dev/cloud#28's option D does for the fleet's secrets);
   - once the first apply has made the NEG `seatrials-test-idp` (`apply.sh` prints its status), `ready = true`
     for the listener `test-idp`.
-- **tacplus-dev/cluster#17** (landed; on `dev` once cluster's first `apply` on main is green, tacplus-dev/cluster#18,
-  which no pipeline has reached yet): the deployment `test-idp` in `deployments.yaml` (`deployAccount`
+- **tacplus-dev/cluster#17** (landed; on `dev` since cluster's pipeline runs green on its own runner,
+  tacplus-dev/cluster#18, closed 2026-11-16): the deployment `test-idp` in `deployments.yaml` (`deployAccount`
   `test-idp-deploy@tacplus-dev.iam.gserviceaccount.com`, `gitlabProject` tacplus-dev/fleet-seatrials, `quota: {}`),
   which gives the namespace `tac-test-idp` and the account's `fleet-deploy` Role in it. It has no operator, so
   `operator` becomes optional in `render.sh` and `ci/policy.sh` (no deploymentproxy Role and no operator binding
@@ -520,7 +520,7 @@ with `ci_test_idp_seeds optional` ([`ci/lib.sh`](../ci/lib.sh)): refused, they s
 Then, the hub, in order:
 
 1. The protected environment `test-idp`, deployable by Maintainers (made by hand since #18).
-2. Once tacplus-dev/cluster#18 has `tac-test-idp` on `dev`, run `test-idp` on main. It generates the two seeds
+2. With `tac-test-idp` on `dev` (tacplus-dev/cluster#18, closed), run `test-idp` on main. It generates the two seeds
    and adds them as the first version of `test-idp-seeds`, obtains the certificate, applies, and prints the NEG
    `seatrials-test-idp` (`neg: {...}`).
 3. Name the NEG on tacplus-dev/cloud#42, which sets the listener `test-idp` `ready`. Until then port 8443 of
