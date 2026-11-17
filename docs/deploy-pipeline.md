@@ -511,23 +511,25 @@ the job's environment, and the binding names this project and that environment t
   the admin Job and pod logs. No storage class: the database is in the pod. No NetworkPolicy: the admin API
   authenticates and is not exposed (Jody, 2026-11-07: bearer tokens isolate, not reachability).
 
-Not filed yet: **`secretAccessor` for `seatrials-deploy` on `test-idp-seeds`** (read only). seatrials' own jobs
-need the seeds too: `apply` and `signin-secrets` derive the `Test *` providers' client secrets from
-`TEST_IDP_CLIENT_SEED`, and the `test` job signs the test users in with `TEST_IDP_SEED`. They read the secret
-with `ci_test_idp_seeds optional` ([`ci/lib.sh`](../ci/lib.sh)): refused, they say so and go on without it, the
+seatrials' own jobs need the seeds too: `apply` and `signin-secrets` derive the `Test *` providers' client
+secrets from `TEST_IDP_CLIENT_SEED`, and the `test` job signs the test users in with `TEST_IDP_SEED`. They read
+the secret as `seatrials-deploy`, which holds `secretAccessor` and `viewer` on `test-idp-seeds` (read only;
+tacplus-dev/cloud#68, closed); `secretVersionAdder` stays with `test-idp-deploy` alone. They read it with
+`ci_test_idp_seeds optional` ([`ci/lib.sh`](../ci/lib.sh)): refused, they say so and go on without it, the
 `Test *` providers off and the suite's test-IdP sign-ins waiting.
 
 Then, the hub, in order:
 
 1. The protected environment `test-idp`, deployable by Maintainers (made by hand since #18).
-2. With `tac-test-idp` on `dev` (tacplus-dev/cluster#18, closed), run `test-idp` on main. It generates the two seeds
-   and adds them as the first version of `test-idp-seeds`, obtains the certificate, applies, and prints the NEG
-   `seatrials-test-idp` (`neg: {...}`).
-3. Name the NEG on tacplus-dev/cloud#42, which sets the listener `test-idp` `ready`. Until then port 8443 of
-   `gateway` accepts a connection and closes it (the TLS handshake gets EOF), and no realm's discovery answers.
-   cloud#42 waits on #27 for that signal, so #27 does not wait on cloud#42.
-4. Run `signin-secrets`, so that oauth's `Test *` providers get their secrets (once `seatrials-deploy` reads the
-   seeds, above).
+2. Done (2026-11-17, job https://gitlab.com/tacplus-dev/fleet-seatrials/-/jobs/18093140695, green): `test-idp`
+   on main, with `tac-test-idp` on `dev`. It generated the two seeds and added them as the first version of
+   `test-idp-seeds`, obtained the certificate, applied, and printed the NEG
+   (`neg: {"network_endpoint_groups":{"8443":"seatrials-test-idp"},"zones":["us-central1-a"]}`). The job runs
+   as `test-idp-deploy`: `GCP_DEPLOY_SA` is scoped `seatrials*`, so it does not override the environment's own.
+3. Done (2026-11-17): the NEG is named on tacplus-dev/cloud#42, which sets the listener `test-idp` `ready`. Until
+   it applies, port 8443 of `gateway` accepts a connection and closes it (the TLS handshake gets EOF), and no
+   realm's discovery answers. cloud#42 waits on #27 for that signal, so #27 does not wait on cloud#42.
+4. Run `signin-secrets`, so that oauth's `Test *` providers get their secrets, once the fleet is on `dev` (#4).
 
 **tacplus.dev's side:** oauth lists `Test Google`, `Test Microsoft` and `Test Apple`
 (`deploy/bootstrap/services/oauth.yaml`), with the issuers `https://idp.test.tacplus.dev:8443/realms/<realm>`.

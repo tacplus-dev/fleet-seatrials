@@ -94,8 +94,8 @@ A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), 
   [`ci/lib.sh`](../ci/lib.sh)): the test IdP's jobs, and, in the `seatrials` environment, the functional suite's
   sign-in items (`deploy/e2e.yaml`, the `test` job) and `deploy/signin-secrets.sh` (the `apply` and
   `signin-secrets` jobs), which derive what they need. seatrials' jobs read it as `seatrials-deploy`, which needs
-  `secretAccessor` on the secret (docs/deploy-pipeline.md, the test IdP); without it they go on without the
-  seeds, saying so. Those jobs can derive the Keycloak admin's password too; they run for Maintainers only.
+  `secretAccessor` on the secret (tacplus-dev/cloud#68; docs/deploy-pipeline.md, the test IdP); without it they
+  go on without the seeds, saying so. Those jobs can derive the Keycloak admin's password too; they run for Maintainers only.
 - **The hub's manual checks:** the hub reads the secret's latest version into its environment, as an account
   that may read it. Then `test-idp/testidp.py secret user/<realm>/<username>` prints that user's password. This
   is never done in a job, whose log would keep it.
