@@ -225,6 +225,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   (6) Rotating the seeds (2026-11-09, #27): `test-idp` generates them only while `test-idp-seeds` has no version,
   and `test-idp-deploy` may not disable or destroy one. A manual input (say `TEST_IDP_ROTATE_SEEDS=1`) that has
   `apply.sh` add a new version would rotate every test password and client secret from GitLab.
+  (7) The build pipeline's nightly report of 2026-11-17 (at c2f8fe4, with CodeQL and Trivy's config checks new
+  in it) fails the policy on three findings here, none of them new code: Trivy KSV-0014 on `keycloak.yaml` and
+  `admin-job.yaml` (Keycloak's and kcadm's root file systems are writable; haproxy's is already read-only), and
+  CodeQL `py/clear-text-logging-sensitive-data` on `testidp.py`'s `secret` command, which writes a derived
+  secret to stdout by design, for `apply.sh` and the hub to capture, never into a job's log. A read-only root
+  for Keycloak needs an `--optimized` start (a plain `start` rebuilds into `/opt/keycloak/lib`) and emptyDirs for
+  `/tmp` and kcadm's config, checked on a real Keycloak first (`test-idp/local.sh`, which needs docker), since
+  the IdP is live on `dev`; the `secret` command could write to a file the caller names instead of stdout. The
+  same report's Trivy DS-0002 (`images/tacplus-build.Dockerfile` runs as root) is the build image's, not the
+  test IdP's.
 - **One signing path for the reader token** (2026-11-02, #30): `.github-reader` asks Cloud KMS as the job's
   federated principal, then, on a 401 or 403, as `fleet-seatrials-reader@`. Because the first dry run's error was
   dropped, nobody knew which path KMS accepts, so both are there. Once a dry run's log shows which one signs,
