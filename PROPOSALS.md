@@ -59,6 +59,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them
   would need the digests the `images` job builds as Trivy targets, once they are built on Cloud Build (#23).
   Why: they are what seatrials runs. Whether they belong in this scan was left open in #41.
+- **govulncheck on the client, once it generates** (2026-11-17, nightly scan, #14): the build's security report
+  says `govulncheck: client: not analyzed (govulncheck: loading packages: )`, and `govulncheck ./...` in `client/`
+  fails the same way: `cmd/seatrials/main.go` imports `client/tacplus/...`, which is generated and not committed.
+  `ci/security.sh` runs govulncheck only on the pinned binaries, so only OSV-Scanner checks `client/go.mod` (no
+  issues on 2026-11-17), by module and not by reachability. Once #14 lets the client generate, the security job
+  could run `tacplus build` in `client/`, then `govulncheck ./...` with `security-exceptions.yaml` enforced, as it
+  does for the binaries. Why: the client is what a person runs against the fleet, and nothing checks its
+  reachable code today.
 - **The checks job's secrets scan reads one commit** (2026-11-04, #36): every child job fetches this repository
   at depth 1, so `ci/secrets.sh` in `checks` sees only the deployed commit's history, not the whole history it
   says it scans. The security job fetches the whole history (`FLEET_FETCH_HISTORY=1`) and runs gitleaks on it.
