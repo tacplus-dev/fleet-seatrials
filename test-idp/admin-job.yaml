@@ -72,10 +72,13 @@ spec:
             runAsUser: 1000
             runAsGroup: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           volumeMounts:
-            - { name: kcadm, mountPath: /tmp/kcadm }
+            # kcadm.sh's config and the import's answer (/tmp/kcadm, which
+            # kcadm.sh makes), and the JVM's perf data; the root is read-only (#54).
+            - { name: tmp, mountPath: /tmp }
             - { name: realms, mountPath: /realms, readOnly: true }
       volumes:
-        - { name: kcadm, emptyDir: { sizeLimit: 16Mi } }
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
         - { name: realms, secret: { secretName: keycloak-realms } }

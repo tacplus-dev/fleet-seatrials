@@ -7,13 +7,23 @@
 # checks 1, 2 and 4 (the sign-in at tacplus.dev needs the live fleet). Then a
 # second Keycloak, as a new pod would be, imports them again: every sub must be
 # the same, and the removed user back. haproxy is not run here: Keycloak is
-# reached directly. Needs docker, python3, yq, jq and curl. No secret leaves this
-# script's temporary directory.
+# reached directly. As in the pod (#54), every container's root is read-only,
+# its writable paths fresh for each pod: keycloak.yaml's init containers fill
+# lib/quarkus, a directory here as the emptyDir is, then Keycloak starts on it
+# read-only, with tmpfs for /tmp and its data. Needs docker, python3, yq, jq and
+# curl. No secret leaves this script's temporary directory.
 #
 #   test-idp/local.sh
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-image=$(yq 'select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "keycloak") | .image' "$here/keycloak.yaml")
+# pod EXPR: EXPR on keycloak.yaml's pod; c NAME: its container or init container NAME.
+pod() { yq "select(.kind == \"Deployment\") | .spec.template.spec | $1" "$here/keycloak.yaml"; }
+c() { echo "(.containers + .initContainers)[] | select(.name == \"$1\")"; }
+image=$(pod "$(c keycloak) | .image")
+# Each container's command line, its items one per line (none has a newline).
+mapfile -t copy < <(pod "$(c quarkus-copy) | .command[]")
+mapfile -t build < <(pod "$(c build) | .args[]")
+mapfile -t args < <(pod "$(c keycloak) | .args[]")
 name=test-idp-local-$$
 tmp=$(mktemp -d)
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
@@ -27,8 +37,8 @@ export TEST_IDP_SEED TEST_IDP_CLIENT_SEED
 python3 "$here/testidp.py" secret admin "$tmp/admin"
 # Keycloak's own environment file: the admin password is on no command line.
 { echo KC_BOOTSTRAP_ADMIN_USERNAME=admin; echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(cat "$tmp/admin")"
-  yq 'select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "keycloak") | .env[]
-    | select(has("value")) | select(.name != "KC_HOSTNAME") | .name + "=" + .value' "$here/keycloak.yaml"; } > "$tmp/env"
+  pod "$(c keycloak) | .env[] | select(has(\"value\")) | select(.name != \"KC_HOSTNAME\") | .name + \"=\" + .value"; } > "$tmp/env"
+pod "$(c build) | .env[] | .name + \"=\" + .value" > "$tmp/build-env"
 
 mkdir "$tmp/realms" "$tmp/import"
 for f in "$here"/realms/*.yaml; do
@@ -36,16 +46,26 @@ for f in "$here"/realms/*.yaml; do
   yq -o=json '.' "$f" > "$tmp/realms/$r.json"
   python3 "$here/testidp.py" render "$tmp/realms/$r.json" "$tmp/import/$r.json"
 done
-# Readable by Keycloak's user in the container (docker cp makes them root's), as
-# the Secret's files are in the pod; the directory around them stays private.
-chmod 644 "$tmp"/import/*.json
+# Readable by Keycloak's user in the container, as the Secret's files are in the
+# pod; the directory around them stays private.
+chmod 755 "$tmp/import"; chmod 644 "$tmp"/import/*.json
 
-# start: a new Keycloak, the realms imported as it starts; its URL in $url.
+# As the pod runs each container: Keycloak's user, a read-only root.
+run=(--user 1000:0 --read-only --cap-drop ALL --security-opt no-new-privileges)
+# start: a new Keycloak, as a new pod starts, the realms imported as it starts;
+# its URL in $url.
 start() {
   docker rm -f "$name" >/dev/null 2>&1 || true
-  docker create --name "$name" --env-file "$tmp/env" "$image" start --import-realm --hostname-strict=false >/dev/null
-  docker cp "$tmp/import" "$name:/opt/keycloak/data/import"
-  docker start "$name" >/dev/null
+  rm -rf "$tmp/quarkus"; mkdir -m 777 "$tmp/quarkus"
+  docker run --rm "${run[@]}" -v "$tmp/quarkus:/quarkus" --entrypoint "${copy[0]}" "$image" "${copy[@]:1}" ||
+    { echo "FAIL quarkus-copy: ${copy[*]}"; exit 1; }
+  docker run --rm "${run[@]}" --env-file "$tmp/build-env" --tmpfs /tmp:exec,mode=1777 \
+    -v "$tmp/quarkus:/opt/keycloak/lib/quarkus" "$image" "${build[@]}" > "$tmp/build.log" 2>&1 ||
+    { echo "FAIL build: ${build[*]}"; tail -30 "$tmp/build.log"; exit 1; }
+  docker run -d --name "$name" "${run[@]}" --env-file "$tmp/env" \
+    --tmpfs /tmp:exec,mode=1777 --tmpfs /opt/keycloak/data:exec,mode=1777 \
+    -v "$tmp/import:/opt/keycloak/data/import:ro" -v "$tmp/quarkus:/opt/keycloak/lib/quarkus:ro" \
+    "$image" "${args[@]}" --hostname-strict=false >/dev/null
   ip=$(docker inspect "$name" | jq -r '.[0].NetworkSettings.Networks[].IPAddress' | head -1)
   url=http://$ip:8080
   echo "keycloak $image at $url"

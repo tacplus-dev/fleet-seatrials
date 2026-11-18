@@ -17,7 +17,11 @@ value, derived from the pipeline's seeds and never printed.
 - **Keycloak:** a single-replica Deployment, pinned by digest ([`keycloak.yaml`](keycloak.yaml)). Its file
   database is in the pod. On every start it imports the realms from the Secret `keycloak-realms`, with each
   user's fixed id, so every `sub` stays the same across restarts and applies. The realms' signing keys and
-  sessions are new with each pod.
+  sessions are new with each pod. Every container's root file system is read-only, the admin Job's too, and
+  each writes only to its emptyDirs (#54): Keycloak's build options (`KC_DB`, `KC_HEALTH_ENABLED`) are the
+  init container `build`'s, a `kc.sh build` into the emptyDir on `lib/quarkus` (`quarkus-copy` copies the
+  image's own in first), and Keycloak starts `--optimized` on it. A plain `start` would rebuild into the
+  image. A new build option goes on `build`, not on `keycloak`.
 - **Exposure:** port 8443 of the address `gateway`, the platform's one public IP. tacplus-dev/cloud's TCP proxy
   load balancer passes it, TLS unopened, to the NEG `seatrials-test-idp`, which the Service `keycloak` names
   (tacplus-dev/cloud#21, its README, The public entry). The test IdP has a port of its own because a TCP proxy does
@@ -109,7 +113,8 @@ A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), 
 | --- | --- | --- |
 | [`testidp_test.sh`](testidp_test.sh) | `ci/checks.sh` (every pipeline) | Secret derivation, the render (secrets in, none in the files), the claim shapes, the login form, RS256, and that this README lists every user. |
 | [`apply_test.sh`](apply_test.sh) | `ci/checks.sh` (every pipeline) | `apply.sh`'s seeds, with stubs: generated and stored as one version of `test-idp-seeds` the first time, the Secrets derived from them, nothing stored when the job read them, one seed or a refused store failing before anything is written, no seed printed. |
-| [`local.sh`](local.sh) | by hand, before landing a realm change (needs docker) | Starts the pinned Keycloak locally, the realms imported as in the cluster, and runs `signin.sh`'s IdP checks. A second Keycloak, as a new pod would be, imports them again: every `sub` must be the same, and the removed user back. haproxy is not part of it. |
+| [`manifests_test.sh`](manifests_test.sh) | `ci/checks.sh` (every pipeline) | Every container of `keycloak.yaml` and `admin-job.yaml` has a read-only root and no privilege escalation, and writes only to emptyDirs; Keycloak starts `--optimized` on what `quarkus-copy` and `build` put in `lib/quarkus`, mounted read-only, and its build options are `build`'s only. |
+| [`local.sh`](local.sh) | by hand, before landing a realm or pod change (needs docker) | Runs the pinned Keycloak locally as the pod does (the init containers, then Keycloak, each with a read-only root), the realms imported as in the cluster, and runs `signin.sh`'s IdP checks. A second Keycloak, as a new pod would be, imports them again: every `sub` must be the same, and the removed user back. haproxy is not part of it. |
 | [`signin.sh`](signin.sh) | the `test-idp-signin` job, after `apply.sh` | Every realm's discovery answers, on the public port. Every user signs in (code + PKCE) with its shape. `ada@alpha.test` (google), `bo@beta.test` (microsoft) and `cy@personal.test` (apple) sign in at tacplus.dev, get a kernel session, and the session names the realm and the user's `sub`. `gone@personal.test` is refused once removed (the admin Job removes it, in the cluster), then put back. Before the first `test-idp` apply (no `TEST_IDP_SEED`), the job skips: the test IdP is not set up yet. |
 
 The sign-in is a headless browser in Python's standard library. It follows tacplus.dev's `Authorize` to the

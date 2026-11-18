@@ -103,24 +103,63 @@ spec:
       # would read KEYCLOAK_ADMIN as its admin's name.
       enableServiceLinks: false
       terminationGracePeriodSeconds: 30
+      # Every container's root is read-only (#54): each writes only to its
+      # emptyDirs. Keycloak's build options are fixed by a build into the emptyDir
+      # quarkus, on lib/quarkus, before it starts --optimized: a plain start would
+      # rebuild into the image's lib/quarkus. The build needs the image's own
+      # lib/quarkus there first, which the emptyDir hides, so quarkus-copy copies it in.
+      initContainers:
+        - name: quarkus-copy
+          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          # -R, not -a: the emptyDir is root's, and cp may not set its mode or times.
+          command: [cp, -R, /opt/keycloak/lib/quarkus/., /quarkus/]
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { memory: 64Mi }
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: quarkus, mountPath: /quarkus }
+        - name: build
+          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          args: [build]
+          env:
+            # The build options, the build's only (keycloak starts --optimized).
+            # The file-backed database (H2), in the pod: one replica, test data
+            # only, the realms imported on every start.
+            - { name: KC_DB, value: dev-file }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: quarkus, mountPath: /opt/keycloak/lib/quarkus }
+            - { name: tmp, mountPath: /tmp }
       containers:
         - name: keycloak
           # 26.8.1-2, the multi-arch index (arm64 among its images). The security
           # job scans it for arm64 (#41); its four HIGH CVEs, which no Keycloak
           # release fixes yet, are accepted until 2026-12-06
-          # (security-exceptions.yaml): move it to the release that does.
+          # (security-exceptions.yaml): move it to the release that does. The
+          # init containers run the same image.
           image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
-          args: [start, --import-realm]
+          args: [start, --optimized, --import-realm]
           env:
-            # The file-backed database (H2), in the pod: one replica, test data
-            # only, the realms imported on every start.
-            - { name: KC_DB, value: dev-file }
             - { name: KC_CACHE, value: local }
             - { name: KC_HOSTNAME, value: "https://idp.test.tacplus.dev:8443" }
             # TLS ends at haproxy, in this pod, which sets X-Forwarded-Proto.
             - { name: KC_HTTP_ENABLED, value: "true" }
             - { name: KC_PROXY_HEADERS, value: xforwarded }
-            - { name: KC_HEALTH_ENABLED, value: "true" }
             - { name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=50" }
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
@@ -147,10 +186,14 @@ spec:
             runAsUser: 1000
             runAsGroup: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           volumeMounts:
             - { name: data, mountPath: /opt/keycloak/data }
             - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
+            - { name: quarkus, mountPath: /opt/keycloak/lib/quarkus, readOnly: true }
+            # Vert.x's file cache, uploads and the JVM's perf data.
+            - { name: tmp, mountPath: /tmp }
         - name: haproxy
           # 3.4.7, the latest LTS line (3.4), the multi-arch index (arm64 among
           # its images); the security job scans it for arm64.
@@ -180,6 +223,8 @@ spec:
             - { name: haproxy-run, mountPath: /var/lib/haproxy }
       volumes:
         - { name: data, emptyDir: { sizeLimit: 512Mi } }
+        - { name: quarkus, emptyDir: { sizeLimit: 64Mi } }
+        - { name: tmp, emptyDir: { sizeLimit: 64Mi } }
         - { name: realms, secret: { secretName: keycloak-realms } }
         - { name: haproxy, configMap: { name: haproxy } }
         - { name: tls, secret: { secretName: keycloak-tls } }
