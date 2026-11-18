@@ -216,6 +216,62 @@ class Jwt(unittest.TestCase):
             t.verify_jwt(self.sign({"sub": "a"}, alg="none"), self.jwks)
 
 
+class Commands(unittest.TestCase):
+    """secret, new-seed and render write to a new file the caller names, mode
+    0600, and print its name only: never the value, never to stdout (#55)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def run_cli(self, *args):
+        env = dict(os.environ, **ENV)
+        return subprocess.run([sys.executable, "-B", t.__file__, *args], env=env,
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
+
+    def written(self, name, *args):
+        path = os.path.join(self.dir, name)
+        got = self.run_cli(*args, path)
+        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        with open(path) as f:
+            value = f.read()
+        self.assertIn(path, got.stdout)
+        return value, got.stdout + got.stderr
+
+    def test_secret(self):
+        value, out = self.written("admin", "secret", "admin")
+        self.assertEqual(value, t.derive(ENV["TEST_IDP_SEED"], "admin"))
+        self.assertNotIn(value, out)
+
+    def test_new_seed(self):
+        value, out = self.written("seed", "new-seed")
+        self.assertGreaterEqual(len(value), 32)
+        self.assertNotIn(value, out)
+
+    def test_render(self):
+        value, out = self.written("google.json", "render", os.path.join(REALMS, "google.json"))
+        self.assertEqual(json.loads(value), t.render(realm("google"), ENV))
+        for purpose in ("client/google/tacplus-dev", "pairwise-salt/google"):
+            self.assertNotIn(t.derive(ENV["TEST_IDP_CLIENT_SEED"], purpose), out)
+
+    def test_refuses_stdout_a_terminal_and_a_file_there(self):
+        there = os.path.join(self.dir, "there")
+        with open(there, "w") as f:
+            f.write("kept")
+        for path in ("-", "/dev/stdout", "/dev/tty", there):
+            got = self.run_cli("secret", "admin", path)
+            self.assertEqual(got.returncode, 1, path)
+            self.assertNotIn(t.derive(ENV["TEST_IDP_SEED"], "admin"), got.stdout + got.stderr)
+        with open(there) as f:
+            self.assertEqual(f.read(), "kept")
+
+    def test_no_file_is_usage(self):
+        for args in (("secret", "admin"), ("new-seed",), ("render", os.path.join(REALMS, "google.json"))):
+            got = self.run_cli(*args)
+            self.assertEqual(got.returncode, 2, args)
+            self.assertNotIn(t.derive(ENV["TEST_IDP_SEED"], "admin"), got.stdout + got.stderr)
+
+
 class Strings(unittest.TestCase):
     def test_find_strings(self):
         found = dict(t.find_strings({"a": {"b": ["x", {"c": "y"}]}, "n": 1}))

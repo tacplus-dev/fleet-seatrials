@@ -144,10 +144,11 @@ while IFS=$'\t' read -r name issuer; do
   if [ "$(curl -fsS -m 10 "$issuer/.well-known/openid-configuration" 2>/dev/null | jq -r '.issuer // empty' 2>/dev/null)" != "$issuer" ]; then
     echo "test idp: $name off: $issuer does not answer"; continue
   fi
-  python3 "$here/test-idp/testidp.py" secret "client/${issuer#"$test_idp"}/tacplus-dev" > "$tmp/test_secret" ||
+  python3 "$here/test-idp/testidp.py" secret "client/${issuer#"$test_idp"}/tacplus-dev" "$tmp/test_secret" ||
     refuse "TEST_IDP_CLIENT_SEED"
   jq --arg n "$name" --rawfile s "$tmp/test_secret" '. + {($n): $s}' "$tmp/test_idp.json" > "$tmp/t.json"
   mv "$tmp/t.json" "$tmp/test_idp.json"
+  rm -f "$tmp/test_secret"
 done < <(jq -r --arg p "$test_idp" '.[] | select((.issuer // "") | startswith($p)) | [.name, .issuer] | @tsv' "$tmp/bundle.json")
 kubectl -n "$ns" get configmap kernel-config-override -o jsonpath='{.data.override\.json}' > "$tmp/current.json"
 jq --slurpfile bundle "$tmp/bundle.json" --rawfile ms "$tmp/ms_secret" --rawfile google "$tmp/google_secret" \

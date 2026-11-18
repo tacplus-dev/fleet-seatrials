@@ -97,8 +97,8 @@ A secret is base64url(HMAC-SHA256(seed, `fleet-seatrials/test-idp/<purpose>`)), 
   `secretAccessor` on the secret (tacplus-dev/cloud#68; docs/deploy-pipeline.md, the test IdP); without it they
   go on without the seeds, saying so. Those jobs can derive the Keycloak admin's password too; they run for Maintainers only.
 - **The hub's manual checks:** the hub reads the secret's latest version into its environment, as an account
-  that may read it. Then `test-idp/testidp.py secret user/<realm>/<username>` prints that user's password. This
-  is never done in a job, whose log would keep it.
+  that may read it. Then `test-idp/testidp.py secret user/<realm>/<username> FILE` writes that user's password into
+  FILE, a new file of mode 0600, and prints only its name: no command prints a secret (#55).
 - **Rotating:** not automated yet: the `test-idp` job generates seeds only while the secret has no version
   (PROPOSALS.md, the test IdP's follow-ups). A new version, then `test-idp` and `signin-secrets`, rotates every
   password and client secret; the realms, and the admin's password, change with the pod `test-idp` rolls out.

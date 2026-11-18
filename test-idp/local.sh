@@ -20,10 +20,11 @@ cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$tmp"; }
 trap cleanup EXIT
 umask 077
 
-TEST_IDP_SEED=$(python3 "$here/testidp.py" new-seed)
-TEST_IDP_CLIENT_SEED=$(python3 "$here/testidp.py" new-seed)
+python3 "$here/testidp.py" new-seed "$tmp/seed"
+python3 "$here/testidp.py" new-seed "$tmp/client-seed"
+TEST_IDP_SEED=$(cat "$tmp/seed") TEST_IDP_CLIENT_SEED=$(cat "$tmp/client-seed")
 export TEST_IDP_SEED TEST_IDP_CLIENT_SEED
-python3 "$here/testidp.py" secret admin > "$tmp/admin"
+python3 "$here/testidp.py" secret admin "$tmp/admin"
 # Keycloak's own environment file: the admin password is on no command line.
 { echo KC_BOOTSTRAP_ADMIN_USERNAME=admin; echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(cat "$tmp/admin")"
   yq 'select(.kind == "Deployment") | .spec.template.spec.containers[] | select(.name == "keycloak") | .env[]
@@ -33,7 +34,7 @@ mkdir "$tmp/realms" "$tmp/import"
 for f in "$here"/realms/*.yaml; do
   r=$(basename "$f" .yaml)
   yq -o=json '.' "$f" > "$tmp/realms/$r.json"
-  python3 "$here/testidp.py" render "$tmp/realms/$r.json" > "$tmp/import/$r.json"
+  python3 "$here/testidp.py" render "$tmp/realms/$r.json" "$tmp/import/$r.json"
 done
 # Readable by Keycloak's user in the container (docker cp makes them root's), as
 # the Secret's files are in the pod; the directory around them stays private.

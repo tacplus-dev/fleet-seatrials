@@ -28,7 +28,7 @@
 # that secret's first version, so no person ever sees them: no GitLab token
 # writes a variable (gitlab.com Free has no project access tokens; the hub,
 # 2026-11-09). Nothing here prints a secret, and none is on a command line or
-# in an artifact.
+# in an artifact: testidp.py writes each into a new file here, mode 0600.
 #
 # The realms are rendered with their secrets into the Secret keycloak-realms,
 # which Keycloak imports on every start. The Deployment is rolled out when the
@@ -50,8 +50,11 @@ umask 077
 
 # The seeds: those the job read, or, the first time, new ones, stored.
 if [ -z "${TEST_IDP_SEED:-}" ] && [ -z "${TEST_IDP_CLIENT_SEED:-}" ]; then
-  { printf 'TEST_IDP_SEED=%s\n' "$(python3 "$here/testidp.py" new-seed)"
-    printf 'TEST_IDP_CLIENT_SEED=%s\n' "$(python3 "$here/testidp.py" new-seed)"; } > "$tmp/seeds"
+  python3 "$here/testidp.py" new-seed "$tmp/seed"
+  python3 "$here/testidp.py" new-seed "$tmp/client-seed"
+  { printf 'TEST_IDP_SEED=%s\n' "$(cat "$tmp/seed")"
+    printf 'TEST_IDP_CLIENT_SEED=%s\n' "$(cat "$tmp/client-seed")"; } > "$tmp/seeds"
+  rm -f "$tmp/seed" "$tmp/client-seed"
   gcloud secrets versions add test-idp-seeds --project="$project" --data-file="$tmp/seeds" >/dev/null 2>"$tmp/err" ||
     { echo "storing the seeds in the secret test-idp-seeds: $(grep -m1 ERROR "$tmp/err" || head -c 300 "$tmp/err")" >&2; exit 1; }
   TEST_IDP_SEED=$(sed -n 's/^TEST_IDP_SEED=//p' "$tmp/seeds") TEST_IDP_CLIENT_SEED=$(sed -n 's/^TEST_IDP_CLIENT_SEED=//p' "$tmp/seeds")
@@ -76,7 +79,7 @@ rm -f "$tmp/tls.pem"
 
 # Keycloak's admin credential, and the realms with their secrets, as it imports them.
 printf admin > "$tmp/admin-user"
-python3 "$here/testidp.py" secret admin > "$tmp/admin-password"
+python3 "$here/testidp.py" secret admin "$tmp/admin-password"
 kubectl -n "$ns" create secret generic keycloak-admin --from-file=username="$tmp/admin-user" \
   --from-file=password="$tmp/admin-password" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 rm -f "$tmp/admin-password"
@@ -84,7 +87,7 @@ mkdir "$tmp/realms" "$tmp/import"
 for f in "$here"/realms/*.yaml; do
   r=$(basename "$f" .yaml)
   yq -o=json '.' "$f" > "$tmp/realms/$r.json"
-  python3 "$here/testidp.py" render "$tmp/realms/$r.json" > "$tmp/import/$r.json"
+  python3 "$here/testidp.py" render "$tmp/realms/$r.json" "$tmp/import/$r.json"
 done
 kubectl -n "$ns" create secret generic keycloak-realms --from-file="$tmp/import" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null

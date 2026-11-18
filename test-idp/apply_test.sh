@@ -8,7 +8,8 @@
 # test-idp-seeds, two lines NAME=value, and the Secrets it writes are derived
 # from them; with the seeds the job read, it stores nothing; with only one, or
 # when Secret Manager refuses the version, it fails, saying why, and writes no
-# Secret. No seed is printed or on a command line. Needs bash, python3 and yq.
+# Secret. No seed is printed or on a command line, and each secret is in a
+# file of mode 0600 (#55). Needs bash, python3 and yq.
 #
 #   test-idp/apply_test.sh
 set -uo pipefail
@@ -66,7 +67,10 @@ apply() {
   env -i HOME="$work" PATH="$work/bin:$PATH" "$@" "$work/tree/test-idp/apply.sh" > "$work/out" 2>&1
 }
 # derived SEED_VAR=SEED... PURPOSE: what testidp.py derives for PURPOSE from those seeds.
-derived() { env "${@:1:$#-1}" python3 "$work/tree/test-idp/testidp.py" secret "${*: -1}"; }
+derived() {
+  rm -f "$work/derived"
+  env "${@:1:$#-1}" python3 "$work/tree/test-idp/testidp.py" secret "${*: -1}" "$work/derived" > /dev/null && cat "$work/derived"
+}
 
 if apply; then
   seed=$(sed -n 's/^TEST_IDP_SEED=//p' "$work/stored" 2>/dev/null)
@@ -80,6 +84,8 @@ if apply; then
     ok "the admin's password is derived from the stored seed" || fail "keycloak-admin is not derived from the stored seed"
   grep -q "$(derived TEST_IDP_CLIENT_SEED="$client" client/google/tacplus-dev)" "$work/secrets/keycloak-realms/google.json" &&
     ok "the realms' client secrets are derived from the stored client seed" || fail "keycloak-realms is not derived from the stored client seed"
+  [ "$(stat -c %a "$work/secrets/keycloak-admin/password" "$work/secrets/keycloak-realms/"*.json | sort -u)" = 600 ] &&
+    ok "the derived files are mode 0600" || fail "modes: $(stat -c '%a %n' "$work/secrets/keycloak-admin/password" "$work/secrets/keycloak-realms/"*.json)"
   grep -qx 'seeds: generated and stored as the first version of the secret test-idp-seeds' "$work/out" &&
     ok "it says it generated and stored them" || fail "output: $(cat "$work/out")"
   ! grep -qF -e "$seed" -e "$client" "$work/out" "$work/log/cmdline" &&

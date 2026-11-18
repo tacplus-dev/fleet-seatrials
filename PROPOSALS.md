@@ -249,7 +249,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   secret to stdout by design, for `apply.sh` and the hub to capture, never into a job's log. A read-only root
   for Keycloak needs an `--optimized` start (a plain `start` rebuilds into `/opt/keycloak/lib`) and emptyDirs for
   `/tmp` and kcadm's config, checked on a real Keycloak first (`test-idp/local.sh`, which needs docker), since
-  the IdP is live on `dev`; the `secret` command could write to a file the caller names instead of stdout. The
+  the IdP is live on `dev`. The `secret` command (and `new-seed` and `render`) writes to a new file the caller
+  names, mode 0600, since #55 (the hub, 2026-11-18: fix, no exception); the next nightly report confirms
+  CodeQL's finding gone, and that its file-storage query (`py/clear-text-storage-sensitive-data`) does not take
+  its place (if it does, that is the hub's to decide: the 0600 file is the design #55 decided). The
   same report's Trivy DS-0002 (`images/tacplus-build.Dockerfile` runs as root) is the build image's, not the
   test IdP's. Filed as bugs by the nightly scan, 2026-11-18: KSV-0014 #54, the `secret` command #55, DS-0002 #56,
   and the report's ten new findings below HIGH (CPU limits, UID/GID, registries, `RUN cd`, HEALTHCHECK) #57.

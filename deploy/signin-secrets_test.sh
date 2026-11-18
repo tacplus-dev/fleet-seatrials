@@ -167,7 +167,8 @@ fi
 # while its realm's discovery answers, since oauth refuses its whole config
 # over one provider it cannot use.
 seed=cccccccccccccccccccccccccccccccccccccccc
-test_secret=$(TEST_IDP_CLIENT_SEED=$seed python3 "$here/../test-idp/testidp.py" secret client/google/tacplus-dev)
+TEST_IDP_CLIENT_SEED=$seed python3 "$here/../test-idp/testidp.py" secret client/google/tacplus-dev "$work/test_secret" > /dev/null
+test_secret=$(cat "$work/test_secret")
 run "the test IdP's client secret is derived from its seed" write TEST_IDP_CLIENT_SEED=$seed &&
   check "Test Google's secret" "$(provider 'Test Google' client_secret)" "$test_secret" &&
   check "Test Google on" "$(provider 'Test Google' enable)" true &&

@@ -4,14 +4,16 @@
 """The test IdP's tooling (#27): its secrets, its realms and its sign-in checks.
 
 Python's standard library only (the deploy pipeline's image has python3, and
-nothing is installed). No command prints a secret except `secret`, whose output
-the caller captures; a password or a token is never in an argument, a log line
-or an error message.
+nothing is installed). No command prints a secret: those that make one write
+it to a new file the caller names, mode 0600, and print only that file's name
+(#55); a password or a token is never in an argument, a log line or an error
+message.
 
-  testidp.py secret PURPOSE           the secret derived for PURPOSE (see derive)
-  testidp.py render REALM.json        the realm with its client secrets, pairwise
+  testidp.py secret PURPOSE FILE      the secret derived for PURPOSE (see derive), into FILE
+  testidp.py new-seed FILE            a fresh seed, into FILE
+  testidp.py render REALM.json FILE   the realm with its client secrets, pairwise
                                       salt and user passwords filled in, as Keycloak
-                                      imports it on every start (test-idp/apply.sh)
+                                      imports it on every start (test-idp/apply.sh), into FILE
   testidp.py claims ISSUER_URL REALM.json USERNAME
                                       signs USERNAME in with the realm's claims-check client
                                       (authorization code + PKCE) and checks its ID token's shape
@@ -94,6 +96,20 @@ def secret(purpose, env=None):
 def new_seed():
     """A fresh seed, for the pipeline to store when none is set."""
     return pysecrets.token_urlsafe(48)
+
+
+def write_new(path, what, text):
+    """Writes text to a new file at path, mode 0600, and prints only its name.
+    Never to stdout, a terminal or a file already there: O_EXCL refuses every
+    path that exists (/dev/stdout, /dev/tty), so the mode is always 0600."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except OSError as err:
+        raise Failure(f"{what}: {path} is not a new file ({err.strerror}): it is written nowhere else") from None
+    with os.fdopen(fd, "w") as f:
+        os.fchmod(fd, 0o600)
+        f.write(text)
+    print(f"{what}: written to {path}")
 
 
 # ---- realms ----------------------------------------------------------------
@@ -462,12 +478,12 @@ def load(path):
 def main(argv):
     cmd, args = (argv[1], argv[2:]) if len(argv) > 1 else ("", [])
     try:
-        if cmd == "secret" and len(args) == 1:
-            sys.stdout.write(secret(args[0]))
-        elif cmd == "new-seed" and not args:
-            sys.stdout.write(new_seed())
-        elif cmd == "render" and len(args) == 1:
-            json.dump(render(load(args[0])), sys.stdout)
+        if cmd == "secret" and len(args) == 2:
+            write_new(args[1], f"secret {args[0]}", secret(args[0]))
+        elif cmd == "new-seed" and len(args) == 1:
+            write_new(args[0], "new seed", new_seed())
+        elif cmd == "render" and len(args) == 2:
+            write_new(args[1], f"realm {args[0]}", json.dumps(render(load(args[0]))))
         elif cmd == "claims" and len(args) == 3:
             claims_check(args[0].rstrip("/"), load(args[1]), args[2])
         elif cmd == "tacplus" and len(args) == 4:
