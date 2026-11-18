@@ -29,3 +29,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-15 looper issue Pin the build: a committed build.lock naming this repository's build image by digest (#42)
 - 2026-11-18 looper issue test-idp: Keycloak and kcadm run with a writable root file system (trivy KSV-0014, HIGH, fails the build's security policy) (#54)
 - 2026-11-18 looper issue Trivy config findings below HIGH in test-idp/ and the build image: CPU limits, UID/GID, registries, RUN cd, HEALTHCHECK (10 new, non-blocking) (#57)
+- 2026-11-18 looper issue test-idp/testidp.py secret writes derived secrets to stdout (codeql py/clear-text-logging-sensitive-data, HIGH, fails the build's security policy) (#55)
