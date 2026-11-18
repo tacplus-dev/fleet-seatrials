@@ -225,7 +225,7 @@ class Commands(unittest.TestCase):
 
     def run_cli(self, *args):
         env = dict(os.environ, **ENV)
-        return subprocess.run([sys.executable, "-B", t.__file__, *args], env=env,
+        return subprocess.run([sys.executable, "-B", t.__file__, *args], env=env, cwd=self.dir,
                               capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
     def written(self, name, *args):
@@ -264,6 +264,7 @@ class Commands(unittest.TestCase):
             self.assertNotIn(t.derive(ENV["TEST_IDP_SEED"], "admin"), got.stdout + got.stderr)
         with open(there) as f:
             self.assertEqual(f.read(), "kept")
+        self.assertEqual(sorted(os.listdir(self.dir)), ["there"])
 
     def test_no_file_is_usage(self):
         for args in (("secret", "admin"), ("new-seed",), ("render", os.path.join(REALMS, "google.json"))):

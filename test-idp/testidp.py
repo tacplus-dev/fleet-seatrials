@@ -101,7 +101,10 @@ def new_seed():
 def write_new(path, what, text):
     """Writes text to a new file at path, mode 0600, and prints only its name.
     Never to stdout, a terminal or a file already there: O_EXCL refuses every
-    path that exists (/dev/stdout, /dev/tty), so the mode is always 0600."""
+    path that exists (/dev/stdout, /dev/tty), so the mode is always 0600; "-",
+    which means stdout to the caller, is refused before it becomes a file."""
+    if path == "-":
+        raise Failure(f"{what}: - is stdout: it is written nowhere else")
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except OSError as err:
