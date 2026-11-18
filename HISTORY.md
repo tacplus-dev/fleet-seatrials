@@ -28,3 +28,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-15 looper issue test-idp: haproxy pinned to the 3.2 line as "the LTS line"; 3.4 is the latest LTS line (2026-06-03, supported to 2031-Q2) (#53)
 - 2026-11-15 looper issue Pin the build: a committed build.lock naming this repository's build image by digest (#42)
 - 2026-11-18 looper issue test-idp: Keycloak and kcadm run with a writable root file system (trivy KSV-0014, HIGH, fails the build's security policy) (#54)
+- 2026-11-18 looper issue Trivy config findings below HIGH in test-idp/ and the build image: CPU limits, UID/GID, registries, RUN cd, HEALTHCHECK (10 new, non-blocking) (#57)
