@@ -397,8 +397,8 @@ What the account may do, and nothing more:
   (`--service-account`), since the default Cloud Build account has no rights here. It pushes to the registry and
   has `roles/storage.objectAdmin` on the bucket.
 - **The registry** `us-central1-docker.pkg.dev/tacplus-dev/seatrials` (`REGISTRY`): Docker, us-central1, the
-  fleet's images (`schematic/<service>`, `ci/tacplus-build`). `roles/artifactregistry.reader` on it, so
-  `images/build.sh` can read the `fp-` tags; the builds' account writes it, and the `dev` nodes' account
+  fleet's images (`schematic/<service>`, `ci/tacplus`, `ci/tacplus-build`). `roles/artifactregistry.reader` on it, so
+  `images/build.sh` can read the `fp-` tags and the digest of the `ci/tacplus` image the build image layers (#57); the builds' account writes it, and the `dev` nodes' account
   (`gke-nodes`) reads it. It is a deploy registry, not tacplus-ci's `build-cache`: that one is BuildKit's
   cache, written and read only by tacplus-dev/build's identity and emptied of what is 30 days old, so the
   nodes could not pull from it and a running fleet's images would go.

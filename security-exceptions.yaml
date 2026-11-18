@@ -29,6 +29,11 @@
 #   Guava 33.6.0-jre (fixed in 33.7.2)                              CVE-2026-102554
 #   sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8, no fix yet)           CVE-2026-119373 119586
 #   java-21-openjdk-headless 1:21.0.13.0.9-1.2.el9 (no fix yet)     CVE-2026-91403
+#
+# And one Trivy config check, rule-wide (Jody, the hub's triage rules, #57): DS-0026, no HEALTHCHECK in a
+# Dockerfile. Reviewed every six months, not fixed: Kubernetes ignores Docker's HEALTHCHECK. The other Trivy config
+# findings below HIGH on #57 (DS-0013, KSV-0011, KSV-0020, KSV-0021, KSV-0125) stay on the nightly report, with no
+# exception, by the same decision.
 exceptions:
   - id: GO-2025-3528
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
@@ -146,3 +151,7 @@ exceptions:
     reason: "java-21-openjdk-headless 1:21.0.13.0.9-1.2.el9 (Red Hat 9.8), the JDK Keycloak runs on, in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-0, the latest, has the same JDK): the fix is the first Keycloak release rebuilt on a fixed OpenJDK 21, then move the pin to it by tag and digest."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
+  - id: DS-0026
+    reason: "Trivy's no-HEALTHCHECK check, for every Dockerfile in this repository (today images/tacplus-build.Dockerfile, the image the service builds run in on Cloud Build, #57): Kubernetes ignores Docker's HEALTHCHECK, and what this repository runs on a cluster is checked by its liveness and readiness probes (the operator's for the fleet, test-idp/keycloak.yaml's for the test IdP); a build step's image needs none. Every FROM is pinned by digest (images/build_test.sh). Non-blocking (LOW): no gate is bypassed."
+    decided_by: "jodydadescott (hub), the triage rules' rule-wide DS-0026 exception (tacplus-dev/fleet-seatrials#57, 2026-11-18)"
+    expires: 2027-05-17

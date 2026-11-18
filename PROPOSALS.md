@@ -256,6 +256,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   same report's Trivy DS-0002 (`images/tacplus-build.Dockerfile` runs as root) is the build image's, not the
   test IdP's. Filed as bugs by the nightly scan, 2026-11-18: KSV-0014 #54, the `secret` command #55, DS-0002 #56,
   and the report's ten new findings below HIGH (CPU limits, UID/GID, registries, `RUN cd`, HEALTHCHECK) #57.
+  #57 is decided (the hub's triage rules, 2026-11-18): DS-0026 is accepted rule-wide until 2027-05-17, every FROM
+  of the build image is pinned by digest, and the rest stay on the nightly report with no exception. Of those,
+  DS-0013 (`WORKDIR` for `RUN cd`) and KSV-0011 (CPU limits from the requests) are mechanical fixes, and
+  KSV-0020/0021 (UID/GID above 10000) belong with #54's securityContexts: each is open to a later issue.
 - **One signing path for the reader token** (2026-11-02, #30): `.github-reader` asks Cloud KMS as the job's
   federated principal, then, on a 401 or 403, as `fleet-seatrials-reader@`. Because the first dry run's error was
   dropped, nobody knew which path KMS accepts, so both are there. Once a dry run's log shows which one signs,

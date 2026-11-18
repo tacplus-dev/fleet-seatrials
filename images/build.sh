@@ -111,12 +111,19 @@ build_tacplus() {
   gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" "${staging[@]}" \
     --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
   rm -rf "$src"
+  # The build image layers that tacplus image by the digest the registry gives
+  # its tag, as every FROM is pinned (#57): the tag is the commit, which a later
+  # build of the same commit would move.
+  local digest
+  digest=$(gcloud artifacts docker images describe "$registry/ci/tacplus:$tacplus_commit" --format 'value(image_summary.digest)')
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+    { echo "$registry/ci/tacplus:$tacplus_commit has no digest in the registry: [$digest]" >&2; exit 1; }
   # The build image the service steps run in: toolchains + this tacplus + the
   # Java launcher, built from its pinned source placed beside the Dockerfile.
   rm -rf "$here/images/launcher" && git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
     && git -C "$here/images/launcher" checkout -q "$launcher_commit" && rm -rf "$here/images/launcher/.git"
   gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" "${staging[@]}" \
-    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit,_FINGERPRINT=$build_fp" --quiet
+    --substitutions "_REGISTRY=$registry,_TACPLUS_IMAGE=$registry/ci/tacplus:$tacplus_commit@$digest,_FINGERPRINT=$build_fp" --quiet
   rm -rf "$here/images/launcher"
 }
 

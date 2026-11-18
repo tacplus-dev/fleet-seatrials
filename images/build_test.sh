@@ -34,6 +34,9 @@ case "$*" in
   # service tags STUB_SERVICE_TAGS lists (every service is asked for them all).
   "artifacts docker tags list "*/ci/tacplus-build" "*) for t in ${STUB_BUILD_TAGS:-}; do echo "$t"; done ;;
   "artifacts docker tags list "*) for t in ${STUB_SERVICE_TAGS:-}; do echo "$t"; done ;;
+  # The tacplus image just built, by digest; none with STUB_NO_DIGEST.
+  "artifacts docker images describe "*/ci/tacplus:*)
+    [ -n "${STUB_NO_DIGEST:-}" ] || echo "sha256:$(printf '%064d' 7)" ;;
   "builds submit "*)
     for a in "$@"; do case "$a" in --substitutions=*|_REGISTRY=*) s=$a ;; esac; done
     svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
@@ -174,6 +177,24 @@ STUB_BUILD_TAGS="seatrials fp-$fp_build" platforms_run "platforms: [arm64]" chan
 check "changed, the build image built: it is reused" "$(submits)" "service.cloudbuild.yaml"
 STUB_BUILD_TAGS="seatrials fp-$fp_build" platforms_run "platforms: [arm64]" fingerprint > /dev/null
 check "fingerprint builds nothing" "$(submits)" ""
+
+# Every FROM of the build image is pinned by digest (Jody, #57): BUILD_IMAGE's
+# default in the Dockerfile, and TACPLUS_IMAGE, the tacplus image build.sh has
+# just built, which it passes by the digest the registry gives its tag, so a
+# rebuild of the same commit under the same tag never changes what it layers.
+check "the Dockerfile's BUILD_IMAGE is pinned by digest" \
+  "$(sed -n 's/^ARG BUILD_IMAGE=[^@]*@\(sha256:[0-9a-f]\{64\}\)$/pinned/p' "$here/tacplus-build.Dockerfile")" pinned
+check "the Dockerfile's FROMs are its ARGs" \
+  "$(sed -n 's/^FROM \([^ ]*\).*/\1/p' "$here/tacplus-build.Dockerfile" | sort -u | xargs)" '${BUILD_IMAGE} ${TACPLUS_IMAGE}'
+check "the build image is given TACPLUS_IMAGE as _TACPLUS_IMAGE" \
+  "$(grep -c -- '--build-arg=TACPLUS_IMAGE=${_TACPLUS_IMAGE}$' "$here/tacplus-build.cloudbuild.yaml")" 1
+platforms_run "platforms: [arm64]" tacplus > /dev/null
+check "tacplus: the build image layers the tacplus image by digest" \
+  "$(grep -m1 'tacplus-build.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^_TACPLUS_IMAGE=//p' | cut -d' ' -f1)" \
+  "us-central1-docker.pkg.dev/tacplus-dev/seatrials/ci/tacplus:$(sed -n 's/^tacplus_commit: *//p' "$here/pins.yaml")@sha256:$(printf '%064d' 7)"
+out=$(STUB_NO_DIGEST=1 platforms_run "platforms: [arm64]" tacplus) &&
+  { echo "FAIL tacplus, no digest for the tacplus image: passed [$out]"; failures=$((failures + 1)); } ||
+  check "tacplus, no digest for the tacplus image: it fails before the build image" "$(submits)" "tacplus.cloudbuild.yaml"
 check "fingerprint says the build image is built" \
   "$(STUB_BUILD_TAGS="fp-$fp_build" platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "tacplus-build" { print $3 }')" built
 check "the service fingerprint is unchanged by the build image" "$fp_kernel" "$fp_arm64"
