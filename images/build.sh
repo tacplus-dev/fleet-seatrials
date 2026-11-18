@@ -9,6 +9,7 @@
 #   images/build.sh all                # every service in fleet.lock
 #   images/build.sh kernel gateway     # some services
 #   images/build.sh changed            # only the services whose fingerprint has no image yet
+#                                      # (and, the build image new, one of each language)
 #   images/build.sh fingerprint        # print each service's fingerprint and whether it is built
 #   WAIT=1 images/build.sh changed     # and wait for every build submitted; fail if one fails
 #
@@ -98,9 +99,10 @@ build_fingerprint() {
 }
 
 # built IMAGE FINGERPRINT -> 0 when the registry already holds an image built
-# from exactly these inputs.
+# from exactly these inputs. grep reads every tag: with -q it stops at the
+# first match, and under pipefail the list's writer, cut off, fails the check.
 built() {
-  gcloud artifacts docker tags list "$1" --format 'value(tag)' 2>/dev/null | grep -qx "fp-$2"
+  gcloud artifacts docker tags list "$1" --format 'value(tag)' 2>/dev/null | grep -x "fp-$2" > /dev/null
 }
 
 build_tacplus() {
@@ -119,9 +121,11 @@ build_tacplus() {
 }
 
 # ensure_tacplus: builds the build image unless the registry has one with its
-# fingerprint, before any service build is submitted.
+# fingerprint, before any service build is submitted; new_build_image=1 when it
+# did.
+new_build_image=0
 ensure_tacplus() {
-  if built "$build_image" "$build_fp"; then echo "== tacplus-build unchanged ($build_fp)"; else build_tacplus; fi
+  if built "$build_image" "$build_fp"; then echo "== tacplus-build unchanged ($build_fp)"; else build_tacplus; new_build_image=1; fi
 }
 
 # language and go main package, read from the service checkout itself.
@@ -132,6 +136,15 @@ service_facts() { # dir name -> "lang main"
   echo "$lang $main"
 }
 
+# service_lang SERVICE -> its language, from its checkout at the locked commit.
+service_lang() {
+  local src lang
+  src=$(mktemp -d)
+  git clone -q "$(lock_field "$1" repo)" "$src" && git -C "$src" checkout -q "$(lock_field "$1" commit)"
+  lang=$(service_facts "$src" "$1"); rm -rf "$src"
+  echo "${lang%% *}"
+}
+
 build_service() {
   local name=$1 repo commit src
   repo=$(lock_field "$name" repo); commit=$(lock_field "$name" commit)
@@ -140,6 +153,7 @@ build_service() {
   mkdir -p "$src/.fleet" && cp -R "$here/build/proto" "$src/.fleet/proto"
   read -r lang main <<<"$(service_facts "$src" "$name")"
   echo "== $name ($lang) @ ${commit:0:12}"
+  echo "$lang" >> "$languages"
   local fp; fp=$(fingerprint "$name")
   local id
   id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
@@ -167,7 +181,8 @@ wait_builds() {
 build_image=$registry/ci/tacplus-build
 build_fp=$(build_fingerprint)
 submitted=$(mktemp)
-trap 'rm -f "$submitted"' EXIT
+languages=$(mktemp) # the language of every service build submitted, one per line
+trap 'rm -f "$submitted" "$languages"' EXIT
 
 case "${1:-}" in
   tacplus) build_tacplus ;;
@@ -180,10 +195,22 @@ case "${1:-}" in
     done ;;
   changed)
     ensure_tacplus
+    unchanged=()
     for s in $(services); do
       fp=$(fingerprint "$s")
-      if built "$registry/schematic/$s" "$fp"; then echo "== $s unchanged ($fp)"; else build_service "$s"; fi
-    done ;;
+      if built "$registry/schematic/$s" "$fp"; then echo "== $s unchanged ($fp)"; unchanged+=("$s"); else build_service "$s"; fi
+    done
+    # A new build image is an input of no service's fingerprint, so nothing
+    # above was built in it for that. It is proven on each language it builds
+    # (#56): the first unchanged service of every language no build above has.
+    if [ "$new_build_image" = 1 ]; then
+      for s in ${unchanged[@]+"${unchanged[@]}"}; do
+        lang=$(service_lang "$s")
+        grep -qx "$lang" "$languages" && continue
+        echo "== $s ($lang): the build image is new ($build_fp): built in it for $lang"
+        build_service "$s"
+      done
+    fi ;;
   "") echo "usage: images/build.sh tacplus | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
   *) ensure_tacplus; for s in "$@"; do build_service "$s"; done ;;
 esac

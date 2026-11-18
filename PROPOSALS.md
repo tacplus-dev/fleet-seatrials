@@ -151,7 +151,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   build image's fingerprint (`ci/tacplus-build:fp-<hash>`, #33). A new toolchain, launcher or tacplus patch
   therefore rebuilds no service that is already built, and its image keeps the old launcher. Proposal: add the build
   image's fingerprint to each service's. It is one line in `images/build.sh`, but it rebuilds all 13 services on
-  every build-image change, so the cost needs Jody's call.
+  every build-image change, so the cost needs Jody's call. Since #56, `changed` builds the first service of each
+  language in a new build image, so a broken one fails the `images` job. The other services still keep their
+  old images until they change.
 - **The client generates against the fleet's locked contracts** (2026-10-28, nightly scan, #14): `client/`'s
   `depends` resolve through the registry at `latest` (each contract's main), not at the commits in `fleet.lock`, so
   the client can call a contract newer than the one deployed, and it broke when those mains raised their floor to

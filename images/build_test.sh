@@ -18,7 +18,10 @@ cat > "$work/bin/git" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
   *"rev-parse"*) echo 0123456789ab ;;
-  "clone -q "*) mkdir -p "$4"; echo "language: go" > "$4/tacplus.yaml" ;;
+  # The fleet's Java and Rust services are themselves; every other one is Go.
+  "clone -q "*) mkdir -p "$4"
+    case "$3" in */kernel.git|*/eventbus.git|*/stratum.git) l=java ;; */gateway.git|*/oauth.git|*/llmproxy.git) l=rust ;; *) l=go ;; esac
+    echo "language: $l" > "$4/tacplus.yaml" ;;
   *"checkout -q"*) ;;
   *) echo "unexpected git $*" >&2; exit 3 ;;
 esac
@@ -27,9 +30,10 @@ cat > "$work/bin/gcloud" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
 case "$*" in
-  # Nothing built yet, but the build image tags STUB_BUILD_TAGS lists.
+  # Nothing built yet, but the build image tags STUB_BUILD_TAGS lists and the
+  # service tags STUB_SERVICE_TAGS lists (every service is asked for them all).
   "artifacts docker tags list "*/ci/tacplus-build" "*) for t in ${STUB_BUILD_TAGS:-}; do echo "$t"; done ;;
-  "artifacts docker tags list "*) ;;
+  "artifacts docker tags list "*) for t in ${STUB_SERVICE_TAGS:-}; do echo "$t"; done ;;
   "builds submit "*)
     for a in "$@"; do case "$a" in --substitutions=*|_REGISTRY=*) s=$a ;; esac; done
     svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
@@ -173,6 +177,41 @@ check "fingerprint builds nothing" "$(submits)" ""
 check "fingerprint says the build image is built" \
   "$(STUB_BUILD_TAGS="fp-$fp_build" platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "tacplus-build" { print $3 }')" built
 check "the service fingerprint is unchanged by the build image" "$fp_kernel" "$fp_arm64"
+
+# A new build image is proven on every language it builds (#56): when `changed`
+# has just built the build image, it also builds the first service of each
+# language in fleet.lock that it would otherwise leave alone, so the images job
+# fails on a build image that cannot build a Go, Rust or Java service, instead
+# of the next change to one. Once the build image is in the registry it does not.
+built_services() { grep '^builds submit .*service.cloudbuild.yaml' "$work/log" | tr ',' '\n' | sed -n 's/^_SERVICE=//p' | xargs; }
+service_tags() { # [SKIP] -> the fp- tag of every service but SKIP
+  platforms_run "platforms: [arm64]" fingerprint | awk -v skip="${1:-}" '$1 != "tacplus-build" && $1 != skip { printf "fp-%s ", $2 }'
+}
+STUB_SERVICE_TAGS=$(service_tags) platforms_run "platforms: [arm64]" changed > /dev/null
+check "changed, a new build image, nothing else: the first service of each language is built in it" \
+  "$(submits) / $(built_services)" "tacplus.cloudbuild.yaml tacplus-build.cloudbuild.yaml service.cloudbuild.yaml / kernel opa gateway"
+STUB_SERVICE_TAGS=$(service_tags llmproxy) platforms_run "platforms: [arm64]" changed > /dev/null
+check "changed, a new build image and a changed Rust service: it stands for Rust" \
+  "$(built_services)" "llmproxy kernel opa"
+tags=$(service_tags)
+STUB_BUILD_TAGS="fp-$fp_build" STUB_SERVICE_TAGS=$tags platforms_run "platforms: [arm64]" changed > /dev/null
+check "changed, the build image and every service built: nothing is built" "$(submits)" ""
+out=$(STUB_SERVICE_TAGS=$(service_tags) platforms_run "platforms: [arm64]" changed)
+[[ "$out" == *"kernel (java): the build image is new"* ]] && echo "ok   a service built for its language says so" ||
+  { echo "FAIL a service built for its language does not say so: [$out]"; failures=$((failures + 1)); }
+for cmd in all gateway; do
+  STUB_SERVICE_TAGS=$(service_tags) platforms_run "platforms: [arm64]" "$cmd" > /dev/null
+  check "$cmd, a new build image: the services asked for, once each" "$(built_services | wc -w | tr -d ' ')" \
+    "$([ "$cmd" = all ] && echo "$services" || echo 1)"
+done
+
+# The build image's steps run unprivileged (#56; Trivy DS-0002): its last USER
+# is the base image's build (uid 1000), and a service build's first step, as
+# root, hands it the root-owned /workspace and /builder/home it writes.
+check "the build image's last USER" "$(sed -n 's/^USER //p' "$here/tacplus-build.Dockerfile" | tail -1)" build
+check "a service build's first step hands /workspace and \$HOME to it" \
+  "$(awk '/^steps:/ { s = 1 } s && /^  - id: / { n++ } s && n == 1 && /^    (name|entrypoint|args):/' "$here/service.cloudbuild.yaml" | xargs)" \
+  'name: gcr.io/cloud-builders/docker entrypoint: chown args: [-R, 1000:1000, /workspace, /builder/home]'
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1

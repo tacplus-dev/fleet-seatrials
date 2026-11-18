@@ -46,7 +46,8 @@ The cutover's order and the grants still to come are in
   platform's image is `fp-<fingerprint>-<arch>`, and the tags above name one multi-arch index over them. The
   fingerprint covers the platforms, so changing them rebuilds every service. The build image the services build
   in is `ci/tacplus-build:fp-<fingerprint>` over its pinned commits, Dockerfile and Cloud Build config; every
-  service build first builds it when that tag is missing.
+  service build first builds it when that tag is missing, and `images/build.sh changed` then builds one service
+  of each language in it too. Its steps run as the unprivileged `build`, not root.
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
   (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI generated once
   into Secret Manager), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's

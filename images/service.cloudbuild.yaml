@@ -25,6 +25,13 @@ substitutions:
   # Registers QEMU for the platforms the worker cannot run natively.
   _BINFMT: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 steps:
+  # The build image runs as build, uid 1000 (images/tacplus-build.Dockerfile, #56);
+  # Cloud Build mounts /workspace (the source) and /builder/home ($HOME in every
+  # step) owned by root. This step, as root, hands both to that user.
+  - id: workspace
+    name: gcr.io/cloud-builders/docker
+    entrypoint: chown
+    args: ["-R", "1000:1000", "/workspace", "/builder/home"]
   - id: generate
     name: ${_TACPLUS_IMAGE}
     entrypoint: bash
