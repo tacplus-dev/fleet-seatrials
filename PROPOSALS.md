@@ -72,6 +72,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   says it scans. The security job fetches the whole history (`FLEET_FETCH_HISTORY=1`) and runs gitleaks on it.
   Either drop `ci/secrets.sh` from `checks` in the pipeline (GitHub's `secrets` workflow still runs it, with the
   full history) or set the same variable there.
+- **The gates' security job runs the build's SAST and config checks too** (2026-11-18, nightly scan, #54, #55,
+  #56, #57): the build pipeline's report (looper-scan) runs CodeQL and Trivy's config checks and fails the policy on
+  four findings at c37ef56, while the gates' `ci/security.sh` (OSV-Scanner, govulncheck, gitleaks, Trivy on images)
+  passed on the same commit (build pipeline 3082147135). So a land can't see a policy failure that only the nightly
+  report shows. Running `trivy config` on `test-idp/` and `images/`, and CodeQL or semgrep on `test-idp/*.py`, in
+  `ci/security.sh` with `security-exceptions.yaml` enforced would close the gap. The cost is CodeQL's run time in
+  the gates. Why: a finding should fail the commit that brings it, not a scan the next night.
 - **Compare each security run with the last** (2026-11-04, #36): looper-scan publishes each run's findings as
   the next run's baseline and lists the new ones. `ci/security.sh` reports every finding each time. A baseline
   in the GitLab project's package registry, as looper-scan's `report` does, would show what changed overnight.
@@ -242,7 +249,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   `/tmp` and kcadm's config, checked on a real Keycloak first (`test-idp/local.sh`, which needs docker), since
   the IdP is live on `dev`; the `secret` command could write to a file the caller names instead of stdout. The
   same report's Trivy DS-0002 (`images/tacplus-build.Dockerfile` runs as root) is the build image's, not the
-  test IdP's.
+  test IdP's. Filed as bugs by the nightly scan, 2026-11-18: KSV-0014 #54, the `secret` command #55, DS-0002 #56,
+  and the report's ten new findings below HIGH (CPU limits, UID/GID, registries, `RUN cd`, HEALTHCHECK) #57.
 - **One signing path for the reader token** (2026-11-02, #30): `.github-reader` asks Cloud KMS as the job's
   federated principal, then, on a 401 or 403, as `fleet-seatrials-reader@`. Because the first dry run's error was
   dropped, nobody knew which path KMS accepts, so both are there. Once a dry run's log shows which one signs,
