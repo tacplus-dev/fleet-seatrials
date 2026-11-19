@@ -8,6 +8,7 @@ tacplus floor 2.2, services pinned by commit in `fleet.lock`, images built per f
 Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, Microsoft (jodyseabeam) to beta (#2).
 
 ## Next
+- Remove the tenant files from the deployment config once the kernel's tenant registry and per-tenant config exist (#58). Hub, at Jody's request (Skipper/Admiral huddles), 2026-11-19.
 - Assemble and apply the uni-config in memory; validate it in diff; checks.sh fails on confi (#28) (Jody, 2026-11-01)
 - Test IdP: a tiny Keycloak, a pod in its own namespace on cluster `dev` (never a VM; Jody, 2026-11-06), at idp.test.tacplus.dev emulating Google, Microsoft and Apple claim shapes, with test users and domains, managed from GitLab (#27) (Jody, 2026-11-01)
 - Chaos monkey: scheduled failure injection against the live fleet from GitLab, self-checking, letsencrypt excluded (#26, after #4) (Jody, 2026-10-31)
