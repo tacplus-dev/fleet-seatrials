@@ -43,8 +43,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   (selected version and module hash); once a tool's release requires the fixed version, bump the tool and drop its
   override (and build it with `go_install` again, if it needs none).
 - **Move the test IdP's Keycloak before its exceptions expire, 2026-12-06** (2026-11-07, #41): the security job
-  now scans every container of `test-idp/*.yaml` (Jody's decision in #41), and Keycloak 26.8.1-2 has four HIGH CVEs
-  no Keycloak release fixes yet (26.8.2-0, 2026-11-05, has the same): Guava CVE-2026-102554 (fixed in Guava
+  now scans every container of `test-idp/*.yaml` (Jody's decision in #41), and Keycloak 26.8.2-3 (2026-11-19, the
+  pin since #59) has four HIGH CVEs no Keycloak release fixes yet: Guava CVE-2026-102554 (fixed in Guava
   33.7.2), sqlite-libs CVE-2026-119373 and CVE-2026-119586 and OpenJDK CVE-2026-91403 (Red Hat 9.8, no fix yet).
   They are accepted until 2026-12-06. When a Keycloak release ships the fixes, move `test-idp/keycloak.yaml` to it
   by tag and digest, run `test-idp/local.sh`, and remove the four entries; otherwise every pipeline fails from
@@ -52,8 +52,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   (`access.redhat.com/hydra/rest/securitydata/cve/<id>.json`) marks `java-21-openjdk` **Will not fix** for
   CVE-2026-91403 and `sqlite` still Affected for CVE-2026-119373 and CVE-2026-119586, so no Keycloak rebuild on
   Red Hat 9 will clear the OpenJDK one: on 2026-12-06 it has to be decided again as a longer acceptance, or the
-  test IdP moves to a Keycloak image on another base. Keycloak 26.8.2 (26.8.2-0, -1, -2 on quay.io) is still the
-  latest release and ships the same Guava.
+  test IdP moves to a Keycloak image on another base. Keycloak 26.8.2 (26.8.2-0 to -3 on quay.io) is still the
+  latest release and ships the same Guava. Nightly scan, 2026-11-20 (#59): 26.8.2-3 is rebuilt on OpenJDK
+  1:21.0.13.1.2, which fixes CVE-2026-114938 to 114942 (26.8.1-2's JDK failed the gates on them), not CVE-2026-91403;
+  it also has sqlite-libs CVE-2026-119374 and 119379, with no fix, which the policy does not fail on.
 - **Scan the fleet's own service images** (2026-11-07, #41): the security job scans the images this repository
   deploys from pinned manifests (`test-idp/*.yaml`), not the service images `images/build.sh` builds and the
   operator renders (`deploy/bootstrap/services/*.yaml` name them by a `:local` tag, not a digest). Scanning them

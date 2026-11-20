@@ -52,6 +52,10 @@ order=$(kd '[.initContainers[].name] | join(" ")')
 image() { kd ".$1[] | select(.name == \"$2\") | .image"; }
 [ "$(image initContainers quarkus-copy)" = "$(image containers keycloak)" ] && [ "$(image initContainers build)" = "$(image containers keycloak)" ] &&
   ok "the init containers run keycloak's image" || fail "the init containers' images are not keycloak's"
+# The admin Job's kcadm, too: a pin moved in one file only would run two Keycloaks (#59).
+kcadm=$(yq -N "$pod | .containers[] | select(.name == \"kcadm\") | .image" "$here/admin-job.yaml")
+[ "$kcadm" = "$(image containers keycloak)" ] && ok "the admin Job's kcadm runs keycloak's image" ||
+  fail "the admin Job's kcadm runs [$kcadm], keycloak [$(image containers keycloak)]"
 # Keycloak's build-time options (keycloak.org, All configuration: the ones it
 # marks build), set at run time, would be refused or ignored by --optimized.
 buildopts='KC_DB|KC_HEALTH_ENABLED|KC_METRICS_ENABLED|KC_FEATURES|KC_FEATURES_DISABLED|KC_HTTP_RELATIVE_PATH|KC_TRANSACTION_XA_ENABLED|KC_CACHE_STACK'

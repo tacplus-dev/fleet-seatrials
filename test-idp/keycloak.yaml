@@ -110,7 +110,7 @@ spec:
       # lib/quarkus there first, which the emptyDir hides, so quarkus-copy copies it in.
       initContainers:
         - name: quarkus-copy
-          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          image: quay.io/keycloak/keycloak:26.8.2-3@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
           # -R, not -a: the emptyDir is root's, and cp may not set its mode or times.
           command: [cp, -R, /opt/keycloak/lib/quarkus/., /quarkus/]
           resources:
@@ -125,7 +125,7 @@ spec:
           volumeMounts:
             - { name: quarkus, mountPath: /quarkus }
         - name: build
-          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          image: quay.io/keycloak/keycloak:26.8.2-3@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
           args: [build]
           env:
             # The build options, the build's only (keycloak starts --optimized).
@@ -147,12 +147,12 @@ spec:
             - { name: tmp, mountPath: /tmp }
       containers:
         - name: keycloak
-          # 26.8.1-2, the multi-arch index (arm64 among its images). The security
+          # 26.8.2-3, the multi-arch index (arm64 among its images). The security
           # job scans it for arm64 (#41); its four HIGH CVEs, which no Keycloak
           # release fixes yet, are accepted until 2026-12-06
           # (security-exceptions.yaml): move it to the release that does. The
           # init containers run the same image.
-          image: quay.io/keycloak/keycloak:26.8.1-2@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+          image: quay.io/keycloak/keycloak:26.8.2-3@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
           args: [start, --optimized, --import-realm]
           env:
             - { name: KC_CACHE, value: local }
