@@ -19,7 +19,14 @@
 # (CVE-2026-42216 42217 and 14 HIGH) and ASP.NET Core 10.0.15 (CVE-2026-114146 114147 114149). Trivy's scan of it still finds
 # gh's and docker-buildx's x/crypto v0.58.0; when a line image moves them, move the CI image (every image: of
 # ci/*.gitlab-ci.yml, .github/workflows/security.yml and images/tacplus-build.Dockerfile's BUILD_IMAGE) to it and
-# remove them from GO-2026-5932, above.
+# remove them from GO-2026-5932, above. Two more in it, found by the nightly of 2026-11-20 (#60), have no tacplus 2.6
+# release that fixes them (v2.6.13, the latest, has both), and are accepted for 14 days, until 2026-12-04 (Jody, #60):
+#
+#   docker-buildx's containerd v2.4.1 (fixed in 2.4.2; buildx 0.39.1)    CVE-2026-95839
+#   the docker CLI's Go stdlib 1.26.10 (fixed in 1.26.11; tacplus#901)   CVE-2026-97054
+#
+# When a tacplus 2.6 patch's build image carries the fixes, move the CI image to it by tag and digest (build.lock and
+# the places above; ci/build_lock_test.sh) and remove these two.
 #
 # And Trivy's scan of the images this repository deploys itself (#41): the test IdP's Keycloak, 26.8.1-2
 # (test-idp/keycloak.yaml), for arm64. No Keycloak release fixes them yet: 26.8.2-0 (2026-11-05), the latest, has the
@@ -134,6 +141,14 @@ exceptions:
   - id: GO-2026-6796
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
+    expires: 2026-12-04
+  - id: CVE-2026-95839
+    reason: "containerd v2.4.1 linked into docker-buildx (usr/local/libexec/docker/cli-plugins/docker-buildx) of the CI image ghcr.io/tacplus-dev/tacplus/build:2.6.12 only (build.lock, #60): the image only runs CI jobs and is never deployed, and no job runs buildx against an untrusted registry or image; the vulnerable code is containerd's descriptor handling, a daemon crash, and no containerd daemon runs in it. Fixed in containerd 2.4.2 (buildx 0.39.1); no tacplus 2.6 build image has it yet (v2.6.13, the latest, has v2.4.1): the fix is the tacplus 2.6 patch that moves buildx, then move the CI image to it by tag and digest and remove this entry."
+    decided_by: "jodydadescott (hub 16:30Z, tacplus-dev/fleet-seatrials#60, 2026-11-20)"
+    expires: 2026-12-04
+  - id: CVE-2026-97054
+    reason: "Go stdlib 1.26.10 in the docker CLI (usr/local/bin/docker) of the CI image ghcr.io/tacplus-dev/tacplus/build:2.6.12 only (build.lock, #60): the image only runs CI jobs and is never deployed, and the vulnerable code is net/http's HTTP/1 server (MaxBytesReader), which the docker CLI never serves. Fixed in Go 1.26.11; tacplus copies the CLI from docker:29-cli, built with 1.26.10 (tacplus-dev/tacplus#901), and no tacplus 2.6 build image has the fix yet (v2.6.13, the latest, has 1.26.10): the fix is the tacplus 2.6 patch that closes #901, then move the CI image to it by tag and digest and remove this entry."
+    decided_by: "jodydadescott (hub 16:30Z, tacplus-dev/fleet-seatrials#60, 2026-11-20)"
     expires: 2026-12-04
   - id: CVE-2026-102554
     reason: "Guava 33.6.0-jre in the test IdP's Keycloak 26.8.1-2 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. A denial of service by unthrottled allocation in deserialization: at worst the test IdP restarts. Fixed in Guava 33.7.2; no Keycloak release has it yet (26.8.2-0, the latest, has 33.6.0-jre): the fix is the first Keycloak release with Guava 33.7.2 or later, then move the pin to it by tag and digest."
