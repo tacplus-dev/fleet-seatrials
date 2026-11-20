@@ -30,3 +30,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-18 looper issue test-idp: Keycloak and kcadm run with a writable root file system (trivy KSV-0014, HIGH, fails the build's security policy) (#54)
 - 2026-11-18 looper issue Trivy config findings below HIGH in test-idp/ and the build image: CPU limits, UID/GID, registries, RUN cd, HEALTHCHECK (10 new, non-blocking) (#57)
 - 2026-11-18 looper issue test-idp/testidp.py secret writes derived secrets to stdout (codeql py/clear-text-logging-sensitive-data, HIGH, fails the build's security policy) (#55)
+- 2026-11-20 looper issue CI image build:2.6.12 fails the gates on main: docker-buildx's containerd v2.4.1 (CVE-2026-95839) and the docker CLI's Go 1.26.10 (CVE-2026-97054); no tacplus 2.6 release fixes them yet (#60)
