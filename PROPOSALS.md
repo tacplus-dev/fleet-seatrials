@@ -274,6 +274,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   tests and the docs' description of both paths, after a pipeline's `fleet-plan` has signed as the account.
   Also: the block always signs with `cryptoKeyVersions/1`, so a re-import of the key (a rotation, version 2)
   would be ignored; it could take the key's primary or newest enabled version instead.
+- **Scope each security exception to where it applies (`where`)** (2026-11-21, nightly scan
+  `looper-runs/20261121T094329Z-scan`, at a5ca8d8): the build's security report warns, for every one of the 32
+  entries of `security-exceptions.yaml`, "exception <id> has no where: it accepts <id> in every file (scope it:
+  where)". This repository can't follow that advice today. `ci/security.sh` (lines 168-180) holds each entry to
+  exactly id, reason, decided_by and expires, and it fails the security job on any other field. So an entry made
+  for one place also accepts the same id anywhere else it turns up later. CVE-2026-119373 is accepted for the
+  test IdP's Keycloak, and its reason says it covers the CI image's libsqlite3 too. GO-2026-5932 covers
+  schematic-operator, gh and docker-buildx. A new appearance of an id in a deployed image would pass the
+  gates silently. Proposal: `ci/security.sh` accepts an optional `where` (a finding's file or image, as
+  looper-scan reads it; README: Security checks of tacplus-dev/looper) and matches an entry only there. Then
+  split the shared entries by where, with tests in `ci/security_test.sh`. This needs the field list of looper#49
+  widened (Jody) before it is built.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)
