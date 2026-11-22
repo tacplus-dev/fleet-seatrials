@@ -262,13 +262,17 @@ images:
     - cd src && source ci/lib.sh && ci_github && ci_gcp && WAIT=1 images/build.sh changed
   timeout: 2h
 
+# A job's setup is an && list; one followed by more lines ends with `|| exit`:
+# set -e does not stop at a failure inside an && list, save its last command,
+# so without it the job runs on without the setup and fails later, behind a
+# misleading error (#62; ci/pipeline_test.sh).
 generate:
   stage: generate
   needs: [checks, tools, security, cert]
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert || exit
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate
@@ -280,7 +284,7 @@ diff:
   environment: { name: seatrials, action: prepare }
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
       RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
   # RENDER_DIGEST, the digest of the render diff showed, for apply.
   artifacts:
@@ -300,7 +304,7 @@ apply:
   resource_group: seatrials
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh
@@ -349,7 +353,7 @@ test:
   environment: { name: seatrials, action: verify }
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube && ci_test_idp_seeds optional
+      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube && ci_test_idp_seeds optional || exit
       export SCHEMATIC_OPERATOR_DIR=$PWD/deploy/bootstrap
       export SCHEMATIC_LOCAL_IMAGES=$REGISTRY
       bin/schematic-operator generate >/dev/null
@@ -391,5 +395,5 @@ test-idp-signin:
   # renewed when due by every pipeline, the daily schedule's too.
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds
+      cd src && source ci/lib.sh && ci_gcp && ci_test_idp_seeds || exit
       if ci_test_idp_set_up; then ci_kube && test-idp/apply.sh && test-idp/signin.sh; fi

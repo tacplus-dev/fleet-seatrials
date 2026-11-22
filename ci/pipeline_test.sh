@@ -135,4 +135,47 @@ for j in cert generate diff apply test; do
 done
 [ -n "$(job apply .)" ] || fail "no apply job rendered"
 
+# --- a failed step stops the job (#62) ---
+# Under set -e a failure inside an && list, save its last command, does not
+# stop the shell: the job would run on without the setup the list made. So a
+# script line that is an && list (or holds one) and is not the job's last
+# ends with `|| exit`.
+unstopped=$(jq -r 'to_entries[] | .key as $k
+  | [.value.script[] | split("\n")[] | sub("^\\s+"; "") | select(. != "" and (startswith("#") | not))]
+  | .[:-1][] | select(test("&&") and (test("\\|\\|\\s*exit( [0-9]+)?$") | not)) | "  \($k): \(.)"' <<<"$jobs")
+[ -z "$unstopped" ] && ok "no && list in a job's script is followed by more lines without || exit" ||
+  fail "an && list in a job's script is followed by more lines without || exit:"$'\n'"$unstopped"
+# Each job's script, run as GitLab runs it (before_script's set -euo pipefail),
+# with every ci_* step of ci/lib.sh and every script it runs stubbed: when any
+# one step refuses, the job fails, nothing after it runs, and its refusal is
+# the job's last error. A step that is an if's condition (ci_test_idp_set_up)
+# is a skip, not a refusal.
+sandbox=$(mktemp -d)
+trap 'rm -rf "$sandbox"' EXIT
+for j in $(jq -r 'keys[]' <<<"$jobs"); do
+  script=$(jq -r --arg j "$j" '.[$j].script | join("\n")' <<<"$jobs")
+  rm -rf "$sandbox/src" && mkdir -p "$sandbox/src/ci"
+  for c in $(grep -oE '(^|[ ;&|(=])(bin|ci|deploy|images|test-idp)/[A-Za-z0-9._-]+' <<<"$script" | sed -E 's/^[ ;&|(=]//' | sort -u); do
+    [ "$c" = ci/lib.sh ] && continue
+    mkdir -p "$sandbox/src/$(dirname "$c")"
+    printf '#!/bin/sh\necho %s >> "$RAN"\n' "$c" > "$sandbox/src/$c" && chmod +x "$sandbox/src/$c"
+  done
+  steps=$(grep -oE '\bci_[a-z_]+' <<<"$script" | sort -u)
+  for s in $steps; do
+    echo "$s() { echo $s >> \"\$RAN\"; [ \"\$FAIL\" != $s ] || { echo '$s: refused' >&2; return 3; }; }"
+  done > "$sandbox/src/ci/lib.sh"
+  for s in $(grep -vE '\bif ci_[a-z_]+' <<<"$script" | grep -oE '\bci_[a-z_]+' | sort -u); do
+    : > "$sandbox/ran"
+    rc=0
+    ( cd "$sandbox" && RAN=$sandbox/ran FAIL=$s CI_PROJECT_DIR=$sandbox REGISTRY=registry.invalid \
+        bash -c "set -euo pipefail
+$script" ) >/dev/null 2>"$sandbox/err" || rc=$?
+    if [ "$rc" != 0 ] && [ "$(tail -n1 "$sandbox/err")" = "$s: refused" ] && [ "$(tail -n1 "$sandbox/ran")" = "$s" ]; then
+      ok "$j stops at a refused $s"
+    else
+      fail "$j runs on past a refused $s (exit $rc; then ran: $(awk -v s="$s" 'f; $0 == s { f = 1 }' "$sandbox/ran" | xargs); last error: $(tail -n1 "$sandbox/err"))"
+    fi
+  done
+done
+
 [ "$failed" = 0 ] && echo "all passed" || { echo "pipeline tests failed"; exit 1; }
