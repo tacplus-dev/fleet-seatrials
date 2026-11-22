@@ -4,4 +4,4 @@
 # project of its own, so it has no tacplus.lock; the build pipeline (looper-build plan) reads this pin the way it reads
 # one. A new digest is a change like any other: it moves with the CI image (ci/build_lock_test.sh) and lands on the
 # full gates.
-build_image: ghcr.io/tacplus-dev/tacplus/build:2.6.12@sha256:d4be2c7a77aad5af473a0317ab21f497680a30d8c1e47f30b76e157f5eb3eef7
+build_image: ghcr.io/tacplus-dev/tacplus/build:2.6.13@sha256:0387c7dc05216bb2158d2b907f10840b67079026872d01c54362a90ecca9ba4a
