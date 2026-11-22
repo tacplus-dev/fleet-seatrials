@@ -25,7 +25,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - The tacplus-reader key and account move to tacplus-ci: TACPLUS_READER_KMS_KEY and TACPLUS_READER_SA (#48). Agent, at Jody's request, 2026-11-11 (tacplus-dev/cloud#30).
 
 ## Later
-- Move the fleet to tacplus 2.4 (#1): blocked on the 2.4 floor in blobstore#1, coop#1, doppelganger#1, kmaker#1, letsencrypt#1, opa#1, operator#1, pigeon#1, tenantecho#1.
+- Move the fleet to tacplus 2.6 and relock; eventbus, stratum, oauth and redo built by the fleet from their release tags for the first deploy (#1). Jody, 2026-11-22 (tacplus-dev/roadmap `decisions/ci-on-gitlab-2026-10-27.md`, 2026-11-22 addendum).
 - Adopt per-tenant Stratum, redo and people (#3): blocked on #1, operator#2, people#1, redo#1, kernel#2, letsencrypt#2.
 - Move to `tac-seatrials` namespaces, config and migration runbook (#4): blocked on operator#3.
 - Pin services by release line, deploy release images (#8): blocked on tacplus#180.
