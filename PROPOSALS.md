@@ -282,6 +282,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   tests and the docs' description of both paths, after a pipeline's `fleet-plan` has signed as the account.
   Also: the block always signs with `cryptoKeyVersions/1`, so a re-import of the key (a rotation, version 2)
   would be ignored; it could take the key's primary or newest enabled version instead.
+- **`ci/security.sh` fails only on what ships; CI tooling is reported, never failing** (2026-11-23, #72;
+  tacplus-dev/looper#225, tacplus-dev/roadmap `decisions/security-gates-ship-only-2026-11-23.md`): every finding
+  gets a `scope`, set by the scan that found it. `shipped`: OSV-Scanner on the tree, gitleaks, and Trivy on
+  `test-idp/*.yaml`'s images. `tooling`: govulncheck on `bin/*` and Trivy on the CI images. Only a shipped finding
+  can be `blocking`. Tooling findings are listed in the report and in a "CI tooling (reported, never failing)"
+  section of the summary. Exceptions still accept both kinds, and problems still fail (a tool that cannot run, an
+  expired or malformed exception). Why: #71's advisories in `bin/lego`, `bin/osv-scanner` and `bin/trivy`, tools
+  only the pipeline runs, stopped every land, like most of the week's security issues. Small: `ci/security.sh`
+  and `ci/security_test.sh`. Open for Jody (design on #72): whether the same land removes the exceptions that
+  accept only tooling findings (GO-2026-5932, GO-2026-6278, GO-2026-6974), so their expiry can't stop lands;
+  whether a tooling scan that cannot run still fails; and that lego and the CI image, which run with deploy
+  secrets, get no stricter rule.
 - **Scope each security exception to where it applies (`where`)** (2026-11-21, nightly scan
   `looper-runs/20261121T094329Z-scan`, at a5ca8d8): the build's security report warns, for every one of the 32
   entries of `security-exceptions.yaml`, "exception <id> has no where: it accepts <id> in every file (scope it:
