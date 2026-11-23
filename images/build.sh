@@ -166,8 +166,19 @@ build_service() {
   rm -rf "$src"
 }
 
+# failed_log NAME ID: the last 80 lines of a failed build's log, each under the
+# service's name, so its cause is in the job's trace (#67): the deploy pipeline
+# has no Console. gcloud reads it from the build bucket, where the deploy
+# account may read; when it cannot, it says why.
+failed_log() {
+  local log
+  log=$(gcloud builds log "$2" 2>&1) || log="cannot read the log of $2: $log"
+  echo "== $1: the last ${LOG_LINES:-80} lines of its log"
+  tail -n "${LOG_LINES:-80}" <<<"$log" | sed "s/^/$1| /"
+}
+
 # wait_builds: with WAIT=1, waits for every build submitted by this run; fails
-# unless all succeed.
+# unless all succeed, printing each failed build's log.
 wait_builds() {
   [ "${WAIT:-}" = 1 ] && [ -s "$submitted" ] || return 0
   local name id status failed=0
@@ -177,9 +188,9 @@ wait_builds() {
       case "$status" in QUEUED|PENDING|WORKING|"") sleep "${WAIT_INTERVAL:-30}" ;; *) break ;; esac
     done
     echo "== $name: $status ($id)"
-    [ "$status" = SUCCESS ] || failed=1
+    [ "$status" = SUCCESS ] || { failed=1; failed_log "$name" "$id"; }
   done < "$submitted"
-  [ "$failed" = 0 ] || { echo "image builds failed: see the builds above in Cloud Build" >&2; exit 1; }
+  [ "$failed" = 0 ] || { echo "image builds failed: see the logs above" >&2; exit 1; }
 }
 build_image=$registry/ci/tacplus-build
 build_fp=$(build_fingerprint)

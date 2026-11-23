@@ -42,6 +42,10 @@ case "$*" in
     svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
   "builds describe "*)
     id=$3; [ "$id" = "build-${STUB_FAIL:-none}" ] && echo FAILURE || echo SUCCESS ;;
+  # A build's log: 100 numbered lines, or refused when STUB_LOG_DENIED is set.
+  "builds log "*)
+    [ -z "${STUB_LOG_DENIED:-}" ] || { echo "ERROR: (gcloud.builds.log) 403 storage.objects.get denied" >&2; exit 1; }
+    for i in $(seq 1 100); do echo "$3 log line $i"; done ;;
   *) echo "unexpected gcloud $*" >&2; exit 3 ;;
 esac
 STUB
@@ -67,9 +71,23 @@ run "without WAIT it returns after submitting" pass &&
 run "WAIT=1: every build succeeds" pass WAIT=1 &&
   check "every build waited for" "$(grep '^builds describe' "$work/log" | sort -u | wc -l | tr -d ' ')" "$services"
 run "WAIT=1: one build fails" fail WAIT=1 STUB_FAIL=gateway
+: > "$work/log"
 out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" WAIT_INTERVAL=0 WAIT=1 STUB_FAIL=gateway "$here/build.sh" changed 2>&1)
 [[ "$out" == *gateway*FAILURE* ]] && echo "ok   the failed build is named" ||
   { echo "FAIL the failed build is not named: [$out]"; failures=$((failures + 1)); }
+
+# A failed build's cause is in the job's trace (#67): the last 80 lines of its
+# log, each under the service's name, and no log of a build that succeeded. A
+# log the account cannot read says so and still fails the run on the build.
+check "the failed build's log is read, it alone" "$(grep '^builds log' "$work/log" | xargs)" "builds log build-gateway"
+check "its last 80 lines, under the service's name" \
+  "$(grep -c '^gateway| build-gateway log line ' <<<"$out") $(grep '^gateway| ' <<<"$out" | sed -n '1p;$p' | xargs)" \
+  "80 gateway| build-gateway log line 21 gateway| build-gateway log line 100"
+out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" WAIT_INTERVAL=0 WAIT=1 STUB_FAIL=gateway STUB_LOG_DENIED=1 "$here/build.sh" changed 2>&1)
+status=$?
+[ "$status" -ne 0 ] && [[ "$out" == *"gateway| "*"403 storage.objects.get denied"* ]] &&
+  [[ "$out" == *"image builds failed"* ]] && echo "ok   an unreadable log says why, and the run still fails" ||
+  { echo "FAIL an unreadable log: status $status [$out]"; failures=$((failures + 1)); }
 
 # The platforms setting in images/pins.yaml: each build is told which platforms
 # to build (_PLATFORMS, sorted), and the fingerprint covers them, so an
