@@ -38,3 +38,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue Operator pin 3d0e4b7 builds with 31 reachable vulnerabilities; operator main patches 13 (#11)
 - 2026-11-23 looper issue tacplus build image pinned to the 2.3 line; 2.4 is the latest released line (#15)
 - 2026-11-23 looper issue Client does not generate on main: its depends resolve the contracts' mains, which now need tacplus 2.4 (#14)
+- 2026-11-23 looper issue Move seatrials to tac-seatrials namespaces: config and a migration runbook (#4)
