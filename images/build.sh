@@ -5,7 +5,7 @@
 # Builds the fleet's images on Cloud Build, one per service in fleet.lock, from
 # the exact commits the lock names, against this checkout's build/proto.
 #
-#   images/build.sh tacplus            # the tacplus and build images, whatever the registry holds
+#   images/build.sh build-image        # the build image, whatever the registry holds
 #   images/build.sh all                # every service in fleet.lock
 #   images/build.sh kernel gateway     # some services
 #   images/build.sh changed            # only the services whose fingerprint has no image yet
@@ -36,7 +36,11 @@
 # The image the service builds run in, ci/tacplus-build, is tagged the same
 # way: fp-<hash> over the tacplus and launcher commits (images/pins.yaml) and
 # the content of tacplus-build.Dockerfile and tacplus-build.cloudbuild.yaml.
-# Every command that builds a service first builds it (as `tacplus` does) when
+# It is tacplus's build image of the fleet's line with the fleet's tacplus,
+# built in it from tacplus's source at tacplus_commit: tacplus publishes no
+# tacplus image since 2.4 (tacplus-dev/tacplus#193; #65), and its build image
+# runs a pinned release, where the fleet pins a commit.
+# Every command that builds a service first builds it (as `build-image` does) when
 # the registry has no build image with its current fingerprint, and the
 # services run in that tag: tagged by the tacplus commit alone, an image built
 # before the Dockerfile gained the launcher was reused forever (#33).
@@ -105,34 +109,26 @@ built() {
   gcloud artifacts docker tags list "$1" --format 'value(tag)' 2>/dev/null | grep -x "fp-$2" > /dev/null
 }
 
-build_tacplus() {
-  local src; src=$(mktemp -d)
-  git clone -q "$tacplus_repo" "$src" && git -C "$src" checkout -q "$tacplus_commit"
-  gcloud builds submit "$src" --config "$here/images/tacplus.cloudbuild.yaml" "${staging[@]}" \
-    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit" --quiet
-  rm -rf "$src"
-  # The build image layers that tacplus image by the digest the registry gives
-  # its tag, as every FROM is pinned (#57): the tag is the commit, which a later
-  # build of the same commit would move.
-  local digest
-  digest=$(gcloud artifacts docker images describe "$registry/ci/tacplus:$tacplus_commit" --format 'value(image_summary.digest)')
-  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
-    { echo "$registry/ci/tacplus:$tacplus_commit has no digest in the registry: [$digest]" >&2; exit 1; }
-  # The build image the service steps run in: toolchains + this tacplus + the
-  # Java launcher, built from its pinned source placed beside the Dockerfile.
-  rm -rf "$here/images/launcher" && git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
-    && git -C "$here/images/launcher" checkout -q "$launcher_commit" && rm -rf "$here/images/launcher/.git"
+# build_build_image: the build image the service steps run in: toolchains +
+# this tacplus + the Java launcher, each built from its pinned source placed
+# beside the Dockerfile (Cloud Build clones nothing: the repos are private).
+build_build_image() {
+  rm -rf "$here/images/tacplus" "$here/images/launcher"
+  git clone -q "$tacplus_repo" "$here/images/tacplus" && git -C "$here/images/tacplus" checkout -q "$tacplus_commit"
+  git clone -q https://github.com/tacplus-dev/launcher.git "$here/images/launcher" \
+    && git -C "$here/images/launcher" checkout -q "$launcher_commit"
+  rm -rf "$here/images/tacplus/.git" "$here/images/launcher/.git"
   gcloud builds submit "$here/images" --config "$here/images/tacplus-build.cloudbuild.yaml" "${staging[@]}" \
-    --substitutions "_REGISTRY=$registry,_TACPLUS_IMAGE=$registry/ci/tacplus:$tacplus_commit@$digest,_FINGERPRINT=$build_fp" --quiet
-  rm -rf "$here/images/launcher"
+    --substitutions "_REGISTRY=$registry,_TACPLUS_COMMIT=$tacplus_commit,_FINGERPRINT=$build_fp" --quiet
+  rm -rf "$here/images/tacplus" "$here/images/launcher"
 }
 
-# ensure_tacplus: builds the build image unless the registry has one with its
+# ensure_build_image: builds the build image unless the registry has one with its
 # fingerprint, before any service build is submitted; new_build_image=1 when it
 # did.
 new_build_image=0
-ensure_tacplus() {
-  if built "$build_image" "$build_fp"; then echo "== tacplus-build unchanged ($build_fp)"; else build_tacplus; new_build_image=1; fi
+ensure_build_image() {
+  if built "$build_image" "$build_fp"; then echo "== tacplus-build unchanged ($build_fp)"; else build_build_image; new_build_image=1; fi
 }
 
 # language and go main package, read from the service checkout itself.
@@ -192,8 +188,9 @@ languages=$(mktemp) # the language of every service build submitted, one per lin
 trap 'rm -f "$submitted" "$languages"' EXIT
 
 case "${1:-}" in
-  tacplus) build_tacplus ;;
-  all) ensure_tacplus; for s in $(services); do build_service "$s"; done ;;
+  build-image) build_build_image ;;
+  tacplus) echo "images/build.sh: there is no tacplus image since tacplus 2.4 (#65): images/build.sh build-image builds the build image, with the fleet's tacplus" >&2; exit 2 ;;
+  all) ensure_build_image; for s in $(services); do build_service "$s"; done ;;
   fingerprint)
     if built "$build_image" "$build_fp"; then echo "tacplus-build $build_fp built"; else echo "tacplus-build $build_fp NEEDS BUILD"; fi
     for s in $(services); do
@@ -201,7 +198,7 @@ case "${1:-}" in
       if built "$registry/schematic/$s" "$fp"; then echo "$s $fp built"; else echo "$s $fp NEEDS BUILD"; fi
     done ;;
   changed)
-    ensure_tacplus
+    ensure_build_image
     unchanged=()
     for s in $(services); do
       fp=$(fingerprint "$s")
@@ -218,7 +215,7 @@ case "${1:-}" in
         build_service "$s"
       done
     fi ;;
-  "") echo "usage: images/build.sh tacplus | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
-  *) ensure_tacplus; for s in "$@"; do build_service "$s"; done ;;
+  "") echo "usage: images/build.sh build-image | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
+  *) ensure_build_image; for s in "$@"; do build_service "$s"; done ;;
 esac
 wait_builds

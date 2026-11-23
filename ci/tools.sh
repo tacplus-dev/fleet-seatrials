@@ -87,7 +87,7 @@ go_build_fixed() {
   go_drop
 }
 
-# tacplus, built as images/tacplus.cloudbuild.yaml builds it.
+# tacplus, built as images/tacplus-build.Dockerfile builds it.
 commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 src=$(mktemp -d)
 git clone -q https://github.com/tacplus-dev/tacplus.git "$src" && git -C "$src" checkout -q "$commit"

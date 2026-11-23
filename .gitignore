@@ -6,5 +6,6 @@ deploy/bootstrap/crypto.yaml
 deploy/bootstrap/ca.pem
 deploy/bootstrap/configs/
 images/launcher/
+images/tacplus/
 __pycache__/
 security/

@@ -1,10 +1,9 @@
-# Layers the fleet's tacplus binary onto tacplus's full build image. Source is
-# the images/ directory (the Dockerfile and the launcher's source).
+# Builds the fleet's tacplus into tacplus's full build image. Source is the
+# images/ directory (the Dockerfile and the tacplus and launcher sources).
 substitutions:
   _REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials
-  # The tacplus image to layer, by tag and digest (images/build.sh resolves the
-  # digest of the one it has just built): every FROM is pinned by digest (#57).
-  _TACPLUS_IMAGE: unknown
+  # images/pins.yaml's tacplus_commit, the source in tacplus/ (images/build.sh).
+  _TACPLUS_COMMIT: unknown
   # The fingerprint of this image's inputs (images/build.sh fingerprint): the
   # service builds run in fp-<fingerprint>, so a change to this file, the
   # Dockerfile or a pinned commit gets a new image instead of a stale one.
@@ -15,7 +14,9 @@ steps:
     args:
       - build
       - --file=tacplus-build.Dockerfile
-      - --build-arg=TACPLUS_IMAGE=${_TACPLUS_IMAGE}
+      # The stamp ci/tools.sh gives bin/tacplus: the release tacplus_commit is.
+      - --build-arg=TACPLUS_VERSION=v2.6.14-seatrials
+      - --build-arg=TACPLUS_COMMIT=${_TACPLUS_COMMIT}
       - --tag=${_REGISTRY}/ci/tacplus-build:fp-${_FINGERPRINT}
       - --tag=${_REGISTRY}/ci/tacplus-build:seatrials
       - .

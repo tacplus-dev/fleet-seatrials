@@ -58,17 +58,18 @@ The cutover's order and the grants still to come are in
 ## Layout
 
 - `fleet.yaml`, `fleet.lock`, `build/proto` — the fleet: what runs, at which commits, and the merged proto tree.
-- `images/` — Cloud Build pipeline: `images/build.sh tacplus` (the fleet's tacplus and build images at
-  `images/pins.yaml`), `images/build.sh all` (every service at its locked commit, into Artifact Registry as
+- `images/` — Cloud Build pipeline: `images/build.sh build-image` (the build image, with the fleet's tacplus
+  and launcher built from `images/pins.yaml`'s commits), `images/build.sh all` (every service at its locked commit, into Artifact Registry as
   `schematic/<service>:<fleet commit>` and `:local`). Every image runs under the launcher. Images are built for
   `images/pins.yaml`'s `platforms`: `[arm64]`, what the fleet runs on; `[arm64, amd64]` builds both. Each
   platform's image is `fp-<fingerprint>-<arch>`, and the tags above name one multi-arch index over them. The
   fingerprint covers the platforms, so changing them rebuilds every service. The build image the services build
   in is `ci/tacplus-build:fp-<fingerprint>` over its pinned commits, Dockerfile and Cloud Build config; every
   service build first builds it when that tag is missing, and `images/build.sh changed` then builds one service
-  of each language in it too. Its steps run as the unprivileged `build`, not root. Each of its FROMs is pinned by
-  digest: `BUILD_IMAGE` in the Dockerfile, and the `ci/tacplus` image `images/build.sh` has just built, by the
-  digest of its tag (#57).
+  of each language in it too. Its steps run as the unprivileged `build`, not root. Its one FROM, `BUILD_IMAGE` (tacplus's
+  build image of the fleet's line), is pinned by digest (#57). There is no `ci/tacplus` image: tacplus has
+  published none since 2.4 (tacplus-dev/tacplus#193), so the build image builds tacplus from source at the
+  pinned commit, stamped as `ci/tools.sh` stamps `bin/tacplus` (#65).
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
   (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI generated once
   into Secret Manager), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
@@ -136,7 +137,7 @@ restart. A daily schedule runs the pipeline, so a renewal deploys by itself. The
 never restarted no longer applies: there is nothing left to restart. The first time, on a new cluster:
 
 ```
-images/build.sh tacplus   # then the manual init-secrets job: the CA and crypto file into Secret Manager
+images/build.sh build-image   # then the manual init-secrets job: the CA and crypto file into Secret Manager
 # the pipeline: images, generate, diff, apply (by itself), test
 cd client && tacplus build && go build -o seatrials ./cmd/seatrials   # generate, then build; public TLS: no SEATRIALS_CA needed
 ./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again

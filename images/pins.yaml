@@ -1,5 +1,5 @@
 # The tacplus commit this fleet generates and builds with: v2.6.14, of fleet.yaml's
-# floor 2.6 (#1). ci/tools.sh and images/tacplus.cloudbuild.yaml stamp it with
+# floor 2.6 (#1). ci/tools.sh and images/tacplus-build.cloudbuild.yaml stamp it with
 # the same line. operator_commit is operator v0.1.0.
 tacplus_commit: ef62327e2664a796543445b91829e3658dbdd448
 operator_commit: a17d50774e5ea8c565127e5334c336f3f87f8178

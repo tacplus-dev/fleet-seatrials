@@ -6,7 +6,7 @@
 # images from source (`images: source`, tacplus#950), so fleet.lock records
 # every fleet.yaml service in its stated line, at its release tag's commit
 # (what images/build.sh builds), with no image; and the compiler pinned in
-# images/pins.yaml is the stamp ci/tools.sh and images/tacplus.cloudbuild.yaml
+# images/pins.yaml is the stamp ci/tools.sh and images/tacplus-build.cloudbuild.yaml
 # give it, a release of fleet.yaml's line. Needs bash, git (it reads the tags
 # from GitHub) and yq.
 #
@@ -49,14 +49,14 @@ while read -r name stated; do
 done < <(yq '.services[] | .name + " " + .version' "$manifest")
 
 pinned=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
-stamps=$(grep -ho 'v[0-9][0-9.]*-seatrials' "$here/ci/tools.sh" "$here/images/tacplus.cloudbuild.yaml" | sort -u)
+stamps=$(grep -ho 'v[0-9][0-9.]*-seatrials' "$here/ci/tools.sh" "$here/images/tacplus-build.cloudbuild.yaml" | sort -u)
 if [ "$(wc -l <<<"$stamps")" = 1 ] && [[ "$stamps" == "v$line".* ]]; then
   release=${stamps%-seatrials}
   tagged=$(tag_commit https://github.com/tacplus-dev/tacplus.git "$release")
   [ "$tagged" = "$pinned" ] && ok "the compiler is tacplus $release, stamped $stamps" \
     || fail "images/pins.yaml's tacplus_commit '$pinned' is tacplus $release ('$tagged'), the stamp $stamps"
 else
-  fail "ci/tools.sh and images/tacplus.cloudbuild.yaml stamp one release of tacplus $line, not [$(echo $stamps)]"
+  fail "ci/tools.sh and images/tacplus-build.cloudbuild.yaml stamp one release of tacplus $line, not [$(echo $stamps)]"
 fi
 
 [ "$failed" = 0 ] && echo "fleet lock tests passed" || { echo "fleet lock tests failed"; exit 1; }
