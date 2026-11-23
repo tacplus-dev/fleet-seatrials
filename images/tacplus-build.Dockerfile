@@ -28,11 +28,13 @@ ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
 COPY --from=tacplus /usr/local/bin/tacplus /usr/local/bin/tacplus
 COPY --from=launcher /out/ /usr/local/bin/
 # The service build steps run as build, not root (#56; Trivy DS-0002): root
-# only installs, above. build (uid 1000, group build) is the base image's own
-# unprivileged user, its rootless BuildKit's. The toolchains stay root's and
-# readable (rustup's and cargo's homes, from the rust image, writable by all);
-# what the steps write is under /workspace (CARGO_HOME and GOCACHE included)
-# and $HOME (Go's modules, Maven's and npm's caches), which Cloud Build mounts
-# root's: service.cloudbuild.yaml's first step hands both to build.
+# only installs, above. build (uid 1000, gid 1000) is created here: the base
+# image has no user but Debian's own, and its ids are fixed because
+# service.cloudbuild.yaml's first step chowns to them. The toolchains stay
+# root's and readable (rustup's and cargo's homes, from the rust image, writable
+# by all); what the steps write is under /workspace (CARGO_HOME and GOCACHE
+# included) and $HOME (Go's modules, Maven's and npm's caches), which Cloud
+# Build mounts root's: service.cloudbuild.yaml's first step hands both to build.
+RUN groupadd --gid 1000 build && useradd --uid 1000 --gid 1000 --create-home build
 USER build
 WORKDIR /workspace

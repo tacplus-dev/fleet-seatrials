@@ -227,9 +227,13 @@ for cmd in all gateway; do
 done
 
 # The build image's steps run unprivileged (#56; Trivy DS-0002): its last USER
-# is the base image's build (uid 1000), and a service build's first step, as
-# root, hands it the root-owned /workspace and /builder/home it writes.
+# is build (uid 1000), which it creates itself (the base image has no user but
+# Debian's own), and a service build's first step, as root, hands it the
+# root-owned /workspace and /builder/home it writes.
 check "the build image's last USER" "$(sed -n 's/^USER //p' "$here/tacplus-build.Dockerfile" | tail -1)" build
+check "the build image creates build, uid and gid 1000, before its USER" \
+  "$(sed -n '/^RUN groupadd /,/^USER /p' "$here/tacplus-build.Dockerfile" | grep -v '^#' | xargs)" \
+  'RUN groupadd --gid 1000 build && useradd --uid 1000 --gid 1000 --create-home build USER build'
 check "a service build's first step hands /workspace and \$HOME to it" \
   "$(awk '/^steps:/ { s = 1 } s && /^  - id: / { n++ } s && n == 1 && /^    (name|entrypoint|args):/' "$here/service.cloudbuild.yaml" | xargs)" \
   'name: gcr.io/cloud-builders/docker entrypoint: chown args: [-R, 1000:1000, /workspace, /builder/home]'
