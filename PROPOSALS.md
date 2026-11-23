@@ -32,11 +32,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
 - **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
-  (2026-11-09, #43): the CI image is `build:2.6.12` by digest (#50; every `image:` of `ci/*.gitlab-ci.yml`,
+  (2026-11-09, #43): the CI image is `build:20261123-ef62327` by digest (#64, tacplus's 2.6 build image rebuilt on current Debian; every `image:` of `ci/*.gitlab-ci.yml`,
   `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`
   checks they are one image), and `build.lock` pins that image (#42; `ci/build_lock_test.sh`). Its `gh` and
   `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until 2026-12-04). When a line image moves them,
-  move the four references and `build.lock` to its patch and digest and drop them from GO-2026-5932's reason.
+  move the four references and `build.lock` to its tag and digest and drop them from GO-2026-5932's reason.
   Each build image patch is now a commit here: no tag moves under the jobs.
 - **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
   builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8

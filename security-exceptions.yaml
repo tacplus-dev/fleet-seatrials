@@ -14,19 +14,15 @@
 # Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh
 # builds them from source with the fixed dependencies (#40). So is lego 5.6.0's GO-2026-5932 (found 2026-11-05, when
 # the cert job pinned it): ci/tools.sh builds it with x/crypto v0.59.0, which no lego release requires yet (#52). build:2.3's ImageMagick and apt CVEs (#40) are fixed:
-# the CI image is ghcr.io/tacplus-dev/tacplus/build:2.6.12 by digest (#43, #45, #50), with ImageMagick deb13u14, apt 3.0.4,
-# zlib1g deb13u1 (CVE-2026-85091 76844), a gh on x/net v0.62.0 (CVE-2026-78661), OpenEXR 3.2.12-1~deb13u1
-# (CVE-2026-42216 42217 and 14 HIGH) and ASP.NET Core 10.0.15 (CVE-2026-114146 114147 114149). Trivy's scan of it still finds
-# gh's and docker-buildx's x/crypto v0.58.0; when a line image moves them, move the CI image (every image: of
-# ci/*.gitlab-ci.yml, .github/workflows/security.yml and images/tacplus-build.Dockerfile's BUILD_IMAGE) to it and
-# remove them from GO-2026-5932, above. Two more in it, found by the nightly of 2026-11-20 (#60), have no tacplus 2.6
-# release that fixes them (v2.6.13, the latest, has both), and are accepted for 14 days, until 2026-12-04 (Jody, #60):
-#
-#   docker-buildx's containerd v2.4.1 (fixed in 2.4.2; buildx 0.39.1)    CVE-2026-95839
-#   the docker CLI's Go stdlib 1.26.10 (fixed in 1.26.11; tacplus#901)   CVE-2026-97054
-#
-# When a tacplus 2.6 patch's build image carries the fixes, move the CI image to it by tag and digest (build.lock and
-# the places above; ci/build_lock_test.sh) and remove these two.
+# the CI image is ghcr.io/tacplus-dev/tacplus/build:20261123-ef62327 by digest (#64; build:2.6.12 from #43, #45, #50
+# until then), tacplus's 2.6 build image rebuilt on Debian 13.8 (tacplus Images run 45102777942), with ImageMagick
+# deb13u14, apt 3.0.4, zlib1g deb13u1 (CVE-2026-85091 76844), a gh on x/net v0.62.0 (CVE-2026-78661), OpenEXR
+# 3.2.12-1~deb13u1 (CVE-2026-42216 42217 and 14 HIGH), ASP.NET Core 10.0.15 (CVE-2026-114146 114147 114149), krb5
+# 1.21.3-5+deb13u2 and a current linux-libc-dev (#64: the 33 HIGH of 2026-11-23), docker-buildx's containerd v2.4.2
+# (CVE-2026-95839) and a docker CLI on Go 1.27.4 (CVE-2026-97054; both accepted from #60 until #64). Trivy's scan of
+# it still finds gh's and docker-buildx's x/crypto v0.58.0; when a line image moves them, move the CI image (build.lock,
+# every image: of ci/*.gitlab-ci.yml, .github/workflows/security.yml and images/tacplus-build.Dockerfile's
+# BUILD_IMAGE; ci/build_lock_test.sh, ci/workflows_test.sh) to it and remove them from GO-2026-5932, below.
 #
 # And Trivy's scan of the images this repository deploys itself (#41): the test IdP's Keycloak, 26.8.2-3
 # (test-idp/keycloak.yaml, 2026-11-19, the latest; #59 moved it from 26.8.1-2 for its JDK's CVE-2026-114938 to 114942),
@@ -96,7 +92,7 @@ exceptions:
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp, in schematic-operator (#11) and gh and docker-buildx in the CI image (build:2.6.12, Trivy's scan): none handles an OpenPGP key or message from outside (no job runs gh or buildx). The fix is x/crypto v0.59.0; no operator pin or rebuilt CI image carries it yet."
+    reason: "x/crypto/openpgp, in schematic-operator (#11) and gh and docker-buildx in the CI image (build:20261123-ef62327, Trivy's scan): none handles an OpenPGP key or message from outside (no job runs gh or buildx). The fix is x/crypto v0.59.0; no operator pin or rebuilt CI image carries it yet."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
   - id: GO-2026-6061
@@ -143,20 +139,12 @@ exceptions:
     reason: "schematic-operator (operator pin 3d0e4b7, images/pins.yaml; #11): a CLI run once per job on a single-use deploy VM, rendering the fleet and applying it to seatrials; it imports containerd's registry client through helm; no CRI, runtime or unpack runs, it renders its charts from this repository and pulls no image itself. The fix is moving the operator pin, which waits on #1 and tacplus-dev/operator#1 (#11)."
     decided_by: "looper, at Jody's direction in #36: fix what has a fix, accept the rest for 30 days (2026-11-04)"
     expires: 2026-12-04
-  - id: CVE-2026-95839
-    reason: "containerd v2.4.1 linked into docker-buildx (usr/local/libexec/docker/cli-plugins/docker-buildx) of the CI image ghcr.io/tacplus-dev/tacplus/build:2.6.12 only (build.lock, #60): the image only runs CI jobs and is never deployed, and no job runs buildx against an untrusted registry or image; the vulnerable code is containerd's descriptor handling, a daemon crash, and no containerd daemon runs in it. Fixed in containerd 2.4.2 (buildx 0.39.1); no tacplus 2.6 build image has it yet (v2.6.13, the latest, has v2.4.1): the fix is the tacplus 2.6 patch that moves buildx, then move the CI image to it by tag and digest and remove this entry."
-    decided_by: "jodydadescott (hub 16:30Z, tacplus-dev/fleet-seatrials#60, 2026-11-20)"
-    expires: 2026-12-04
-  - id: CVE-2026-97054
-    reason: "Go stdlib 1.26.10 in the docker CLI (usr/local/bin/docker) of the CI image ghcr.io/tacplus-dev/tacplus/build:2.6.12 only (build.lock, #60): the image only runs CI jobs and is never deployed, and the vulnerable code is net/http's HTTP/1 server (MaxBytesReader), which the docker CLI never serves. Fixed in Go 1.26.11; tacplus copies the CLI from docker:29-cli, built with 1.26.10 (tacplus-dev/tacplus#901), and no tacplus 2.6 build image has the fix yet (v2.6.13, the latest, has 1.26.10): the fix is the tacplus 2.6 patch that closes #901, then move the CI image to it by tag and digest and remove this entry."
-    decided_by: "jodydadescott (hub 16:30Z, tacplus-dev/fleet-seatrials#60, 2026-11-20)"
-    expires: 2026-12-04
   - id: CVE-2026-102554
     reason: "Guava 33.6.0-jre in the test IdP's Keycloak 26.8.2-3 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. A denial of service by unthrottled allocation in deserialization: at worst the test IdP restarts. Fixed in Guava 33.7.2; no Keycloak release has it yet (26.8.2-3, the latest, has 33.6.0-jre): the fix is the first Keycloak release with Guava 33.7.2 or later, then move the pin to it by tag and digest."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119373
-    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.2-3 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-3, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:2.6.12, Debian 13.7), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
+    reason: "sqlite-libs 3.34.1-11.el9_8 (Red Hat 9.8) in the test IdP's Keycloak 26.8.2-3 (test-idp/keycloak.yaml, #27): one replica in the namespace test-idp, with test realms, test users and test data only, and not deployed yet (STATE.md); it forwards only the three test realms and their login pages to the internet. Keycloak's database is H2 (KC_DB dev-file); nothing in the image opens an SQLite file from outside. Red Hat has no fix yet, and no Keycloak release has one (26.8.2-3, the latest, has the same package): the fix is the first Keycloak release rebuilt on a fixed sqlite-libs, then move the pin to it by tag and digest. The same id is in the CI image's libsqlite3 (build:20261123-ef62327, Debian 13.8), with no Debian fix: it would not fail the job without this entry, which marks it accepted too."
     decided_by: "jodydadescott (tacplus-dev/fleet-seatrials#41, 2026-11-06)"
     expires: 2026-12-06
   - id: CVE-2026-119586
