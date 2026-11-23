@@ -12,11 +12,13 @@
 #   bin/opa, bin/gitleaks,   the same, each in a module of its own that raises the dependencies whose
 #   bin/osv-scanner,         fixed vulnerabilities its release does not take yet to pinned fixed versions,
 #   bin/trivy                each refused unless its version and hash are the pinned ones (#40: GO-2026-6865,
-#                            klauspost/compress; GO-2026-6888, andybalholm/brotli; GO-2025-3922, ulikunitz/xz).
+#                            klauspost/compress; GO-2026-6888, andybalholm/brotli; GO-2025-3922, ulikunitz/xz;
+#                            #68: GO-2026-6974, otel, in opa, osv-scanner and trivy).
 #                            govulncheck, osv-scanner and trivy are the security job's (ci/security.sh, #36)
 #   bin/lego                 the cert job's ACME client (ci/cert.sh, #35): the same, as its release builds it
 #                            (#49: its release binary holds go1.27.3's fixed GO-2026-6859), with x/crypto
-#                            raised to v0.59.0 (#52: GO-2026-5932, x/crypto openpgp)
+#                            raised to v0.59.0 (#52: GO-2026-5932, x/crypto openpgp) and gorilla/websocket to
+#                            its fixed commit (#68: GO-2026-6278)
 #
 # Every one is built with the pinned Go toolchain, go_toolchain, not the CI image's
 # go: the standard library is in each binary, and govulncheck fails a fixed
@@ -45,6 +47,13 @@ compress_fix=github.com/klauspost/compress@v1.20.3=h1:zWNoFqq/lSuYQRim3dUXlXeA0I
 brotli_fix=github.com/andybalholm/brotli@v1.2.8=h1:H9F6r7RNwzSRsx/lytpIYkbjNFMt2yNBwsJ2+0gpx78=   # GO-2026-6888, fixed in v1.2.7
 xz_fix=github.com/ulikunitz/xz@v0.5.17=h1:flR0y/x1hgM8EGV1AW3Xll6T413G0glV8UfBwR617V4=   # GO-2025-3922, fixed in v0.5.15
 crypto_fix=golang.org/x/crypto@v0.59.0=h1:xS2jhqYbzNrpvkWP2YTDf4TJwBy3ykR03i8vFDxEc7c=   # GO-2026-5932 (openpgp), fixed in 0.58.1-0.20261009181718-2f1f834330b2
+# GO-2026-6974 (otel's AttributeValueLengthLimit bypass, #68), fixed in v1.47.0: each otel module a tool holds, raised together.
+otel_fixes=(go.opentelemetry.io/otel@v1.47.0=h1:j7ALJ/zgkS7Z6aeJW09p8VC9804bC+PpeTfCD4XPnOM=
+  go.opentelemetry.io/otel/trace@v1.47.0=h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrFNWSrM=
+  go.opentelemetry.io/otel/metric@v1.47.0=h1:4PptaldXx3Eat1XjMZ68pPJEs5wrhlemctZE9a3UdWY=)
+otel_sdk_fixes=(go.opentelemetry.io/otel/sdk@v1.47.0=h1:zWXEr4j2lFefG87TU6Yg8a7ngfohIKFZHKp0Hf5hC6I=
+  go.opentelemetry.io/otel/sdk/metric@v1.47.0=h1:lfISg2j93VT6yqdk9OfUaZmw/GfcZqCCV3jdXtsPnKw=)
+websocket_fix=github.com/gorilla/websocket@v1.5.4-0.20250319132907-e064f32e3674=h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=   # GO-2026-6278 (#68), fixed in 1.5.4-0.20240701034025-d67f41855da4; no tag has it
 lego_version=v5.6.0 lego_h1=h1:tdr1k0mPExMhqFUee09aAD8kSDcM7rha9k8IBs1wuX0=
 mkdir -p "$here/bin"
 tmp=$(mktemp -d)
@@ -105,19 +114,20 @@ go_drop
 
 go_install github.com/mikefarah/yq/v4 github.com/mikefarah/yq/v4 "$yq_version" "$yq_h1"
 go_build_fixed opa github.com/open-policy-agent/opa github.com/open-policy-agent/opa "$opa_version" "$opa_h1" "" \
-  "$compress_fix"
+  "$compress_fix" "${otel_fixes[@]}" "${otel_sdk_fixes[@]}"
 go_build_fixed gitleaks github.com/zricethezav/gitleaks/v8 github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_h1" \
   "-X github.com/zricethezav/gitleaks/v8/version.Version=$gitleaks_version" "$compress_fix" "$brotli_fix" "$xz_fix"
 go_install golang.org/x/vuln/cmd/govulncheck golang.org/x/vuln "$govulncheck_version" "$govulncheck_h1"
 go_build_fixed osv-scanner github.com/google/osv-scanner/v2/cmd/osv-scanner github.com/google/osv-scanner/v2 \
-  "$osv_version" "$osv_h1" "" "$compress_fix"
+  "$osv_version" "$osv_h1" "" "$compress_fix" "${otel_fixes[@]}"
 # trivy as its release builds it (goreleaser.yml), its symbols kept for govulncheck.
 CGO_ENABLED=0 go_build_fixed trivy github.com/aquasecurity/trivy/cmd/trivy github.com/aquasecurity/trivy \
-  "$trivy_version" "$trivy_h1" "-w -X github.com/aquasecurity/trivy/pkg/version/app.ver=${trivy_version#v}" "$compress_fix"
+  "$trivy_version" "$trivy_h1" "-w -X github.com/aquasecurity/trivy/pkg/version/app.ver=${trivy_version#v}" "$compress_fix" \
+  "${otel_fixes[@]}" "${otel_sdk_fixes[@]}"
 # lego as its release builds it (.goreleaser.yml: its tags, trimmed paths), its symbols kept for govulncheck.
 CGO_ENABLED=0 GOFLAGS="-trimpath -tags=urfave_cli_no_template,ozzo_validation_no_template,grpcnotrace,validator_novalidatefn" \
   go_build_fixed lego github.com/go-acme/lego/v5 github.com/go-acme/lego/v5 "$lego_version" "$lego_h1" \
-  "-w -X main.version=${lego_version#v}" "$crypto_fix"
+  "-w -X main.version=${lego_version#v}" "$crypto_fix" "$websocket_fix"
 for b in "$here"/bin/*; do
   v=$(go version "$b" | awk '{print $2}') || die "${b#"$here"/}: not a Go binary"
   [ "$v" = "$go_toolchain" ] || die "${b#"$here"/} is built with $v, not the pinned $go_toolchain"
