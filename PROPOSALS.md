@@ -313,6 +313,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   (tenantecho, doppelganger, coop's pigeons) is not caught there. Proposal: deploymentproxy (or the cluster
   pipeline) also binds the deployment's deploy account read-only (`pods`, `get, list`) in each tenant namespace
   it makes, and `checks.sh pods` reads every namespace `deploy/namespaces.sh` lists.
+- **Replace the unmaintained crates `rustls-pemfile` and `chrono` in the Rust pins** (2026-11-23, #13): #13 moved
+  every `lang:` pin that has a fixed release (OSV, 2026-11-23). Two Rust pins are left. They have no fix because
+  their crates are unmaintained: `rustls-pemfile` 2.2.0 (RUSTSEC-2025-0134; `rustls-pki-types` parses PEM itself,
+  `PemObject`) and `chrono` 0.4.43 (RUSTSEC-2026-0543; `jiff` or `time`). A pin here only lists a version for the
+  generated workspace. No fleet service takes either crate through it: gateway and oauth declare
+  `rustls-pemfile = "2"` themselves. So dropping them means the services' own changes first, then tacplus's
+  generated Rust if it still names them, then these pins.
+- **tacplus could refuse a pin that is not a string** (2026-11-23, #13): `tacplus fleet build` re-marshals the
+  fleet's `dependencies.yaml`, so an unquoted `1.80` came out in `build/proto` as `1.8`, a Maven version that does
+  not exist. `ci/pins_test.sh` now catches it here. Every fleet and project would be covered if tacplus read
+  `lang:` versions as strings and refused a number. That is new tacplus behaviour, so it needs design first.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)

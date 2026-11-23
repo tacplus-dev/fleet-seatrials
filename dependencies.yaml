@@ -12,6 +12,8 @@ tools:
     python: '>=3.8'
     rust-edition: "2021"
     typescript: ^5.3.3
+# Every lang pin is a string: quote a version YAML would read as a number (1.80 is the float 1.8,
+# which tacplus fleet build writes into build/proto). ci/pins_test.sh checks it, and the copies (#13).
 lang:
     go:
         dependencies:
@@ -28,23 +30,23 @@ lang:
             github.com/pelletier/go-toml/v2: v2.2.4
             github.com/soheilhy/cmux: v0.1.5
             go.uber.org/zap: v1.27.1
-            golang.org/x/crypto: v0.47.0
-            golang.org/x/net: v0.49.0
+            golang.org/x/crypto: v0.59.0
+            golang.org/x/net: v0.62.0
             golang.org/x/sync: v0.19.0
             google.golang.org/genproto/googleapis/rpc: v0.0.0-20260209200024-4cfbd4190f57
-            google.golang.org/grpc: v1.78.0
+            google.golang.org/grpc: v1.83.2
             google.golang.org/protobuf: v1.36.11
             gopkg.in/yaml.v3: v3.0.1
     java:
         dependencies:
             # stratum ships its hot redo archive to GCS; this pin is what makes tacplus emit GcsArchiveSink.
             com.google.cloud:google-cloud-storage: 2.75.0
-            ch.qos.logback:logback-classic: 1.5.29
-            ch.qos.logback:logback-core: 1.5.29
+            ch.qos.logback:logback-classic: 1.5.38
+            ch.qos.logback:logback-core: 1.5.38
             com.google.code.gson:gson: 2.13.2
             com.google.protobuf:protobuf-java: 4.36.2
             com.google.protobuf:protobuf-java-util: 4.36.2
-            com.hazelcast:hazelcast: 5.5.0
+            com.hazelcast:hazelcast: 5.7.0
             com.moandjiezana.toml:toml4j: 0.7.2
             io.grpc:grpc-netty-shaded: 1.79.0
             io.grpc:grpc-protobuf: 1.79.0
@@ -66,44 +68,44 @@ lang:
             org.slf4j:slf4j-simple: 2.0.17
             org.yaml:snakeyaml: "2.5"
             javax.annotation:javax.annotation-api: 1.3.2
-            org.bouncycastle:bcprov-jdk18on: 1.80
-            org.bouncycastle:bcpkix-jdk18on: 1.80
+            org.bouncycastle:bcprov-jdk18on: "1.85.2"
+            org.bouncycastle:bcpkix-jdk18on: "1.85"
             org.apache.maven.plugins:maven-antrun-plugin: 3.1.0
             org.codehaus.mojo:build-helper-maven-plugin: 3.6.0
             org.apache.commons:commons-compress: 1.28.0
     typescript:
         dependencies:
-            '@apollo/server': ^5.4.0
+            '@apollo/server': ^5.5.0
             '@bufbuild/protobuf': ^2.11.0
             '@bufbuild/protoc-gen-es': ^2.11.0
             '@iarna/toml': ^2.2.5
             '@types/express': ^5.0.6
             '@types/js-yaml': ^4.0.9
-            axios: ^1.13.5
+            axios: ^1.20.0
             compressjs: ^1.0.3
             express: ^5.2.1
             graphql: ^16.12.0
-            js-yaml: ^4.1.0
-            zod: ^4.3.6
+            js-yaml: ^4.3.2
+            zod: ^4.6.6
     python:
         dependencies:
             PyYAML: '>=6.0.3'
-            cryptography: '>=42.0.0'
+            cryptography: '>=50.0.0'
             fastapi: '>=0.128.8'
             grpcio: '>=1.76.0'
             httpx: '>=0.28.1'
             protobuf: '>=7.34.0'
             pydantic: '>=2.12.5'
-            requests: '>=2.31.0'
-            strawberry-graphql: '>=0.291.3'
+            requests: '>=2.33.0'
+            strawberry-graphql: '>=0.327.2'
             tomli: '>=2.4.0'
             tomli-w: '>=1.2.0'
-            urllib3: '>=2.0.0'
+            urllib3: '>=2.8.0'
             uvicorn: '>=0.40.0'
             websockets: '>=15.0.1'
     rust:
         dependencies:
-            anyhow: 1.0.101
+            anyhow: 1.0.104
             async-graphql: 7.2.1
             async-graphql-axum: 7.2.1
             async-trait: 0.1.89
@@ -115,7 +117,7 @@ lang:
             flate2: 1.1.9
             futures: 0.3.31
             hyper: 1.8.1
-            jsonwebtoken: 9.3.1
+            jsonwebtoken: 10.4.0
             log: 0.4.29
             once_cell: 1.21.3
             pbjson: 0.8.0
@@ -126,14 +128,14 @@ lang:
             prost-wkt-types: 0.7.1
             regex: 1.12.3
             reqwest: 0.12.15
-            rustls: 0.23.25
+            rustls: 0.23.46
             rustls-pemfile: 2.2.0
             serde: 1.0.228
             serde_json: 1.0.149
             serde_yaml: 0.9.34
             thiserror: 1.0.69
             tinyvec: "=1.12.0"
-            tokio: 1.49.0
+            tokio: 1.51.6
             tokio-rustls: 0.26.4
             tokio-tungstenite: 0.28.0
             tokio-stream: 0.1.17
@@ -148,5 +150,5 @@ lang:
             tracing-subscriber: 0.3.22
             toml: 0.8.22
             tokio-test: 0.4.4
-            webpki-roots: 0.26.8
+            webpki-roots: 0.26.11
             x509-cert: 0.2.5

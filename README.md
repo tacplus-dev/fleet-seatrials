@@ -14,7 +14,15 @@ What it proves:
 `fleet.yaml` names the registries this fleet trusts, the tacplus floor (2.6), and every service the
 fleet runs with the repo implementing it and its release line (`version: MAJOR.MINOR`, its newest
 patch tag) — the smallest set the fleet build's dependency closure allows. `dependencies.yaml` holds
-the language and tool pins. `tacplus fleet build` resolves it all, stamps fleet-owned caller lists
+the language and tool pins. They are the versions in the manifests tacplus writes for code generated from
+`build/proto`, in the operator build and in each service image. At v2.6.14 these are: every Rust pin, in the
+generated Cargo workspace; zap and grpc, in a generated Go server module; and the TypeScript and Python
+pins, in a generated package.json or pyproject. tacplus writes no Java versions: a Java pin only switches
+generated code on, as google-cloud-storage switches on stratum's GcsArchiveSink. A service's own
+manifest and lock stay its own, and cargo and Go resolve upward from these pins. The client keeps a copy in
+`client/proto`. The pins are kept free of fixable advisories (#13). A version YAML would read as a number
+is quoted (`ci/pins_test.sh`).
+`tacplus fleet build` resolves it all, stamps fleet-owned caller lists
 (llmproxy admits exactly the services here that declare a client of it), writes `fleet.lock`, and
 leaves `build/proto` as the merged tree the fleet-side services are generated from.
 
