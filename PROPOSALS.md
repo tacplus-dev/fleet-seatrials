@@ -155,6 +155,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   every build-image change, so the cost needs Jody's call. Since #56, `changed` builds the first service of each
   language in a new build image, so a broken one fails the `images` job. The other services still keep their
   old images until they change.
+- **The build image's own build checks it starts as its user** (2026-11-23, #56): 79dcdd9 switched
+  `images/tacplus-build.Dockerfile` to `USER build` on the belief that the base image had that user. It had none,
+  and `docker build` does not check: only the first service step on Cloud Build would have failed, after
+  the build image was pushed. `images/build_test.sh` now checks that the Dockerfile creates the user, but
+  it reads text. Proposal: a step in `images/tacplus-build.cloudbuild.yaml`, before the image is tagged
+  `fp-`, that runs it (`docker run --rm <image> id -u`, expecting 1000), so a build image that cannot start
+  its steps is never published.
 - **The client generates against the fleet's locked contracts** (2026-10-28, nightly scan, #14): `client/`'s
   `depends` resolve through the registry at `latest` (each contract's main), not at the commits in `fleet.lock`, so
   the client can call a contract newer than the one deployed, and it broke when those mains raised their floor to
