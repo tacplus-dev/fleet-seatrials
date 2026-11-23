@@ -5,7 +5,7 @@
 # The post-deploy checks of seatrials, the deploy pipeline's test stage. Each
 # needs no person and prints no secret.
 #
-#   deploy/checks.sh pods          # every pod of the fleet's namespaces Ready
+#   deploy/checks.sh pods          # every pod of the fleet's platform namespace Ready
 #   deploy/checks.sh cert          # the gateway serves a publicly trusted certificate
 #                                  # for the host, valid for CERT_MIN_DAYS (14) more days
 #   deploy/checks.sh jwks          # OIDC discovery names the host as issuer; its JWKS has keys
@@ -19,7 +19,10 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 host=${SEATRIALS_HOST:-seatrials.tacplus.dev}
-namespaces=${CHECK_NAMESPACES:-^schematic}   # a regex over namespace names
+# The platform namespace operator.yaml names (deploy/namespaces.sh, #4): the one
+# the deploy account may read. Its tenant namespaces are deploymentproxy's, and
+# only the operator's account is bound there.
+namespace=${CHECK_NAMESPACE:-$("$here/deploy/namespaces.sh" platform)}
 min_days=${CERT_MIN_DAYS:-14}
 failed=0
 bad() { echo "FAIL $*"; failed=1; }
@@ -27,14 +30,12 @@ good() { echo "ok   $*"; }
 
 check_pods() {
   local json not_ready total
-  json=$(kubectl get pods -A -o json)
-  total=$(jq --arg re "$namespaces" '[.items[] | select(.metadata.namespace | test($re))
-    | select(.status.phase != "Succeeded")] | length' <<<"$json")
-  not_ready=$(jq -r --arg re "$namespaces" '.items[] | select(.metadata.namespace | test($re))
-    | select(.status.phase != "Succeeded")
+  json=$(kubectl get pods -n "$namespace" -o json)
+  total=$(jq '[.items[] | select(.status.phase != "Succeeded")] | length' <<<"$json")
+  not_ready=$(jq -r '.items[] | select(.status.phase != "Succeeded")
     | select([.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length == 0)
     | "\(.metadata.namespace)/\(.metadata.name) (\(.status.phase))"' <<<"$json")
-  if [ "$total" -eq 0 ]; then bad "pods: none in namespaces matching $namespaces"; return; fi
+  if [ "$total" -eq 0 ]; then bad "pods: none in $namespace"; return; fi
   if [ -n "$not_ready" ]; then
     bad "pods: not Ready:"; sed 's/^/       /' <<<"$not_ready"; return
   fi

@@ -6,7 +6,9 @@
 # opa, jq and yq): each check passes on a healthy fleet and fails, saying
 # what, on a pod not Ready, a certificate near expiry or that does not verify,
 # an empty JWKS or a foreign issuer, a provider missing or sent to the wrong
-# IdP, and a routing policy that sends a claim to the wrong tenant.
+# IdP, and a routing policy that sends a claim to the wrong tenant. The pods
+# check reads the platform namespace operator.yaml names (deploy/namespaces.sh,
+# #4), the one the deploy account may read.
 #
 #   deploy/checks_test.sh
 set -uo pipefail
@@ -14,11 +16,14 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin" "$work/http"
+platform=$("$here/namespaces.sh" platform)
 
-cat > "$work/bin/kubectl" <<'EOF'
+# kubectl answers only for the platform namespace: the deploy account's Role is
+# there alone (tacplus-dev/cluster, fleet-deploy), so -A would be forbidden.
+cat > "$work/bin/kubectl" <<EOF
 #!/usr/bin/env bash
-[ "$*" = "get pods -A -o json" ] || { echo "unexpected kubectl $*" >&2; exit 3; }
-cat "$STUB_PODS"
+[ "\$*" = "get pods -n $platform -o json" ] || { echo "unexpected kubectl \$*" >&2; exit 3; }
+cat "\$STUB_PODS"
 EOF
 cat > "$work/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -47,9 +52,9 @@ pod() { # NAMESPACE NAME PHASE READY
   jq -n --arg ns "$1" --arg n "$2" --arg p "$3" --arg r "$4" \
     '{metadata: {namespace: $ns, name: $n}, status: {phase: $p, conditions: [{type: "Ready", status: $r}]}}'
 }
-{ pod schematic kernel0-a Running True; pod schematic tenantecho-1 Running True; pod pigeons job-x Succeeded False
-  pod kube-system dns Running False; } | jq -s '{items: .}' > "$work/pods-ok.json"
-{ pod schematic kernel0-a Running True; pod schematic gateway0-b Running False; } | jq -s '{items: .}' > "$work/pods-bad.json"
+{ pod "$platform" kernel0-a Running True; pod "$platform" tenantecho-1 Running True
+  pod "$platform" job-x Succeeded False; } | jq -s '{items: .}' > "$work/pods-ok.json"
+{ pod "$platform" kernel0-a Running True; pod "$platform" gateway0-b Running False; } | jq -s '{items: .}' > "$work/pods-bad.json"
 echo '{"items": []}' > "$work/pods-none.json"
 
 h=$work/http
@@ -118,9 +123,9 @@ run() {
   echo "ok   $name"
 }
 
-run "pods: all Ready (other namespaces and finished Jobs aside)" pass "all 2 Ready" pods
-run "pods: one not Ready" fail "schematic/gateway0-b" pods -- STUB_PODS="$work/pods-bad.json"
-run "pods: none at all" fail "none in namespaces" pods -- STUB_PODS="$work/pods-none.json"
+run "pods: all Ready (finished Jobs aside), in $platform" pass "all 2 Ready" pods
+run "pods: one not Ready" fail "$platform/gateway0-b" pods -- STUB_PODS="$work/pods-bad.json"
+run "pods: none at all" fail "none in $platform" pods -- STUB_PODS="$work/pods-none.json"
 run "cert: verifies, not expiring" pass "subject=CN=seatrials.tacplus.dev" cert
 run "cert: expiring" fail "expires within 14 days" cert -- STUB_EXPIRING=1
 run "cert: does not verify" fail "does not serve a certificate that verifies" cert -- STUB_VERIFY=no

@@ -8,8 +8,10 @@
 # empty, which the services read as "not configured", and only where it is
 # missing: deploy/signin-secrets.sh puts the real values in place (from the
 # deploy pipeline's GitLab variables), and a later run must not empty them.
+# They go in the platform namespace operator.yaml names (deploy/namespaces.sh).
 set -euo pipefail
-ns=${NAMESPACE:-schematic}
+here=$(cd "$(dirname "$0")/.." && pwd)
+ns=${NAMESPACE:-$("$here/deploy/namespaces.sh" platform)}
 if kubectl get secret oauth-pipeline-secrets -n "$ns" -o name >/dev/null 2>&1; then
   echo "oauth-pipeline-secrets: in place, left as it is"
 else

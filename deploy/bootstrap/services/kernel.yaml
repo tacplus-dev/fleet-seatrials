@@ -36,8 +36,6 @@ delegates:
         - kernel
         - operator
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
-          kubernetes_service_account: schematic-operator
         - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: operator
     - name: stratum
@@ -47,14 +45,6 @@ delegates:
       kubernetes_service_accounts:
         - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: stratum
-    - name: doppelganger
-      authorized_services:
-        - doppelganger
-        - kernel
-        - llmproxy
-      kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
-          kubernetes_service_account: doppelganger
     - name: tenantecho
       tenant_namespace: /tenants/alpha
       authorized_services:

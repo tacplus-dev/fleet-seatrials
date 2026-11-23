@@ -404,9 +404,10 @@ What the account may do, and nothing more:
   nodes could not pull from it and a running fleet's images would go.
 - **The cluster `dev`:** `roles/container.clusterViewer` with the IAM condition
   `resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`, enough for `get-credentials`.
-  In the cluster, what tacplus-dev/cluster's `deployments.yaml` gives `seatrials-deploy`: its Role in
-  `tac-seatrials`. The fleet still renders into the namespace `schematic`, with cluster-scoped objects, so it
-  applies on `dev` only once it moves to `tac-seatrials` (#4).
+  In the cluster, what tacplus-dev/cluster's `deployments.yaml` gives `seatrials-deploy`: its Role `fleet-deploy`
+  in `tac-seatrials` and nothing cluster-scoped (decisions/deploymentproxy-2026-11-02.md). The tenant namespaces
+  `tac-seatrials-<tid>` come through deploymentproxy (`TenantNamespace`), asked for by the operator's account;
+  anything cluster-scoped is the cluster pipeline's ([below](#the-move-to-tac-seatrials-4)).
 
 The `dev` stack makes the Cloud Build, registry and cluster grants, with the test IdP's account
 ([below](#the-test-idp)) (tacplus-dev/cloud#20, applied 2026-11-08).
@@ -424,6 +425,42 @@ In order (#39):
 
 The first deploy on `dev` waits for the certificate (#35), Jody's DNS cutover (tacplus-dev/cloud#13), the
 grants above and the move to `tac-seatrials` (#4).
+
+### The move to `tac-seatrials` (#4)
+
+A fresh deploy, not a migration (hub, 2026-11-02): the old clusters and their disks are gone, so no state, no
+certificate and no account key is carried over.
+
+- **Namespaces.** `deploy/bootstrap/operator.yaml` names the deployment (`deployment: seatrials`) and each
+  tenant's tid (`tenant_ids`, decided 2026-11-07), and the operator renders the platform into `tac-seatrials` and each tenant into
+  `tac-seatrials-<tid>`: alpha `741kqltx`, beta `ewqybj38`, and the reserved people `00000001` and restore
+  `00000002`. `deploy/namespaces.sh` lists them by the operator's own rule, and every script that reaches the
+  cluster takes its namespace from it, so the scripts and the render cannot disagree. The config and the
+  operator that renders it (v0.1.0) came with the move to tacplus 2.6 (#1). `services/kernel.yaml` keeps no
+  delegate matcher outside these namespaces (`deploy/namespaces_test.sh`): `generate` adds and resyncs
+  matchers but never drops one, so #4 removed the operator's old `schematic/schematic-operator` and the
+  platform `doppelganger` delegate of before doppelganger was per tenant, which a service account of that name
+  in a namespace `schematic` of the shared cluster could otherwise have used.
+- **Pigeons.** The operator grants the coop its pigeons Role in each tenant namespace and renders no pigeons
+  namespace (cluster-scoped), but coop's contract has one `pigeons_namespace` for every run, and
+  `services/coop.yaml` still names `schematic-pigeons`, which nothing creates. No single value is right for a
+  shared coop, so pigeon runs wait on tacplus-dev/coop#17 and tacplus-dev/operator#47 (each tenant's pigeons in
+  its own namespace); the rest of the render does not.
+- **RBAC.** Above: `seatrials-deploy` has its Role in `tac-seatrials` only. So `deploy/checks.sh pods` reads
+  the platform namespace's pods, not every namespace's; the tenant namespaces' pods are read by nobody in the
+  pipeline yet (PROPOSALS.md).
+- **The certificate.** The move orders nothing: the certificate is the pipeline's (#35), a version of
+  `tls-seatrials` the deploy installs, whatever the namespace. The duplicate-certificate budget that was nearly
+  spent is the old letsencrypt's, for the set `seatrials.tacplus.dev`, which nothing orders any more. The `cert`
+  job's set is `tacplus.dev` and `*.tacplus.dev`, a budget of its own (5 per 7 days): it orders only when the
+  version is missing, expired, wrong or invalid, and renews when due, so one order a cycle.
+- **The trust domain** stays `local.dev` until #16: it is the fleet's, Jody's to name, not derived from the
+  FQDN. When it changes, every SPIFFE id changes, every outstanding token and session credential stops working
+  and people sign in again; the Anthropic federation rule `llmproxy-seatrials` must change with it (#16).
+- **The root credential.** `operator.yaml`'s `root_cred_pairs` registers `root-feb39e0fd6b526ff`, whose private
+  key was deleted with `~/.seatrials` (hub, 2026-10-30), so on the first deploy nobody holds a root key. A new
+  root pair, its private key kept by the pipeline and never on a laptop, replaces it before the client steps of
+  the README run (PROPOSALS.md).
 
 ## The runner
 

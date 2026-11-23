@@ -5,6 +5,10 @@
 # the request. mock_result is what MODE_MOCK would answer with; it is kept so
 # flipping the mode back is one line.
 mode: MODE_JOBS
+# The pigeons namespace of the one-namespace layout, which no longer exists:
+# with a deployment, the operator grants the coop its pigeons Role in each
+# tenant namespace instead, and this one field cannot name them all (#4;
+# tacplus-dev/coop#17, tacplus-dev/operator#47).
 pigeons_namespace: schematic-pigeons
 max_live_runs: 32
 max_live_runs_per_tenant: 8

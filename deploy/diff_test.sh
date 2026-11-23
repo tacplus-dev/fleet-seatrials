@@ -181,12 +181,15 @@ cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 case "$*" in
   "config current-context") echo "${STUB_CONTEXT:-gke_tacplus-dev_us-central1-a_dev}" ;;
-  "get pods -n schematic") ;;
+  "get pods -n tac-seatrials") ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
 esac
 EOF
-mkdir -p "$work/tree/deploy" "$work/tree/bin"
-cp "$here/apply.sh" "$work/tree/deploy/apply.sh"
+# The tree's operator.yaml names a deployment: apply.sh lists the pods of its
+# platform namespace (deploy/namespaces.sh, #4).
+mkdir -p "$work/tree/deploy/bootstrap" "$work/tree/bin"
+cp "$here/apply.sh" "$here/namespaces.sh" "$work/tree/deploy/"
+printf 'deployment: seatrials\ntenants: [alpha]\ntenant_ids: {alpha: 741kqltx}\n' > "$work/tree/deploy/bootstrap/operator.yaml"
 cp "$work/bin/schematic-operator" "$work/tree/bin/schematic-operator"
 # applysh NAME WANT(applied|refused) MANIFEST [ENV=VALUE...]
 applysh() {

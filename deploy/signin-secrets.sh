@@ -55,7 +55,7 @@
 # enable: false, and turns on with the run that supplies it.
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
-ns=${NAMESPACE:-schematic}
+ns=${NAMESPACE:-$("$here/deploy/namespaces.sh" platform)}   # oauth's: the platform namespace
 [ $# -eq 0 ] || { echo "usage: $0 (the secrets come from FLEET_* variables; see the header)" >&2; exit 2; }
 ctx=$(kubectl config current-context)
 want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}

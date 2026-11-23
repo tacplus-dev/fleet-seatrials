@@ -18,7 +18,7 @@
 tests:
   # The fleet is up.
   - name: platform/pods-ready
-    what: every pod of the fleet's namespaces is Ready
+    what: every pod of the fleet's platform namespace is Ready
     run: deploy/checks.sh pods
   - name: platform/gateway-cert
     what: the gateway serves a publicly trusted certificate for the host, valid 14 more days

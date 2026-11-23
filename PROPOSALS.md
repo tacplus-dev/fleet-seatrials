@@ -298,6 +298,21 @@ the looper then marks it `promoted` or `declined` here with the date.
   generates now, so each needs a run script calling the fleet through `client/` (`seatrials`), and its
   `waits_on` moved to what it still waits on (the first deploy on `dev`, #4; #27, tacplus#258, #265 where
   named). Their runs can only be proved against a deployed fleet, so this is #17's follow-up, not #14's.
+- **A new root credential for the first deploy, its key kept by the pipeline** (2026-11-23, #4; hub note on #4,
+  2026-10-30): `operator.yaml`'s `root_cred_pairs` registers `root-feb39e0fd6b526ff`, whose private key was
+  deleted with `~/.seatrials`, and the README's first-time steps make the next one with `./seatrials keygen
+  root` on a laptop. Proposal: the manual `init-secrets` job (deploy/init-secrets.sh) also makes the root pair,
+  adds its private key as a version of a Secret Manager secret of its own (say `fleet-root-cred-seatrials`, as
+  the CA and crypto file are, #44; the hub's note said a protected GitLab variable, which #44 since ruled out
+  for key material) and prints the public `cred_pair`, which a commit puts in `root_cred_pairs` in place of the
+  orphaned one. Revoking the old pairs (`root`, `alpha`, `beta`) is optional: the fresh deploy has none of their
+  state. Needs Jody's word on where the key lives and on the client reading it from there.
+- **Read the tenant namespaces' pods in the post-deploy checks** (2026-11-23, #4): `seatrials-deploy` has its
+  Role in `tac-seatrials` only, and deploymentproxy binds only the operator's account in `tac-seatrials-<tid>`,
+  so `deploy/checks.sh pods` reads the platform namespace alone: a tenant's app service that never comes up
+  (tenantecho, doppelganger, coop's pigeons) is not caught there. Proposal: deploymentproxy (or the cluster
+  pipeline) also binds the deployment's deploy account read-only (`pods`, `get, list`) in each tenant namespace
+  it makes, and `checks.sh pods` reads every namespace `deploy/namespaces.sh` lists.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)

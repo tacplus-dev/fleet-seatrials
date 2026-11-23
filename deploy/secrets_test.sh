@@ -4,7 +4,9 @@
 #
 # Tests deploy/secrets.sh against a stub kubectl: it creates the pipeline
 # Secrets the charts reference only where they are missing, so a pipeline run
-# never empties a key deploy/signin-secrets.sh put in place.
+# never empties a key deploy/signin-secrets.sh put in place; and only in the
+# platform namespace operator.yaml names (deploy/namespaces.sh, #4). Needs
+# bash, jq and yq.
 #
 #   deploy/secrets_test.sh
 set -uo pipefail
@@ -33,6 +35,10 @@ run() { # NAME EXISTS WANT_WRITES
 }
 run "a missing Secret is created" false 1
 run "an existing Secret is left as it is" true 0
+platform=$("$here/namespaces.sh" platform)
+others=$(grep -E ' secret ' "$work/log" | grep -v -- "-n $platform\( \|$\)")
+[ -z "$others" ] && echo "ok   it reads and writes in the platform namespace, $platform" ||
+  { echo "FAIL not in $platform: [$others]"; failures=$((failures + 1)); }
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1

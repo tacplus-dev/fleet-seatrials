@@ -18,6 +18,7 @@ ctx=$(kubectl config current-context)
 want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
 [ "$ctx" = "$want_ctx" ] || { echo "kube context is $ctx, not $want_ctx, the cluster seatrials deploys to" >&2; exit 1; }
 cd "$here"
+ns=$(deploy/namespaces.sh platform)
 bin/schematic-operator generate
 digest=sha256:$(bin/schematic-operator apply --dry-run | sha256sum | cut -d' ' -f1)
 if [ "$digest" != "$RENDER_DIGEST" ]; then
@@ -26,4 +27,4 @@ if [ "$digest" != "$RENDER_DIGEST" ]; then
 fi
 echo "applying render $digest"
 bin/schematic-operator apply
-kubectl get pods -n schematic
+kubectl get pods -n "$ns"

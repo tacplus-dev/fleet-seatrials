@@ -13,8 +13,9 @@
 # providers get the secrets derived from their seed and are on only while their
 # realm answers. Google's version is the client JSON the Console downloads or a
 # bare secret; a JSON for another client than oauth.yaml's, or a secret Google
-# refuses, is refused, and the old GitLab variable is no longer read.
-# Needs bash, jq and python3.
+# refuses, is refused, and the old GitLab variable is no longer read. It reads
+# and writes in the platform namespace operator.yaml names (deploy/namespaces.sh,
+# #4). Needs bash, jq, yq and python3.
 #
 #   deploy/signin-secrets_test.sh
 set -uo pipefail
@@ -23,6 +24,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/bin"
+real_yq=$(command -v yq) || { echo "FAIL yq is not on PATH"; exit 1; }
 cat > "$work/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
@@ -39,8 +41,9 @@ case "$*" in
   *"rollout restart"*) echo "RESTART" >> "$STUB_LOG" ;;
 esac
 EOF
-cat > "$work/bin/yq" <<'EOF'
+cat > "$work/bin/yq" <<EOF
 #!/usr/bin/env bash
+case "\$*" in *operator.yaml*) exec "$real_yq" "\$@" ;; esac
 echo '[{"name":"Google","issuer":"https://accounts.google.com","client_id":"g","allowed_redirect_uri_prefixes":["https://seatrials.tacplus.dev/"],"enable":true},{"name":"Microsoft","client_id":"m","enable":true},{"name":"Apple","client_id":"a","enable":true,"apple":{"key_id":"k"}},{"name":"Test Google","issuer":"https://idp.test.tacplus.dev:8443/realms/google","client_id":"tacplus-dev","enable":true}]'
 EOF
 # Google's token endpoint (deploy/google-client.sh): takes the secret unless
@@ -106,6 +109,7 @@ run() {
 provider() { jq -r --arg n "$1" ".configs.oauth_config.providers[] | select(.name == \$n) | .$2" "$work/override.json"; }
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else fail "$1: got [$2], want [$3]"; fi; }
 
+platform=$("$here/namespaces.sh" platform)
 value=abc8Q~Zx0_yv.Tq-1rLmNoPqRsTuVwXyZ0123456   # 40 characters, the shape Entra issues today
 run "well-formed Microsoft value is written" write FLEET_MICROSOFT_CLIENT_SECRET="$value" &&
   check "the Microsoft value is the variable's" "$(provider Microsoft client_secret)" "$value"
@@ -126,7 +130,9 @@ run "a character outside [A-Za-z0-9_.~-] is refused" refuse \
 run "with no variable, the current secrets are kept" write &&
   check "Google kept" "$(provider Google client_secret)" kept-google &&
   check "Microsoft kept" "$(provider Microsoft client_secret)" kept-microsoft &&
-  check "Apple off without a key" "$(provider Apple enable)" false
+  check "Apple off without a key" "$(provider Apple enable)" false &&
+  check "every kubectl get and create is in the platform namespace, $platform" \
+    "$(grep -E '^(-n [^ ]+ )?(get|create) ' "$work/log" | grep -vc -- "^-n $platform ")" 0
 
 # Google's secret: a version of google-signin-seatrials (ci_google_signin), the
 # client JSON the Console downloads when the client is made, or a bare secret
