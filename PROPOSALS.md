@@ -293,6 +293,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   `ci/client_test.sh` generates the client with the pinned compiler and runs govulncheck on it. Either the scan
   generates first (a tacplus-dev/looper change: it would need the pinned tacplus) or accepts this repository's
   gate as the client's check; until then the nightly line for `client/` is expected.
+- **The functional suite's RPC items get their runs** (2026-11-23, #14): `deploy/e2e.yaml`'s tenants, rpcs,
+  records, streams, redo, kernel-restart and event-trace items are `waits_on: ["#14"]` with no `run`. The client
+  generates now, so each needs a run script calling the fleet through `client/` (`seatrials`), and its
+  `waits_on` moved to what it still waits on (the first deploy on `dev`, #4; #27, tacplus#258, #265 where
+  named). Their runs can only be proved against a deployed fleet, so this is #17's follow-up, not #14's.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)

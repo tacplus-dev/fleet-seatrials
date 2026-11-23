@@ -12,7 +12,8 @@
 # waits on closes, the item gets its run.
 #
 # Most items wait on #14: the suite calls the fleet's RPCs through the fleet's
-# own client (client/), which does not generate on main. Sign-in uses the test
+# own client (client/), which generates since #14 but has no run here yet
+# (PROPOSALS.md). Sign-in uses the test
 # IdP only (#27; Jody, 2026-11-01: no real-provider test accounts).
 tests:
   # The fleet is up.
