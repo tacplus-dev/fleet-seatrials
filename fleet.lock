@@ -134,11 +134,11 @@ services:
       inputs_digest: 336367746ad1e2a5f98772b8dc0f3a1f436d1cbf0bf1091aaa924f3e2383bd9b
     - name: redo
       id: 108
-      version: 0.1.5
+      version: 0.1.7
       repo: https://github.com/tacplus-dev/redo.git
-      commit: 16b50eb6e46d30d20adb7d4f8f3bcdc2d8f2658e
+      commit: 08a79e57e2c0bfc756cfccc23d38ea74e895f65d
       contract: https://github.com/tacplus-dev/redo.git
-      contract_commit: 16b50eb6e46d30d20adb7d4f8f3bcdc2d8f2658e
+      contract_commit: 08a79e57e2c0bfc756cfccc23d38ea74e895f65d
       depends:
         - kernel
       inputs_digest: dd37d2f786d29c47e8c7d5d71379dba7611e0092996a35f9161e3bc668c1c670

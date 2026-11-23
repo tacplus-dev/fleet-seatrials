@@ -7,8 +7,10 @@
 # every fleet.yaml service in its stated line, at its release tag's commit
 # (what images/build.sh builds), with no image; and the compiler pinned in
 # images/pins.yaml is the stamp ci/tools.sh and images/tacplus-build.cloudbuild.yaml
-# give it, a release of fleet.yaml's line. Needs bash, git (it reads the tags
-# from GitHub) and yq.
+# give it, a release of fleet.yaml's line. Every locked commit carries what
+# images/build.sh builds its image from, its tacplus.yaml and its Dockerfile:
+# redo v0.1.5 had none, and the first deploy's images job failed on it (#68).
+# Needs bash, git (it reads the tags and the commits from GitHub) and yq.
 #
 #   ci/fleet_lock_test.sh
 set -uo pipefail
@@ -16,6 +18,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 failed=0
 fail() { echo "FAIL $*"; failed=1; }
 ok() { echo "ok   $*"; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 
 manifest="$here/fleet.yaml" lock="$here/fleet.lock"
 # tag_commit REPO TAG: the commit TAG names (an annotated tag peeled).
@@ -46,6 +50,18 @@ while read -r name stated; do
   tagged=$(tag_commit "$repo" "v$version")
   [ -n "$tagged" ] && [ "$tagged" = "$commit" ] && ok "$name: v$version at its tag's commit ${commit:0:12}" \
     || fail "$name: locked at '$commit', v$version of $repo is '$tagged'"
+  # What images/build.sh builds the image from: the service's tacplus.yaml and its Dockerfile.
+  dir=$tmp/$name
+  if git init -q "$dir" && git -C "$dir" fetch -q --depth 1 "$repo" "$commit" 2>/dev/null; then
+    missing=""
+    for f in tacplus.yaml Dockerfile; do
+      git -C "$dir" cat-file -e "FETCH_HEAD:$f" 2>/dev/null || missing="$missing $f"
+    done
+    [ -z "$missing" ] && ok "$name: v$version has its tacplus.yaml and Dockerfile" \
+      || fail "$name: v$version (${commit:0:12}) has no$missing: images/build.sh cannot build its image"
+  else
+    fail "$name: cannot fetch $repo at $commit"
+  fi
 done < <(yq '.services[] | .name + " " + .version' "$manifest")
 
 pinned=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
