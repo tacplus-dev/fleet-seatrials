@@ -13,40 +13,31 @@ option (spec.service) = {name: "doppelganger", tenant_owned: true};
 // Pushback is just the next GenerateAnswer in the same session: it re-answers
 // with whatever the caller added; it does not repeat itself.
 //
-// One instance per tenant (tenant_owned), shared by that tenant's users; the
-// gateway routes each caller to their tenant's instance. Client-facing (C2S):
-// the caller is an authenticated user of the tenant. Answers rest on two
-// layers of context held by the instance: the tenant's (UpdateTenantContext,
-// a tenant-admin entitlement) and the calling user's own (UpdateContext, any
-// user, their own files only). The model is reached through llmproxy over S2S;
-// doppelganger holds no model credential. Context lives on the instance's
-// disk until stratum is ported, when it moves there.
+// One instance per tenant (tenant_owned), shared by that tenant's users; every
+// request names its target tenant (the route field `tenant`) and the gateway
+// routes it to that tenant's instance. Client-facing (C2S): the caller is an
+// authenticated user of the tenant. Answers rest on two layers of context held
+// by the instance: the tenant's (UpdateTenantContext, a tenant-admin
+// entitlement) and the calling user's own (UpdateContext, any user, their own
+// files only). The model is reached through llmproxy over S2S;
+// doppelganger holds no model credential. Context lives in stratum.
 // ---------------------------------------------------------------------------
 
 // The model call goes through llmproxy; the fleet build admits doppelganger as
 // one of its callers because this line exists.
 option (spec.grpc_s2s_client) = {service: "llmproxy.LlmProxy"};
 
-// Context and sessions live in stratum as ContextDocument and Session records:
-// this service reads its own rows back through the record query plane (the
-// grant half is each record's s2s_read below). Nothing is kept on the
-// instance's disk.
+// Context, sessions and panel runs live in stratum as ContextDocument, Session
+// and PanelRun records: this service writes them through stratum's write
+// surface and reads its own rows back through the record plane (the grant
+// halves are each record's s2s_write and s2s_read below). Nothing is kept on
+// the instance's disk.
 option (spec.record_read) = {record: "doppelganger.ContextDocument"};
 option (spec.record_read) = {record: "doppelganger.Session"};
+option (spec.record_read) = {record: "doppelganger.PanelRun"};
 
 message Config {
   option (spec.grpc_config) = {service_name: "doppelganger"};
-
-  // The topics tacplus synthesizes from the (spec.record)s below: this
-  // service's durable write paths. A record has no write RPC; it reaches
-  // stratum on stratum's own subscription to its topic, so publishing here IS
-  // writing the record (the same shape as letsencrypt's LetsEncryptCert).
-  option (spec.event_publish) = {
-    topic_ref: "doppelganger.ContextDocumentBus.stream"
-  };
-  option (spec.event_publish) = {
-    topic_ref: "doppelganger.SessionBus.stream"
-  };
 
   // 1 was repo_dir and 2 state_dir: context and sessions on the instance's
   // disk, before both moved to stratum.
@@ -54,11 +45,33 @@ message Config {
   reserved "repo_dir", "state_dir";
   // model_alias is the llmproxy alias answers are generated with.
   string model_alias = 3 [(spec.assert_required) = true];
+  // panel_model_aliases are the llmproxy aliases that sit on the panel
+  // (GeneratePanelAnswer), one per panelist, in seat order, for example
+  // "claude-opus-latest", "openai-latest", "gemini-latest". llmproxy resolves
+  // each to its vendor's current model; the panel never names a model id
+  // itself. Every seat is given the same inputs, byte for byte. Empty: no panel.
+  repeated string panel_model_aliases = 4 [(spec.assert_max_size) = 16, (spec.assert_element_max_size) = 128];
+  // principles_paths are the tenant-context paths (a file, or a directory
+  // prefix) that hold the person's principles: the only part of the context a
+  // panelist is given, and only in phase 2. None configured, or none matching
+  // a Markdown file, and the panel refuses (fails closed).
+  repeated string principles_paths = 5 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 512];
+  // panel_moderator_alias is the llmproxy alias of the panel's moderator: it
+  // frames the question for phase 1, merges the phase-1 options (checked by
+  // code) and writes the summary for the person (checked by code to quote
+  // every dissent). It never votes and never sees the principles. A seat on
+  // the same alias is a separate instance: its calls carry nothing of the
+  // moderator's. Empty: no moderator; code merges and there is no summary.
+  string panel_moderator_alias = 6 [(spec.assert_max_size) = 128];
 }
 
 message CreateSessionRequest {
   // Optional context given at creation. More can be added with UpdateSession.
   repeated string context = 1 [(spec.assert_max_size) = 100];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 2;
 }
 
 message CreateSessionResponse {
@@ -69,6 +82,10 @@ message UpdateSessionRequest {
   string          session_id = 1 [(spec.assert_required) = true];
   // Context to append. Existing context is kept.
   repeated string context    = 2 [(spec.assert_max_size) = 100];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 3;
 }
 
 message UpdateSessionResponse {}
@@ -86,16 +103,25 @@ message ContextFile {
 // the tenant's shared context (scope "tenant", owner = the tenant namespace) or
 // one user's own (scope "user", owner = that user's principal). Doppelganger is
 // the only writer and the only reader; stratum stores it. A replacement of a
-// context republishes every file and soft-deletes the rows it no longer has.
+// context writes every file and soft-deletes the rows it no longer has, in
+// one Apply.
 message ContextDocument {
   option (spec.record) = {
     // A stable digest of (tenant, scope, owner, path): the same file lands on
     // the same row, so a re-push is an update, never a second copy.
     key: "document_id"
     owner: "owner"
+    // Written through stratum's own write surface, never published on the
+    // event bus: stratum ingests nothing from it (stratum#2). Doppelganger is
+    // the only writer, reader and watcher.
+    s2s_write: {auth_services: ["doppelganger"]}
+    // A record is still an event in tacplus 2.5 and must name its producer;
+    // no Config declares an event_publish on its topic, so nothing does.
     s2s: {auth_services: ["doppelganger"]}
-    s2s_subscribe: {auth_services: ["stratum"]}
     s2s_read: {auth_services: ["doppelganger"]}
+    s2s_subscribe: {auth_services: ["doppelganger"]}
+    // Acked once the tenant's local redo has it on disk.
+    durability: DURABILITY_LOCAL
     // Context is long-lived, config-shaped data: read on every answer while a
     // tenant is active, rewritten rarely. Ninety days idle before eviction
     // (cache maintenance, nothing is lost); deleted rows purged after thirty.
@@ -134,6 +160,10 @@ message ContextDocument {
 // files given are the context afterwards, nothing else. An empty list clears it.
 message UpdateContextRequest {
   repeated ContextFile files = 1 [(spec.assert_max_size) = 4096];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 2;
 }
 
 message UpdateContextResponse {
@@ -144,6 +174,10 @@ message UpdateContextResponse {
 // UpdateTenantContextRequest replaces the tenant's shared context, whole.
 message UpdateTenantContextRequest {
   repeated ContextFile files = 1 [(spec.assert_max_size) = 4096];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 2;
 }
 
 message UpdateTenantContextResponse {
@@ -160,14 +194,23 @@ message SessionTurn {
 
 // Session is one user's conversation: the context they gave and the turns so
 // far. Owned by the user who opened it; doppelganger is the only writer and
-// reader; stratum stores it. Every change republishes the whole session.
+// reader; stratum stores it. Every change rewrites the whole session, on the
+// revision it read.
 message Session {
   option (spec.record) = {
     key: "session_id"
     owner: "owner"
+    // Written through stratum's own write surface, never published on the
+    // event bus: stratum ingests nothing from it (stratum#2). Doppelganger is
+    // the only writer, reader and watcher.
+    s2s_write: {auth_services: ["doppelganger"]}
+    // A record is still an event in tacplus 2.5 and must name its producer;
+    // no Config declares an event_publish on its topic, so nothing does.
     s2s: {auth_services: ["doppelganger"]}
-    s2s_subscribe: {auth_services: ["stratum"]}
     s2s_read: {auth_services: ["doppelganger"]}
+    s2s_subscribe: {auth_services: ["doppelganger"]}
+    // Acked once the tenant's local redo has it on disk.
+    durability: DURABILITY_LOCAL
     // A conversation is live for days, not months: thirty days idle before
     // eviction (nothing is lost), deleted rows purged after thirty.
     residency: {idle_seconds: 2592000 deleted_max_age_seconds: 2592000}
@@ -199,6 +242,10 @@ message Session {
 message GenerateAnswerRequest {
   string session_id = 1 [(spec.assert_required) = true];
   string question   = 2 [(spec.assert_required) = true];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 3;
 }
 
 enum AnswerKind {
@@ -212,6 +259,7 @@ enum Provenance {
   PROVENANCE_UNSPECIFIED = 0;
   PROVENANCE_QUOTED      = 1;  // quotes something Jody said
   PROVENANCE_DERIVED     = 2;  // derived from a stated principle; not said by Jody
+  PROVENANCE_DERIVED_PANEL = 3;  // a panel's tally of what Jody would do; never his decision
 }
 
 message GenerateAnswerResponse {
@@ -228,6 +276,300 @@ message GenerateAnswerResponse {
   repeated string missing           = 7 [(spec.assert_max_size) = 100];
 }
 
+// ---------------------------------------------------------------------------
+// Panel mode (#10): a panel of models from different vendors, each reached
+// through llmproxy by its alias (Config.panel_model_aliases), answers "what
+// would the person do?" in two phases. Phase 1 gives every panelist only the
+// question and the situation and asks for alternatives; the moderator
+// (Config.panel_moderator_alias) merges them, checked by code, or code merges
+// them by normalized title, keeping every proposer either way, and always adds
+// "reuse what the platform already has" and "do nothing / defer". Phase 2 gives every panelist
+// the merged options, the person's principles (Config.principles_paths, nothing
+// else from the context) and each lens in turn, and takes a fixed answer
+// schema. Plain code tallies the answers: agreement per option and every
+// dissent word for word; the moderator's summary explains it and must quote
+// every dissent. The result is derived (panel), never the person's
+// decision. Every run is a PanelRun record, so later decisions score it per
+// model and per question kind.
+// ---------------------------------------------------------------------------
+
+// PanelLens is the angle a phase-2 answer is given from. Every panelist
+// answers once under every lens.
+enum PanelLens {
+  PANEL_LENS_UNSPECIFIED        = 0;
+  PANEL_LENS_REUSE_AND_GENERATOR = 1;  // reuse what exists; generate rather than hand-write
+  PANEL_LENS_INVARIANTS          = 2;  // expiry, revocation, fail closed, no mTLS, reachability is not authorization
+  PANEL_LENS_FAILURE_OTHER_SIDE  = 3;  // failure as seen from the other side of the call
+  PANEL_LENS_PRODUCER_CONSUMER   = 4;  // producer vs consumer
+  PANEL_LENS_ADVERSARY           = 5;  // what would the person object to?
+}
+
+// PanelDisposition is what may be done with a panel's result.
+enum PanelDisposition {
+  PANEL_DISPOSITION_UNSPECIFIED = 0;
+  // Every answer ranked the top option first, the caller says the matter is
+  // reversible and does not touch security or identity: it may be acted on.
+  PANEL_DISPOSITION_MAY_ACT     = 1;
+  // Dissent, an irreversible matter, or security or identity: the person decides.
+  PANEL_DISPOSITION_TO_PERSON   = 2;
+}
+
+// PanelModel is the model behind one answer: the llmproxy alias asked and the
+// model id llmproxy resolved it to (its GenerateCompletionResponse
+// provider_model; empty if a call failed before any answer).
+message PanelModel {
+  string model_alias    = 1 [(spec.assert_max_size) = 128];
+  string resolved_model = 2 [(spec.assert_max_size) = 256];
+}
+
+// PanelOption is one merged alternative from phase 1.
+message PanelOption {
+  // option_id is "O1", "O2", ... in merge order; the fixed options come first.
+  string option_id = 1 [(spec.assert_max_size) = 64];
+  string title     = 2 [(spec.assert_max_size) = 512];
+  // summary is the first proposer's description.
+  string summary   = 3 [(spec.assert_max_size) = 8192];
+  // proposed_by is every panelist that proposed it (traceability).
+  repeated PanelModel proposed_by = 4 [(spec.assert_max_size) = 16];
+  // fixed marks "reuse what the platform already has" and "do nothing / defer",
+  // which are always on the list whoever proposed them.
+  bool fixed = 5;
+  // proposals are the phase-1 proposals merged into this option, word for
+  // word, each with its panelist: every proposal of the run is in exactly one
+  // option.
+  repeated PanelProposal proposals = 6 [(spec.assert_max_size) = 128];
+}
+
+// PanelProposal is one panelist's phase-1 alternative as it was given.
+message PanelProposal {
+  PanelModel model = 1;
+  string title     = 2 [(spec.assert_max_size) = 512];
+  string summary   = 3 [(spec.assert_max_size) = 8192];
+}
+
+// PanelObjection is one objection a panelist raised, word for word.
+message PanelObjection {
+  string option_id = 1 [(spec.assert_max_size) = 64];
+  string text      = 2 [(spec.assert_max_size) = 8192];
+}
+
+// PanelAnswer is one panelist's phase-2 answer under one lens, in the fixed
+// schema, with the model and the time it was given.
+message PanelAnswer {
+  PanelModel model = 1;
+  PanelLens  lens  = 2;
+  // ranked_option_ids is best first; every id is one of the run's options.
+  repeated string ranked_option_ids = 3 [(spec.assert_max_size) = 64];
+  // confidence is the panelist's own, 0 to 100.
+  int32 confidence = 4;
+  repeated PanelObjection objections = 5 [(spec.assert_max_size) = 64];
+  string would_change_mind = 6 [(spec.assert_max_size) = 8192];
+  int64  answered_at_ms    = 7;
+}
+
+// PanelOptionTally is the plain-code count for one option.
+message PanelOptionTally {
+  string option_id = 1 [(spec.assert_max_size) = 64];
+  // first_place is how many answers ranked it first.
+  int32 first_place = 2;
+  // points is a Borda count over the run's n options: an option an answer
+  // ranked r-th gets n+1-r points, one it left out gets none.
+  int32 points = 3;
+}
+
+// PanelDissent is one answer that did not rank the top option first, quoted
+// whole.
+message PanelDissent {
+  PanelModel model = 1;
+  PanelLens  lens  = 2;
+  string ranked_first = 3 [(spec.assert_max_size) = 64];
+  repeated PanelObjection objections = 4 [(spec.assert_max_size) = 64];
+  string would_change_mind = 5 [(spec.assert_max_size) = 8192];
+}
+
+// PanelFailure is a panelist whose answer could not be used (the
+// vendor failed or never produced the schema), or a moderator step that fell
+// back to code; it is reported, not hidden.
+message PanelFailure {
+  PanelModel model = 1;
+  // phase is 1 or 2 for a panelist; 0 for the moderator.
+  int32      phase = 2;
+  PanelLens  lens  = 3;
+  string     error = 4 [(spec.assert_max_size) = 4096];
+  PanelModeratorStep moderator_step = 5;
+}
+
+// PanelModeratorStep is one of the moderator's three calls.
+enum PanelModeratorStep {
+  PANEL_MODERATOR_STEP_UNSPECIFIED = 0;
+  PANEL_MODERATOR_STEP_FRAME       = 1;  // frames the question for phase 1; on failure the caller's text is used as given
+  PANEL_MODERATOR_STEP_MERGE       = 2;  // merges the phase-1 options; on failure code merges by normalized title
+  PANEL_MODERATOR_STEP_SUMMARY     = 3;  // explains the tally; on failure the run has no summary
+}
+
+// PanelResult is the tally: derived (panel), never the person's decision.
+message PanelResult {
+  Provenance provenance = 1;
+  string top_option_id  = 2 [(spec.assert_max_size) = 64];
+  // agreement is the share of answers that ranked the top option first, 0 to 100.
+  int32 agreement = 3;
+  repeated PanelOptionTally tallies = 4 [(spec.assert_max_size) = 64];
+  repeated PanelDissent dissents = 5 [(spec.assert_max_size) = 1024];
+  // objections_to_top is every objection raised against the top option, by
+  // any answer, word for word.
+  repeated PanelObjection objections_to_top = 6 [(spec.assert_max_size) = 1024];
+  // would_change_mind is every answer's, word for word, in answer order.
+  repeated string would_change_mind = 7 [(spec.assert_max_size) = 1024, (spec.assert_element_max_size) = 8192];
+  PanelDisposition disposition = 8;
+  // summary is the moderator's explanation of this tally for the person. It
+  // changes nothing above; code checked that it names the top option and
+  // quotes every dissent (its D<n> label, objections and would-change-mind
+  // word for word). Empty when there is no moderator or it failed.
+  string summary = 9 [(spec.assert_max_size) = 262144];
+}
+
+// PanelRun is one panel question, its options, every answer and the tally,
+// and, once the person has decided, what they chose. Owned by the user who
+// asked; doppelganger is the only writer and reader; stratum stores it. The
+// track record is read from these rows.
+message PanelRun {
+  option (spec.record) = {
+    key: "panel_id"
+    owner: "owner"
+    // Written through stratum's own write surface, never published on the
+    // event bus: stratum ingests nothing from it (stratum#2). Doppelganger is
+    // the only writer, reader and watcher.
+    s2s_write: {auth_services: ["doppelganger"]}
+    // A record is still an event in tacplus 2.5 and must name its producer;
+    // no Config declares an event_publish on its topic, so nothing does.
+    s2s: {auth_services: ["doppelganger"]}
+    s2s_read: {auth_services: ["doppelganger"]}
+    s2s_subscribe: {auth_services: ["doppelganger"]}
+    // Acked once the tenant's local redo has it on disk.
+    durability: DURABILITY_LOCAL
+    // A run is evidence for the track record: kept a year idle before
+    // eviction (nothing is lost), deleted rows purged after thirty days.
+    residency: {idle_seconds: 31536000 deleted_max_age_seconds: 2592000}
+  };
+
+  string panel_id = 1 [
+    (spec.indexed) = true,
+    (spec.assert_required) = true,
+    (spec.assert_min_size) = 32,
+    (spec.assert_max_size) = 64
+  ];
+  string tenant_namespace = 2 [
+    (spec.store_namespace) = true,
+    (spec.assert_required) = true,
+    (spec.assert_max_size) = 512,
+    (spec.query_field) = {op: QUERY_OP_EQ}
+  ];
+  string owner = 3 [(spec.assert_required) = true, (spec.assert_max_size) = 512, (spec.query_field) = {op: QUERY_OP_EQ}];
+  string person = 4 [(spec.assert_max_size) = 128];
+  string question_kind = 5 [(spec.assert_max_size) = 64];
+  string question = 6 [(spec.assert_max_size) = 65536];
+  string situation = 7 [(spec.assert_max_size) = 262144];
+  repeated PanelOption options = 8 [(spec.assert_max_size) = 64];
+  repeated PanelAnswer answers = 9 [(spec.assert_max_size) = 1024];
+  repeated PanelFailure failures = 10 [(spec.assert_max_size) = 1024];
+  PanelResult result = 11;
+  int64 created_at_ms = 12;
+  int64 updated_at_ms = 13;
+  // decided_option_id is the option the person chose (UpdatePanelDecision);
+  // empty until then. It scores every answer of the run.
+  string decided_option_id = 14 [(spec.assert_max_size) = 64];
+  int64  decided_at_ms     = 15;
+  bool deleted = 16 [(spec.deleted_flag) = true];
+  // moderator is the model that moderated the run; empty when none did.
+  PanelModel moderator = 17;
+  // framed_question and framed_requirements and framed_situation are what
+  // every panelist was given in place of question and situation: the
+  // moderator's framing, or the caller's text as given.
+  string framed_question = 18 [(spec.assert_max_size) = 65536];
+  repeated string framed_requirements = 19 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 4096];
+  string framed_situation = 20 [(spec.assert_max_size) = 262144];
+  // moderator_merged says the moderator merged the options (checked by code);
+  // false when code merged them by normalized title.
+  bool moderator_merged = 21;
+}
+
+message GeneratePanelAnswerRequest {
+  // question is the design question.
+  string question = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 65536];
+  // situation is the requirements and what is known, and nothing about the
+  // person's preferences: it is all phase 1 sees, and goes to outside vendors.
+  string situation = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 262144];
+  // person is whose call it is ("Jody" when empty).
+  string person = 3 [(spec.assert_max_size) = 128];
+  // question_kind groups runs for the track record (for example
+  // "security-design", "language").
+  string question_kind = 4 [(spec.assert_max_size) = 64];
+  // reversible and touches_security_or_identity are the caller's account of
+  // the matter; only a reversible one that touches neither may be acted on.
+  bool reversible = 5;
+  bool touches_security_or_identity = 6;
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 7;
+}
+
+message GeneratePanelAnswerResponse {
+  string panel_id = 1;
+  repeated PanelOption options = 2 [(spec.assert_max_size) = 64];
+  repeated PanelAnswer answers = 3 [(spec.assert_max_size) = 1024];
+  repeated PanelFailure failures = 4 [(spec.assert_max_size) = 1024];
+  PanelResult result = 5;
+  // moderator and the framed question are as on the PanelRun.
+  PanelModel moderator = 6;
+  string framed_question = 7 [(spec.assert_max_size) = 65536];
+  repeated string framed_requirements = 8 [(spec.assert_max_size) = 64, (spec.assert_element_max_size) = 4096];
+  string framed_situation = 9 [(spec.assert_max_size) = 262144];
+  bool moderator_merged = 10;
+}
+
+message UpdatePanelDecisionRequest {
+  string panel_id  = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // option_id is the run's option the person chose.
+  string option_id = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 64];
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 3;
+}
+
+message UpdatePanelDecisionResponse {}
+
+message GetPanelTrackRecordRequest {
+  // tenant is the target tenant's tid, the rpc's route_field: it picks the
+  // tenant's instance. Only members of that tenant (and /system) are let in
+  // (no RPC_FLAG_ANY_TENANT), so for a user it is their own tenant.
+  string tenant = 1;
+}
+
+// PanelTrackRecord is how well one model has predicted the person's decisions
+// on one kind of question: only decided runs count. A new model is a new row,
+// measured apart from its predecessor.
+message PanelTrackRecord {
+  PanelModel model = 1;
+  string question_kind = 2 [(spec.assert_max_size) = 64];
+  // runs is the decided runs this model answered in; answers counts each lens.
+  int32 runs = 3;
+  int32 answers = 4;
+  // top_hits is the answers that ranked the decided option first.
+  int32 top_hits = 5;
+  // mean_rank is the decided option's mean rank, 1 = first, an answer that
+  // left it out counting as one past its last.
+  double mean_rank = 6;
+}
+
+message GetPanelTrackRecordResponse {
+  repeated PanelTrackRecord records = 1 [(spec.assert_max_size) = 4096];
+  // decided_runs is how many decided runs the records rest on; undecided runs
+  // are not scored.
+  int32 decided_runs = 2;
+}
+
 service Doppelganger {
   option (spec.service_c2s) = {};
 
@@ -235,12 +577,12 @@ service Doppelganger {
   // answer is for, and what it is for. Returns the session_id every later
   // call needs.
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
   // Adds context to an open session, for example what NEEDS_CONTEXT asked
   // for. Nothing is answered here; ask again afterwards.
   rpc UpdateSession(UpdateSessionRequest) returns (UpdateSessionResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
   // Answers one question in a session as the person the context describes
   // would, from the tenant's context and the caller's own, with reasoning,
@@ -248,17 +590,38 @@ service Doppelganger {
   // is how to push back; it does not repeat itself. A session belongs to the
   // user who opened it.
   rpc GenerateAnswer(GenerateAnswerRequest) returns (GenerateAnswerResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
   // Replaces the calling user's own context with the files given. Any user of
   // the tenant may do this; it reaches only their own context.
   rpc UpdateContext(UpdateContextRequest) returns (UpdateContextResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
   // Replaces the tenant's shared context with the files given. Entitlement
   // gated: the caller's token must carry this RPC's grant, which the tenant's
   // ceiling must allow.
   rpc UpdateTenantContext(UpdateTenantContextRequest) returns (UpdateTenantContextResponse) {
-    option (spec.rpc) = {};
+    option (spec.rpc) = {route_field: "tenant"};
+  }
+  // Asks the panel (Config.panel_model_aliases) what the person would do:
+  // alternatives from the situation alone, then each panelist's ranking under
+  // each lens from the person's principles (Config.principles_paths), tallied
+  // by code. The moderator (Config.panel_moderator_alias), if any, frames the
+  // question, merges the options and summarizes the tally, each checked by
+  // code. The result is derived (panel), never the person's decision, and
+  // is kept as a PanelRun for the track record.
+  rpc GeneratePanelAnswer(GeneratePanelAnswerRequest) returns (GeneratePanelAnswerResponse) {
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
+  }
+  // Records the option the person chose for a panel run, which scores its
+  // answers. Entitlement gated, like UpdateTenantContext: only the person (or
+  // who acts for them) records their decision.
+  rpc UpdatePanelDecision(UpdatePanelDecisionRequest) returns (UpdatePanelDecisionResponse) {
+    option (spec.rpc) = {route_field: "tenant"};
+  }
+  // Returns the tenant's panel track record, per model and per question kind,
+  // from every decided run.
+  rpc GetPanelTrackRecord(GetPanelTrackRecordRequest) returns (GetPanelTrackRecordResponse) {
+    option (spec.rpc) = {route_field: "tenant", flags: [RPC_FLAG_AUTH_ANY_USER]};
   }
 }

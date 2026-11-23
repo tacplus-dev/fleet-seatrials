@@ -6,22 +6,21 @@ delegates:
         - eventbus
         - kernel
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: eventbus
     - name: gateway
       authorized_services:
-        - eventbus
         - gateway
         - kernel
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: gateway
     - name: oauth
       authorized_services:
         - kernel
         - oauth
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: oauth
       auth_broker_kinds:
         - idp
@@ -30,7 +29,7 @@ delegates:
         - kernel
         - opa
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: opa
     - name: operator
       authorized_services:
@@ -39,13 +38,14 @@ delegates:
       kubernetes_service_accounts:
         - kubernetes_namespace: schematic
           kubernetes_service_account: schematic-operator
+        - kubernetes_namespace: tac-seatrials
+          kubernetes_service_account: operator
     - name: stratum
       authorized_services:
-        - eventbus
         - kernel
         - stratum
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: stratum
     - name: doppelganger
       authorized_services:
@@ -63,7 +63,7 @@ delegates:
         - kernel
         - tenantecho
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials-741kqltx
           kubernetes_service_account: tenantecho-alpha
     - name: tenantecho
       tenant_namespace: /tenants/beta
@@ -73,14 +73,14 @@ delegates:
         - kernel
         - tenantecho
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials-ewqybj38
           kubernetes_service_account: tenantecho-beta
     - name: llmproxy
       authorized_services:
         - kernel
         - llmproxy
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: llmproxy
       external_audiences:
         - https://api.anthropic.com
@@ -93,7 +93,7 @@ delegates:
         - llmproxy
         - stratum
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials-741kqltx
           kubernetes_service_account: doppelganger-alpha
     - name: doppelganger
       tenant_namespace: /tenants/beta
@@ -104,16 +104,23 @@ delegates:
         - llmproxy
         - stratum
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials-ewqybj38
           kubernetes_service_account: doppelganger-beta
     - name: coop
       authorized_services:
         - coop
         - eventbus
         - kernel
+        - stratum
       kubernetes_service_accounts:
-        - kubernetes_namespace: schematic
+        - kubernetes_namespace: tac-seatrials
           kubernetes_service_account: coop
-      # The coop mints each pigeon under the dog that asked for it, and
-      # revokes it: the fleet's one workload broker.
       workload_broker: true
+    - name: redo
+      tenant_namespace: /tenants/restore
+      authorized_services:
+        - kernel
+        - redo
+      kubernetes_service_accounts:
+        - kubernetes_namespace: tac-seatrials-00000002
+          kubernetes_service_account: redo-restore

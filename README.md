@@ -11,12 +11,23 @@ What it proves:
 2. **A tenant-owned service in two tenant namespaces** is reached correctly: the gateway routes
    each tenant's call to that tenant's instance. (The example service is not written yet.)
 
-`fleet.yaml` names the registries this fleet trusts, the tacplus floor, and every service the
-fleet runs with the repo implementing it — the smallest set the fleet build's dependency closure
-allows. `dependencies.yaml` holds the language and tool pins. `tacplus fleet build` resolves it
-all, stamps fleet-owned caller lists (llmproxy admits exactly the services here that declare a
-client of it), writes `fleet.lock`, and leaves `build/proto` as the merged tree the fleet-side
-services are generated from.
+`fleet.yaml` names the registries this fleet trusts, the tacplus floor (2.6), and every service the
+fleet runs with the repo implementing it and its release line (`version: MAJOR.MINOR`, its newest
+patch tag) — the smallest set the fleet build's dependency closure allows. `dependencies.yaml` holds
+the language and tool pins. `tacplus fleet build` resolves it all, stamps fleet-owned caller lists
+(llmproxy admits exactly the services here that declare a client of it), writes `fleet.lock`, and
+leaves `build/proto` as the merged tree the fleet-side services are generated from.
+
+The fleet builds its own images from source (`images: source` in `fleet.yaml`, tacplus#950): the
+lock records each release's tag commit and no image, and `images/build.sh` builds every service at
+that commit. For the first deploy this is how eventbus, stratum, oauth, redo and gateway run at all:
+their releases have no published image yet (#1; Jody, 2026-11-22, tacplus-dev/roadmap
+`decisions/ci-on-gitlab-2026-10-27.md`). Each service moves to its own published image when its
+release workflow lands (tacplus#180's direction is unchanged), and deleting `images: source` returns
+the whole fleet to them. To relock (a new patch, a new line), run `tacplus fleet build` with the
+compiler `images/pins.yaml` pins, then rebuild the operator (`deploy/build-operator.sh`) and run
+`generate` against `deploy/bootstrap`, and commit `fleet.lock`, `build/proto` and any rewritten
+`deploy/bootstrap/services/*.yaml`.
 
 ## Where it runs
 
@@ -110,8 +121,7 @@ The fleet runs no letsencrypt workload: the `cert` job obtains `tacplus.dev` and
 DNS-01 when it is missing, expired or due (ARI, or the last third of its lifetime), keeps it as a version of the
 secret `tls-seatrials`, and the gateway serves that version (`CERT_CHAIN`) and hot-swaps a renewed one with no
 restart. A daily schedule runs the pipeline, so a renewal deploys by itself. The old rule that letsencrypt is
-never restarted no longer applies: there is nothing left to restart. (letsencrypt stays in `fleet.yaml` only
-as a contract the pinned gateway imports, until the gateway pin moves past its retirement: PROPOSALS.md.) The first time, on a new cluster:
+never restarted no longer applies: there is nothing left to restart. The first time, on a new cluster:
 
 ```
 images/build.sh tacplus   # then the manual init-secrets job: the CA and crypto file into Secret Manager

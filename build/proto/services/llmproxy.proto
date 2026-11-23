@@ -1,11 +1,10 @@
 // llmproxy — the one place the platform holds a real LLM API credential.
 //
-// Design record: loopers/scotty/backend/decisions/llm-proxy-design-proposal-2026-09-14.md
-// and loopers/scotty/backend/decisions/llm-gateway-mcp-session-auth-2026-09-14.md, both
+// Design records: the design proposal and the session-auth design (PROVENANCE.md), both
 // settled with Jody 2026-09-14/15.
 //
 // THE PROBLEM THIS SOLVES: every service implementing an LLM/MCP persona loop (today
-// `scotty`; more later, one per tenant) used to hold its own copy of the Anthropic API
+// one agent service; more later, one per tenant) used to hold its own copy of the Anthropic API
 // key, fanned out by operator into each service's own config
 // (`llm_credential_services`). Jody, 2026-09-14: "Llmsettings is a mistake... because we
 // have multiple services that will need the key we don't want to have it replicated. We
@@ -17,18 +16,18 @@
 // tenant-owned deployment would mean N copies of the one secret, exactly the
 // replication problem this service exists to remove.
 //
-// WHY THIS REPO AND NOT schematic/platform/services/: `platform/proto/services/
-// operator.proto` reserves OptionalServices fields 1-5 with the comment "1-5 held the
-// application proxy services (anthropic, openai, gitlab, github) and the MCP server.
-// Those moved out of the platform: schematic is the base an application is built ON,
-// not the application." There was already an Anthropic proxy in the platform once, and
-// it was deliberately moved out for exactly that reason. Today only Scotty-family
-// personas need this, so it lives here, not in schematic/platform/services/.
+// WHY ITS OWN REPO AND NOT THE PLATFORM'S SERVICES: the platform's operator.proto
+// reserves OptionalServices fields 1-5 with the comment "1-5 held the application
+// proxy services (anthropic, openai, gitlab, github) and the MCP server. Those moved
+// out of the platform: [it] is the base an application is built ON, not the
+// application." There was already an Anthropic proxy in the platform once, and it was
+// deliberately moved out for exactly that reason. Only agent personas need this, so
+// it lives here, not in the platform.
 //
 // SCOPE OF THIS FILE, PHASE 1 ONLY: the completion-proxy leg (a caller sends a
 // completion request, this service calls Anthropic with the one real credential, and
 // relays the response back) — tool calls stay dispatched LOCALLY by the calling
-// service via its own generated MCP surface (`ScottyMcpSurface`/`agent.rs`), exactly as
+// service via its own generated MCP surface (`*McpSurface`), exactly as
 // today. This is deliberately the smaller, self-contained piece: no new kernel RPCs, no
 // new internet-facing surface. The remote-MCP session-auth design (Anthropic calling
 // back into us mid-conversation) is a distinct, later phase — see
@@ -42,8 +41,8 @@
 // config and the entitlement narrowing this service's own Config.tenant_tokens_per_day
 // /principal_tokens_per_day knobs describe below).
 //
-// PHASE 2, A29 — THE REVERSE MCP PROXY (decisions/backlog-scotty-slices-2026-09-30.md
-// §1, contract A29). The scope paragraph above is Phase 1 and still describes
+// PHASE 2, A29 — THE REVERSE MCP PROXY (the slices backlog, PROVENANCE.md, §1,
+// contract A29). The scope paragraph above is Phase 1 and still describes
 // GenerateCompletionAsService, which stays until retired (BQ5). A29 adds the session
 // path: a dog's dispatcher asks for ONE turn of ONE thread (GenerateSessionTurn),
 // this service runs the tool loop against Anthropic, and every tool_use goes back
@@ -66,7 +65,7 @@ option (spec.service) = {name: "llmproxy"};
 
 // BudgetBucket is which lane a turn is charged to. Declared here, locally, so
 // this service carries no product design: it was BudgetBucket, imported
-// from Scotty's crew proto, with these same values. Per issue #1 the lanes
+// from the calling agent's crew proto, with these same values. Per issue #1 the lanes
 // themselves do not belong in llmproxy at all and will move to tacplus-
 // generated code in the owning service; until then the proxy keeps the enum
 // (same wire values) and nothing else of the crew model.
@@ -145,7 +144,7 @@ message Config {
   int64 personal_micro_usd = 17 [(spec.default_int) = 500000, (spec.assert_ge) = 0];
 
   // scripted_model_tenants lists the tenants whose callers get the
-  // `harness-scripted` stand-in (decisions/harness-scotty-scenarios-2026-10-02.md
+  // `harness-scripted` stand-in (the harness scenarios, PROVENANCE.md,
   // §1.3): when the caller's SPIFFE ID is in one of these tenants AND the newest
   // user turn carries `[[script:<name>]]`, the reply follows the script
   // services/llmproxy/scripts/<name>.yaml instead of a provider call. Any other
@@ -166,7 +165,7 @@ message LlmProxyState {
 }
 
 // Role mirrors llm.rs::Role exactly (User | Assistant) — see the file comment there for
-// why this is Anthropic's own shape, not a scotty-specific wrapping.
+// why this is Anthropic's own shape, not a caller-specific wrapping.
 enum Role {
   ROLE_UNSPECIFIED = 0;
   ROLE_USER = 1;
@@ -357,8 +356,7 @@ service LlmProxy {
   //
   // The caller list is the fleet's, not this proto's: the fleet build admits
   // exactly the services in the fleet that declare (spec.grpc_s2s_client) of
-  // llmproxy.LlmProxy (doppelganger in the proof fleet; Scotty's services in
-  // Seabeam's). A standalone build of this repo admits no callers. Not every
+  // llmproxy.LlmProxy (doppelganger in the proof fleet). A standalone build of this repo admits no callers. Not every
   // service may spend the shared model credential, which is the point of this
   // service existing; the fleet decides which ones, deliberately, by declaring
   // the client.

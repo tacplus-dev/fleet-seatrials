@@ -40,6 +40,9 @@ message Config {
 
 message PingRequest {
   string message = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 4096];
+  // tenant is the target tenant's tid: the route field, which decides whose
+  // instance answers. The caller names it; it is never taken from the token.
+  string tenant = 2;
 }
 
 message PingResponse {
@@ -60,6 +63,8 @@ message PingPigeonRequest {
   // keep leaves the run alive after the result instead of cancelling it, so
   // the coop's own deadline ends it: the proof of that path (A30 §6.5).
   bool keep = 2;
+  // tenant is the target tenant's tid: the route field, as on PingRequest.
+  string tenant = 3;
 }
 
 message PingPigeonResponse {
@@ -72,19 +77,23 @@ message PingPigeonResponse {
   string caller_namespace = 5;
 }
 
+// Every rpc routes by its request's tenant (the target tid) through the default
+// door: only members of that tenant get in, so a call lands in the caller's own
+// tenant's instance or is refused, never another tenant's (no
+// RPC_FLAG_ANY_TENANT).
 service TenantEcho {
   option (spec.service_c2s) = {};
 
   // Pings a tenant instance: echoes the message back, naming the instance that answered and the
   // caller's tenant. Use it to check that a call lands in your own tenant.
   rpc Ping(PingRequest) returns (PingResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER], route_field: "tenant"};
   }
 
   // Pings through a pigeon: asks the coop for an echo.ping pigeon as this tenant's instance, sends
   // the message as its task on the thread, and returns the pigeon's result. The second proof: a
   // tenant service's round trip through the coop.
   rpc PingPigeon(PingPigeonRequest) returns (PingPigeonResponse) {
-    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER]};
+    option (spec.rpc) = {flags: [RPC_FLAG_AUTH_ANY_USER], route_field: "tenant"};
   }
 }

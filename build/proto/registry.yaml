@@ -27,10 +27,6 @@ services:
       id: 49
       contract: https://github.com/tacplus-dev/kmaker.git
       visibility: public
-    - name: letsencrypt
-      id: 9
-      contract: https://github.com/tacplus-dev/letsencrypt.git
-      visibility: public
     - name: llmproxy
       id: 75
       contract: https://github.com/tacplus-dev/llmproxy.git
@@ -48,6 +44,10 @@ services:
     - name: pigeonhost
       id: 107
       contract: https://github.com/tacplus-dev/pigeon.git
+      visibility: public
+    - name: redo
+      id: 108
+      contract: https://github.com/tacplus-dev/redo.git
       visibility: public
     - name: stratum
       id: 34

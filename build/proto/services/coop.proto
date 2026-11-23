@@ -29,6 +29,12 @@ option (spec.service) = {name: "coop"};
 // exchanged token (slice 2); the coop calls kernel.Mint for it.
 option (spec.grpc_s2s_client) = {service: "kernel.Mint"};
 
+// PigeonRun lives in stratum: the coop writes each transition through
+// stratum's record write surface and reads its rows back through the record
+// plane (the grant halves are PigeonRun's s2s_write and s2s_read). Stratum
+// ingests nothing from the event bus (tacplus-dev/stratum#2).
+option (spec.record_read) = {record: "coop.PigeonRun"};
+
 // ============================================================================
 // Config
 // ============================================================================
@@ -68,11 +74,11 @@ message Kind {
 message Config {
   option (spec.grpc_config) = {service_name: "coop"};
 
-  // The topics tacplus synthesizes from the (spec.event) and (spec.record)
-  // below: the coop publishes FROM_COOP messages (the dead-pigeon answer,
-  // ENDED, the mock pigeon's replies) and every PigeonRun transition.
+  // The topic tacplus synthesizes from the (spec.event) below: the coop
+  // publishes FROM_COOP messages (the dead-pigeon answer, ENDED, the mock
+  // pigeon's replies). PigeonRun is not published: it is written through
+  // stratum's write surface (#5).
   option (spec.event_publish) = {topic_ref: "coop.PigeonMessageBus.stream"};
-  option (spec.event_publish) = {topic_ref: "coop.PigeonRunBus.stream"};
 
   Mode mode = 1 [(spec.assert_enum_defined) = true];
   // kinds are config, not code; empty refuses every request.
@@ -215,7 +221,7 @@ message MessageError {
 }
 
 // PigeonMessage is one word on a pigeon's thread. Publishers: the dog, the
-// pigeon, the coop. Subscribers: the same, and stratum for the transcript.
+// pigeon, the coop. Subscribers: the same.
 // The sender is stamped by eventbus from its token; the coop and the pigeon
 // drop a TO_PIGEON message whose sender is not the run's caller.
 //
@@ -255,12 +261,24 @@ message PigeonMessage {
 // The record: every transition of every run, on the record in stratum
 // ============================================================================
 
+// PigeonRun is stored by the Stratum of the run's tenant (the dog's): the
+// coop inserts one row per transition through stratum's write surface
+// (InsertIfAbsent), routed to that tenant by target_tenant.
 message PigeonRun {
   option (spec.record) = {
     key: "record_id"
     owner: "caller_spiffe_id"
+    // Written through stratum's own write surface, never published on the
+    // event bus: stratum ingests nothing from it (stratum#2). The coop is the
+    // only writer, reader and watcher.
+    s2s_write: {auth_services: ["coop"]}
+    // A record is still an event in tacplus 2.6 and must name its producer;
+    // no Config declares an event_publish on its topic, so nothing does.
     s2s: {auth_services: ["coop"]}
-    s2s_subscribe: {auth_services: ["stratum"]}
+    s2s_read: {auth_services: ["coop"]}
+    s2s_subscribe: {auth_services: ["coop"]}
+    // Acked once the tenant's local redo has it on disk.
+    durability: DURABILITY_LOCAL
     // Append-only audit: ninety days idle, thirty after deletion (unused:
     // transitions are never deleted).
     residency: {idle_seconds: 7776000 deleted_max_age_seconds: 2592000}

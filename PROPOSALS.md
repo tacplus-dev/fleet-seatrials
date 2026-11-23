@@ -13,8 +13,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   attaches HTTPRoutes, tacplus-dev/operator renders the gateway's Service as its backend (NEG, `appProtocol`
   HTTP/2) instead of a LoadBalancer, and #35's certificate goes on the Gateway, with `idp.test.tacplus.dev`
   covered too. (tacplus-dev/cloud#21 since chose a TCP proxy, TLS passed through, and gave the test IdP port 8443 of
-  the address: #27 follows it, 2026-11-09.) Until then `operator.yaml` keeps `external_ip: 146.148.80.132`, so on `dev` the `-lb` Service
-  stays pending instead of taking an ephemeral public IP.
+  the address: #27 follows it, 2026-11-09.) Settled for the gateway itself (hub, 2026-11-07, #1): it is a standalone
+  NEG behind the TCP proxy load balancer (tacplus-dev/operator#22, tacplus-dev/cloud#21), the operator refuses
+  `external_ip`, and #1 drops it from `operator.yaml`. The shared Gateway for the other namespaces is still open.
 - **Room for gateway's Rust build on Cloud Build** (2026-11-10, #23): on the CI image 2.6.4 (2.6.12 since #50, untried), one rustc for gateway's
   generated crate `gateway-model-types` needs more than 4 GB (the looper's container limit killed it, and with one
   job and one codegen unit it thrashed there). The service builds ask for `E2_HIGHCPU_8`, 8 GB, with cargo running
@@ -23,8 +24,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   rather than for all 13, which costs more) or a `CARGO_BUILD_JOBS` low enough to fit.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
-  operator pin's (#11, waiting on #1 and tacplus-dev/operator#1): moving the pin past operator#9 and #10 clears
-  them. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
+  operator pin's (#11): moving the pin past operator#9 and #10 clears them, and #1 moved it to operator v0.1.0
+  (a17d507), which has both, so #11 removes each entry the security job no longer finds in `schematic-operator`. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`), and so is lego 5.6.0's GO-2026-5932 (x/crypto openpgp):
   #52 builds it with x/crypto v0.59.0, which no lego release takes yet; the entry stays for the operator pin and
   the CI image's gh and docker-buildx.
@@ -89,10 +90,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   `cert` stage, the daily schedule), by the interim route of #35's design: the version is installed as the job's
   `crypto.yaml` `pki.edge_tls[0]`, which the pinned operator (3d0e4b7) serves in `CERT_CHAIN` mode once
   `operator.yaml` has no `tls`. What is left:
-  - **Move the gateway pin past gateway#25 (0b0743f)** and the operator pin past operator#21 (4dc0a3d), then drop
-    letsencrypt from `fleet.yaml` and `fleet.lock` (relock) and ask for its registry entry's removal. The pinned
-    gateway (32cd7a6) still imports `LetsEncryptState`, so the closure keeps letsencrypt's contract until then.
-    Both new pins declare the tacplus 2.5 floor, and this fleet is on 2.2, so this waits on #1.
+  - **Ask for letsencrypt's registry entry's removal.** #1 moved the fleet to gateway 0.2 and operator v0.1.0
+    (both past gateway#25 and operator#21) and dropped letsencrypt from `fleet.yaml` and `fleet.lock`.
   - **Reference the version in the uni-config** once #28 (operator#17) lands, in place of `edge_tls[0]` in
     memory: the gateway's part of the uni-config names `tls-seatrials` and the version.
   - **The gateway's `root_ca`**: in `CERT_CHAIN` mode the operator also hands the gateway the fleet's private
@@ -196,7 +195,9 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **An apply deploys rebuilt images** (2026-10-29, #17): the operator renders every image as `:local`, so a
   rebuilt image leaves the pod template unchanged and the apply does not roll it out. Render the `fp-` (or
   digest) tag instead; pinning by release line (#8) covers release images by digest.
-- **What #8 needs besides the releases** (2026-10-29, #8, tacplus-dev/tacplus#180, #213 there): `version:` in
+- **What #8 needs besides the releases** (2026-10-29, #8, tacplus-dev/tacplus#180, #213 there; the relock's part
+  settled 2026-11-23 by #1: the fleet is on 2.6 with `images: source`, which reads no package, so only the cluster's
+  pull of release images is left, for when the fleet moves to them): `version:` in
   `fleet.yaml` is refused before tacplus 2.6.0, so the fleet's floor moves from 2.2 to 2.6 (past #1's 2.4). The
   service release images are private packages: the `fleet build` that relocks needs `GH_TOKEN` with
   `read:packages` (the looper's token has none, so the relock runs in the pipeline or with a token added for
@@ -295,3 +296,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   on it. #31 made `ci_kube` do so (dry run 2 ran `test-idp/signin.sh` with no kube context). `ci_gcp` still
   ignores a failed `create-cred-config` or `gcloud auth login` and goes on as no one: it should return on each,
   with gcloud's error, as `ci_kube` now does, with a stub test in `ci/lib_test.sh`.
+- **Move the operator past v0.1.0 once stratum releases its tenant-scope seeds** (2026-11-23, #1): the operator
+  pin stays at v0.1.0 (a17d507), the newest that renders this fleet. stratum's only release, v0.1.0, still has
+  `seed_members` in its `Config`, `assert_required`; operator v0.1.1 and later (operator#25) no longer write it,
+  since stratum#26 moved it to the tenant-scope `StratumTenantConfig` on stratum's main, so their `generate` fails:
+  `kernel.Config: ... StratumConfig ... SeedMembers is required`. Once stratum tags a release with stratum#26
+  (and kernel#34 delivers the tenant's seeds), relock stratum to it and move the operator pin to its newest
+  v0.1.x (v0.1.5 now, with its own security fixes), then regenerate `services/kernel.yaml`.
+- **Each service back on its published image** (2026-11-23, #1): `fleet.yaml`'s `images: source` builds every
+  service from its release tag, for the first deploy (eventbus, stratum, oauth, redo and gateway have no published
+  image; kmaker neither). When every release the fleet runs publishes its image (looper#17, the release issues),
+  delete the line and relock, so the lock records each image by digest; the deploy then needs the images' pull
+  (PROPOSALS: what #8 needs) and `images/build.sh` builds nothing for them.

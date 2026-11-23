@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Seabeam LLC. All rights reserved.
+// Copyright (c) 2026 Jody Scott
+// SPDX-License-Identifier: Apache-2.0
 
 // Package oauth provides protobuf definitions for the OAuth service.
 //
@@ -104,6 +105,14 @@ message Config {
   // from the same external IDP. Prevents excessive outbound requests.
   // Default: 300 (5 minutes).
   int64 jwk_refetch_interval_seconds = 8 [(spec.assert_duration) = DURATION_TYPE_POSITIVE, (spec.default_int) = 300];
+
+  // tenant_redirect_uri_prefixes is the redirect allowlist of every provider
+  // read from a tenant's OAuthTenantConfig slice, with the matching rule of
+  // ProviderConfig.allowed_redirect_uri_prefixes. The redirect target is the
+  // fleet's webapp, not the tenant's, so it is set here by the operator and a
+  // tenant can never name it. Empty allows nothing: tenant providers are then
+  // not offered at all.
+  repeated string tenant_redirect_uri_prefixes = 9 [(spec.assert_max_size) = 32];
 }
 
 // ProviderConfig configures a single OAuth2 identity provider.
@@ -213,7 +222,7 @@ message AppleSignIn {
   string key_id = 2 [(spec.assert_required) = true, (spec.assert_min_size) = 1];
 
   // form_post_redirect_uri is the absolute URL of the Auth.BrokerFormPostCallback
-  // route, e.g. https://console.seabeam.net/oauth/Auth/BrokerFormPostCallback. It is
+  // route, e.g. https://console.example.com/oauth/Auth/BrokerFormPostCallback. It is
   // sent to Apple as redirect_uri on both the authorize and the token request.
   string form_post_redirect_uri = 3 [(spec.assert_required) = true, (spec.assert_url) = URL_SCHEME_HTTPS];
 }
@@ -375,7 +384,10 @@ message SessionResponse {
 
 // ListProvidersResponse contains public provider information for the login UI.
 message ListProvidersResponse {
-  repeated ProviderInfo providers = 1 [(spec.assert_max_size) = 16];
+  // The fleet-wide providers and every tenant slice's. oauth refuses a whole
+  // tenant slice that would take the list past this bound rather than answer
+  // a list the bound refuses.
+  repeated ProviderInfo providers = 1 [(spec.assert_max_size) = 256];
 }
 
 // ProviderInfo is the public-facing information about a provider.
@@ -447,7 +459,7 @@ enum SignInMethod {
   // mail is iCloud+; a guess, override via alternatives.
   SIGN_IN_METHOD_APPLE = 5;
   // 2026-10-20: SIGN_IN_METHOD_MAIL_LINK (an emailed sign-in link) was 3; mail
-  // link removed from SeaBeam.
+  // link removed.
   reserved 3;
   reserved "SIGN_IN_METHOD_MAIL_LINK";
   // None of them, no matching provider is configured, or the MX lookup failed: no
@@ -619,6 +631,10 @@ message OAuthProvider {
 
   // enable enables or disables this provider.
   bool enable = 7;
+
+  // name is the sign-in option's label (ProviderInfo.name). Empty means
+  // "<tenant>: <issuer host>".
+  string name = 8 [(spec.assert_max_size) = 128];
 }
 
 // ClaimMatcher routes users arriving via a cluster-level shared IDP to this tenant.
