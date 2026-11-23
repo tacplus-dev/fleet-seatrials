@@ -40,3 +40,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue Client does not generate on main: its depends resolve the contracts' mains, which now need tacplus 2.4 (#14)
 - 2026-11-23 looper issue Move seatrials to tac-seatrials namespaces: config and a migration runbook (#4)
 - 2026-11-23 looper issue dependencies.yaml: 13 exact pins carry known vulnerabilities (x/crypto, grpc, hazelcast, bouncycastle, rustls, ...) (#13)
+- 2026-11-23 looper issue images/build.sh builds a tacplus image from images/tacplus.Dockerfile, which tacplus removed in #193 (no tacplus image since 2.4): the first deploy's images job fails (#65)
