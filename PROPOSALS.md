@@ -287,6 +287,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   looper-scan reads it; README: Security checks of tacplus-dev/looper) and matches an entry only there. Then
   split the shared entries by where, with tests in `ci/security_test.sh`. This needs the field list of looper#49
   widened (Jody) before it is built.
+- **The nightly scan's govulncheck of `client/`** (2026-11-23, #14): looper-scan runs `govulncheck ./...` in
+  `client/` on the tree as committed, where the generated packages (`client/tacplus/`, ignored) are absent, so it
+  reports `client: not analyzed (loading packages)` even now the client generates. The gate covers it instead:
+  `ci/client_test.sh` generates the client with the pinned compiler and runs govulncheck on it. Either the scan
+  generates first (a tacplus-dev/looper change: it would need the pinned tacplus) or accepts this repository's
+  gate as the client's check; until then the nightly line for `client/` is expected.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)

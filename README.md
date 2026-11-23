@@ -81,7 +81,11 @@ The cutover's order and the grants still to come are in
 - `test-idp/` — the test IdP at idp.test.tacplus.dev:8443: a Keycloak whose realms emulate Google's, Microsoft's
   and Apple's claim shapes, with test users and domains, applied and checked by the pipeline, so sign-in is tested
   with no person: [test-idp/README.md](test-idp/README.md).
-- `client/` — `seatrials`, the local client: a tacplus client project generated against build/proto. It
+- `client/` — `seatrials`, the local client: a tacplus client project. It is not generated from build/proto:
+  `tacplus build` fetches the contracts it calls (kernel, tenantecho, doppelganger) and theirs from the registry,
+  each at the release line `fleet.yaml` runs (`kernel@0.1`, ...: the line's newest patch tag, which `fleet.lock`
+  also locks until a newer patch is relocked), never at a contract's main (#14). `ci/client_test.sh` holds those
+  lines to `fleet.yaml`'s, and generates, builds and govulnchecks the client with the pinned compiler. It
   authenticates with a credential pair (keygen → the public half goes into the fleet config), gets a kernel
   token through the gateway, administers tenants with the root pair, and runs the two proofs (`ping`, `ask`).
 

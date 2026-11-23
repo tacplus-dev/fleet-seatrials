@@ -4,8 +4,8 @@
 #
 # The repository's script tests, every *_test.sh, and the secrets scan
 # (ci/secrets.sh): the deploy pipeline's checks stage and the local gate. Need
-# bash, git, jq, yq, opa, gitleaks (ci/tools.sh builds these three into bin/),
-# python3 and openssl.
+# bash, git, jq, yq, opa, gitleaks, tacplus and govulncheck (ci/tools.sh builds
+# these into bin/), go, python3 and openssl.
 #
 #   ci/checks.sh
 set -uo pipefail

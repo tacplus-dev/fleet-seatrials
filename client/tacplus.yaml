@@ -1,6 +1,8 @@
 # The sea-trials client: a local program that authenticates with a credential
 # pair, gets a token from kernel through the gateway, and calls the fleet's
-# client-facing services. Generated against the fleet's merged protos.
+# client-facing services. Generated from the contracts of the fleet's release
+# lines, fetched from the registry (depends, below).
+tacplus: "2.6"
 kind: client
 language: go
 src: proto
@@ -9,6 +11,19 @@ output-name: tacplus
 header: |
   Copyright (c) 2026 Jody Scott
   SPDX-License-Identifier: Apache-2.0
-# The services whose client-facing surfaces proto/clients/seatrials.proto calls;
-# the compiler fetches their contracts from the registry.
-depends: [kernel, tenantecho, doppelganger]
+# The services whose client-facing surfaces proto/clients/seatrials.proto calls
+# (kernel, tenantecho, doppelganger), then the contracts theirs depend on: the
+# compiler fetches each from the registry at the line fleet.yaml runs, its newest
+# patch tag, never a contract's main (#14). tacplus takes a name's first entry,
+# so naming the whole closure here pins the transitive ones too; a line moved in
+# fleet.yaml moves here with it (ci/client_test.sh).
+depends:
+  - kernel@0.1
+  - tenantecho@0.2
+  - doppelganger@0.2
+  - opa@0.3
+  - oauth@0.1
+  - coop@0.1
+  - eventbus@0.1
+  - llmproxy@0.1
+  - stratum@0.1
