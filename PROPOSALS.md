@@ -24,10 +24,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   rather than for all 13, which costs more) or a `CARGO_BUILD_JOBS` low enough to fit.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
-  operator pin's (#11): moving the pin past operator#9 and #10 clears them, and #1 moved it to operator v0.1.0
-  (a17d507), which has both, so #11 removes each entry the security job no longer finds in `schematic-operator`. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
+  operator pin's (#11): #1 moved the pin to operator v0.1.0 (a17d507), past operator#9 and #10, and #11
+  removed 24 of them (govulncheck finds none in it any more); GO-2026-5932 stays for the CI image's gh and buildx. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`), and so is lego 5.6.0's GO-2026-5932 (x/crypto openpgp):
-  #52 builds it with x/crypto v0.59.0, which no lego release takes yet; the entry stays for the operator pin and
+  #52 builds it with x/crypto v0.59.0, which no lego release takes yet; the entry stays for
   the CI image's gh and docker-buildx.
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
