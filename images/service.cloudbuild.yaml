@@ -24,6 +24,10 @@ substitutions:
   _PLATFORMS: arm64
   # Registers QEMU for the platforms the worker cannot run natively.
   _BINFMT: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+  # The BuildKit the service Dockerfiles build in, and the dockerfile frontend
+  # it carries: the worker daemon's own is too old for current syntax (coop's
+  # ADD --checksum, #69).
+  _BUILDKIT: docker.io/moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
 steps:
   # The build image runs as build, uid 1000 (images/tacplus-build.Dockerfile, #56);
   # Cloud Build mounts /workspace (the source) and /builder/home ($HOME in every
@@ -104,13 +108,16 @@ steps:
         emulate=
         for arch in ${_PLATFORMS}; do [ "$$arch" = "$$native" ] || emulate=$$emulate$${emulate:+,}$$arch; done
         [ -z "$$emulate" ] || docker run --privileged --rm ${_BINFMT} --install "$$emulate"
+        # A builder of the fleet's own, in a container on Cloud Build's network
+        # (its metadata server); --load hands each image to the daemon to push.
+        docker buildx create --name fleet --driver docker-container --driver-opt image=${_BUILDKIT} --driver-opt network=cloudbuild --bootstrap
         for arch in ${_PLATFORMS}; do
           case "${_LANG}" in
             go) mkdir -p bin && cp ".fleet/out/$$arch/${_SERVICE}" "bin/${_SERVICE}" ;;
             rust) mkdir -p target/release && cp ".fleet/out/$$arch/${_SERVICE}" "target/release/${_SERVICE}" ;;
           esac
           image=$$repo:fp-${_FINGERPRINT}-$$arch
-          docker buildx build --platform "linux/$$arch" --provenance=false --load \
+          docker buildx build --builder fleet --platform "linux/$$arch" --provenance=false --load \
             --build-arg=VERSION=${_FLEET_COMMIT} --build-arg=VCS_REF=${_COMMIT} --build-arg=TARGETARCH=$$arch \
             --tag="$$image" .
           platform=$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$$image")

@@ -294,6 +294,19 @@ check "a service build's first step hands /workspace and \$HOME to it" \
   "$(awk '/^steps:/ { s = 1 } s && /^  - id: / { n++ } s && n == 1 && /^    (name|entrypoint|args):/' "$here/service.cloudbuild.yaml" | xargs)" \
   'name: gcr.io/cloud-builders/docker entrypoint: chown args: [-R, 1000:1000, /workspace, /builder/home]'
 
+# A service's Dockerfile builds as it does in its own CI (#69): not on the
+# BuildKit of Cloud Build's docker daemon, whose old dockerfile frontend cannot
+# parse coop's ADD --checksum, but in a builder of the fleet's own, a pinned
+# moby/buildkit (and the dockerfile frontend it carries) in a container on
+# Cloud Build's network, which every platform's build uses.
+image_step=$(awk '/^  - id: image$/ { s = 1; next } s && /^  - id: / { s = 0 } s' "$here/service.cloudbuild.yaml")
+check "_BUILDKIT is moby/buildkit, pinned by digest" \
+  "$(sed -n 's/^  _BUILDKIT: docker\.io\/moby\/buildkit:v[0-9.]*@\(sha256:[0-9a-f]\{64\}\)$/pinned/p' "$here/service.cloudbuild.yaml")" pinned
+check "the image step creates its builder from _BUILDKIT, on Cloud Build's network" \
+  "$(grep -c -- 'docker buildx create --name fleet --driver docker-container --driver-opt image=${_BUILDKIT} --driver-opt network=cloudbuild --bootstrap' <<<"$image_step")" 1
+check "every buildx build runs in that builder" \
+  "$(grep -c 'docker buildx build ' <<<"$image_step") $(grep -c 'docker buildx build --builder fleet ' <<<"$image_step")" "1 1"
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1
 fi
