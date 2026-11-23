@@ -35,3 +35,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-22 looper issue deploy pipeline: a failed setup step (ci_gcp, ci_crypto, ci_cert, ci_kube) does not stop the job; apply runs on without it (#62)
 - 2026-11-23 looper issue Move the fleet to tacplus 2.6 and relock; the four services without release images built by the fleet from their release tags (first deploy) (#1)
 - 2026-11-23 looper issue CI image build:2.6.12 fails the security gate on main: 33 new HIGH CVEs in its krb5 and linux-libc-dev (Debian fixes available) (#64)
+- 2026-11-23 looper issue Operator pin 3d0e4b7 builds with 31 reachable vulnerabilities; operator main patches 13 (#11)
