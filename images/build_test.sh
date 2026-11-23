@@ -184,6 +184,27 @@ check "fingerprint builds nothing" "$(submits)" ""
 # rebuild of the same commit under the same tag never changes what it layers.
 check "the Dockerfile's BUILD_IMAGE is pinned by digest" \
   "$(sed -n 's/^ARG BUILD_IMAGE=[^@]*@\(sha256:[0-9a-f]\{64\}\)$/pinned/p' "$here/tacplus-build.Dockerfile")" pinned
+# Its toolchains are of the fleet's tacplus line, fleet.yaml's floor, under which
+# the pinned compiler is (#15): a floor move that leaves BUILD_IMAGE on the old
+# line pairs the new compiler with the old line's toolchains. A release's patch
+# names its line; a line's dated rebuild, <YYYYMMDD>-<tacplus commit> (#64),
+# names a commit, which must be the pinned compiler's, of that line too.
+# build_image_line TAG: the line TAG is of, or why it is of none.
+build_image_line() {
+  local commit
+  if [[ "$1" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  elif [[ "$1" =~ ^[0-9]{8}-([0-9a-f]{7,40})$ ]]; then
+    commit=$(sed -n 's/^tacplus_commit: *//p' "$here/pins.yaml")
+    [[ "$commit" == "${BASH_REMATCH[1]}"* ]] && fleet_line || echo "rebuild of ${BASH_REMATCH[1]}, not tacplus_commit $commit"
+  else
+    echo "tag $1, neither a patch nor a dated rebuild"
+  fi
+}
+fleet_line() { sed -n 's/^tacplus: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$here/../fleet.yaml"; }
+check "the Dockerfile's BUILD_IMAGE is of fleet.yaml's tacplus line" \
+  "$(build_image_line "$(sed -n 's/^ARG BUILD_IMAGE=ghcr\.io\/tacplus-dev\/tacplus\/build:\([^@]*\)@.*/\1/p' "$here/tacplus-build.Dockerfile")")" \
+  "$(fleet_line)"
 check "the Dockerfile's FROMs are its ARGs" \
   "$(sed -n 's/^FROM \([^ ]*\).*/\1/p' "$here/tacplus-build.Dockerfile" | sort -u | xargs)" '${BUILD_IMAGE} ${TACPLUS_IMAGE}'
 check "the build image is given TACPLUS_IMAGE as _TACPLUS_IMAGE" \
