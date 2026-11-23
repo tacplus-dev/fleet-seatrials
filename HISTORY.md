@@ -33,3 +33,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-20 looper issue CI image build:2.6.12 fails the gates on main: docker-buildx's containerd v2.4.1 (CVE-2026-95839) and the docker CLI's Go 1.26.10 (CVE-2026-97054); no tacplus 2.6 release fixes them yet (#60)
 - 2026-11-20 looper issue test-idp: Keycloak 26.8.1-2's OpenJDK fails the gates on main (CVE-2026-114938 CRITICAL, 114939-114942 HIGH); 26.8.2-3 has the fixed JDK (#59)
 - 2026-11-22 looper issue deploy pipeline: a failed setup step (ci_gcp, ci_crypto, ci_cert, ci_kube) does not stop the job; apply runs on without it (#62)
+- 2026-11-23 looper issue Move the fleet to tacplus 2.6 and relock; the four services without release images built by the fleet from their release tags (first deploy) (#1)
