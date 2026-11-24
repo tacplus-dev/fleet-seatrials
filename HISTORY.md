@@ -42,3 +42,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue dependencies.yaml: 13 exact pins carry known vulnerabilities (x/crypto, grpc, hazelcast, bouncycastle, rustls, ...) (#13)
 - 2026-11-23 looper issue images/build.sh builds a tacplus image from images/tacplus.Dockerfile, which tacplus removed in #193 (no tacplus image since 2.4): the first deploy's images job fails (#65)
 - 2026-11-24 looper issue ci/security.sh red on main: GO-2026-6278 (gorilla/websocket v1.5.3 in bin/lego) and GO-2026-6974 (otel/trace v1.45.0 in bin/lego, bin/osv-scanner) (#71)
+- 2026-11-24 looper issue images: service builds use Cloud Build's old docker frontend, which can't parse coop's ADD --checksum; build with a BuildKit that does (#69)
