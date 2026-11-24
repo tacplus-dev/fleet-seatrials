@@ -16,6 +16,8 @@
 #                            #68: GO-2026-6974, otel, in osv-scanner and trivy). opa v1.22.4 takes compress
 #                            v1.20.3 and otel v1.47.0 itself (#71).
 #                            govulncheck, osv-scanner and trivy are the security job's (ci/security.sh, #36)
+#   bin/helm                 the apply job's (deploy/apply.sh, #76), which installs the operator's own chart: the
+#                            same, at the helm.sh/helm/v3 release the pinned operator links (its go.mod)
 #   bin/lego                 the cert job's ACME client (ci/cert.sh, #35): the same, as its release builds it
 #                            (#49: its release binary holds go1.27.3's fixed GO-2026-6859), with gorilla/websocket
 #                            raised to its fixed commit (#68: GO-2026-6278). v5.7.0 takes x/crypto v0.59.0
@@ -54,6 +56,7 @@ otel_fixes=(go.opentelemetry.io/otel@v1.47.0=h1:j7ALJ/zgkS7Z6aeJW09p8VC9804bC+Pp
 otel_sdk_fixes=(go.opentelemetry.io/otel/sdk@v1.47.0=h1:zWXEr4j2lFefG87TU6Yg8a7ngfohIKFZHKp0Hf5hC6I=
   go.opentelemetry.io/otel/sdk/metric@v1.47.0=h1:lfISg2j93VT6yqdk9OfUaZmw/GfcZqCCV3jdXtsPnKw=)
 websocket_fix=github.com/gorilla/websocket@v1.5.4-0.20250319132907-e064f32e3674=h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=   # GO-2026-6278 (#68), fixed in 1.5.4-0.20240701034025-d67f41855da4; no tag has it
+helm_version=v3.22.1 helm_h1=h1:uo2SouzAxMkKZTNzZ1lLP/c/Bu7xfUJKYDaYMxMHvk8=   # the operator a17d507's helm.sh/helm/v3
 lego_version=v5.7.0 lego_h1=h1:HUi0KoW7SKGD5AXrcZ66IRSW8D0rXZg5Oma8yW0j1dw=
 mkdir -p "$here/bin"
 tmp=$(mktemp -d)
@@ -117,6 +120,7 @@ go_build_fixed opa github.com/open-policy-agent/opa github.com/open-policy-agent
 go_build_fixed gitleaks github.com/zricethezav/gitleaks/v8 github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_h1" \
   "-X github.com/zricethezav/gitleaks/v8/version.Version=$gitleaks_version" "$compress_fix" "$brotli_fix" "$xz_fix"
 go_install golang.org/x/vuln/cmd/govulncheck golang.org/x/vuln "$govulncheck_version" "$govulncheck_h1"
+go_install helm.sh/helm/v3/cmd/helm helm.sh/helm/v3 "$helm_version" "$helm_h1"
 go_build_fixed osv-scanner github.com/google/osv-scanner/v2/cmd/osv-scanner github.com/google/osv-scanner/v2 \
   "$osv_version" "$osv_h1" "" "$compress_fix" "${otel_fixes[@]}"
 # trivy as its release builds it (goreleaser.yml), its symbols kept for govulncheck.

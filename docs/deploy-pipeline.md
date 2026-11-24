@@ -21,7 +21,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)) and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image ([below](#the-security-job)). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
 | cert | `cert` | [`ci/cert.sh`](../ci/cert.sh): the pipeline owns the certificate ([below](#the-certificate)). It checks the current version of the secret `tls-seatrials` and has `lego` obtain or renew it by ACME DNS-01 when it is missing, expired or due, as a new version. It hands the secret and version to every job that renders. |
-| images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails, and prints the last 80 lines of each failed build's log, each line prefixed `<service>| ` (#67), read from the build bucket. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). When it builds a new build image (`ci/tacplus-build`: tacplus's build image of the fleet's line, with the fleet's `tacplus` and the launcher built in it from `images/pins.yaml`'s commits; tacplus has published no tacplus image since 2.4, #65), it also builds the first service of each language (Go, Rust, Java) in it, changed or not, so a build image that can't build one fails this job (#56). The build image's steps run as its unprivileged user `build`, and each service build's first step gives it `/workspace` and `$HOME`. |
+| images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails, and prints the last 80 lines of each failed build's log, each line prefixed `<service>| ` (#67), read from the build bucket. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). When it builds a new build image (`ci/tacplus-build`: tacplus's build image of the fleet's line, with the fleet's `tacplus` and the launcher built in it from `images/pins.yaml`'s commits; tacplus has published no tacplus image since 2.4, #65), it also builds the first service of each language (Go, Rust, Java) in it, changed or not, so a build image that can't build one fails this job (#56). The build image's steps run as its unprivileged user `build`, and each service build's first step gives it `/workspace` and `$HOME`. It builds the fleet's operator image too, `schematic/operator`, which `apply` runs ([below](#apply-goes-through-the-operator)). |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from the Secret Manager secrets `fleet-crypto-seatrials` and `fleet-ca-seatrials`, and the certificate version `cert` passed on installed as the gateway's, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials, of the objects outside the tenant namespaces: those in `tac-seatrials-<tid>` are deploymentproxy's, where the deploy account cannot read, so it names them instead (#75). It prints object **names** only, and the digest of the whole render, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
 | apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
@@ -46,7 +46,8 @@ runs tacplus-dev/looper#49's floor itself (#36; tacplus-dev/roadmap
 - **Trivy** on the CI image the jobs run in, every `image:` of `ci/*.gitlab-ci.yml`, for the runner's platform, and
   on the images this repository deploys itself (#41): every container of `test-idp/*.yaml`, today the test IdP's
   Keycloak and haproxy, for the architecture its pod's `nodeSelector` picks (arm64), so a vulnerable pin fails the pipeline before
-  `test-idp` applies it.
+  `test-idp` applies it; and the operator chart's init container, `images/pins.yaml`'s `operator_init_image`, for
+  the fleet's `platforms` (#76).
 
 The tools are pinned in [`ci/tools.sh`](../ci/tools.sh), each by module version and module hash, and all built
 with one pinned Go toolchain, not the CI image's go: the standard library is in every binary, and a fixed
@@ -100,6 +101,43 @@ or the images changed in between. Run the pipeline again. Every job renders the 
 passed on, never the secret's latest, so the digest covers the certificate, and a renewal by another pipeline
 in between can't split `diff` from `apply`. Once the uni-config lands (#28), the digest becomes the uni-config
 record's.
+
+### Apply goes through the operator
+
+`seatrials-deploy` has its Role, `fleet-deploy`, in `tac-seatrials` only (tacplus-dev/cluster `deployments.yaml`),
+and the tenant namespaces `tac-seatrials-<tid>` are deploymentproxy's: only the operator's account is bound there
+(tacplus-dev/roadmap `decisions/deploymentproxy-2026-11-02.md`). So the deploy account never applies the render
+itself: the CLI's `schematic-operator apply` would install the whole release, tenant namespaces' objects included,
+as that account, and it never makes the `TenantNamespace`s (#76). [`deploy/apply.sh`](../deploy/apply.sh) instead:
+
+1. Renders again and refuses any render but the one `diff` showed ([above](#the-render-diff-showed-is-the-one-applied)).
+2. Installs or upgrades the operator's own chart (`helm/` of tacplus-dev/operator at `images/pins.yaml`'s
+   `operator_commit`), the release `schematic-operator` in `tac-seatrials`, as the deploy account, with `helm` (`bin/helm`, which `ci/tools.sh` builds):
+   in-cluster mode for the deployment `seatrials`, the fleet's own operator image by digest
+   (`images/build.sh operator-ref`), the registry the render names (`localImages`), and the generated config
+   directory, `deploy/bootstrap`: `operator.yaml`, `crypto.yaml`, and the rest (`services/`, `tenants/`) as the
+   chart's bundle. These are the inputs `diff`'s render was made from, so the operator renders the same.
+   [`deploy/operator-post-render.sh`](../deploy/operator-post-render.sh) pins the chart's `busybox:latest` init
+   container to `operator_init_image`, and adds the operator's Role and RoleBinding in `tac-seatrials`
+   ([`deploy/operator-role.yaml`](../deploy/operator-role.yaml): the chart's own Role, each rule within
+   `fleet-deploy`). With `deployment` set the chart leaves that Role to the cluster pipeline, and the cluster
+   pipeline binds the operator's account in `tac-seatrials` only to deploymentproxy's Role (`TenantNamespace`s).
+3. The operator, as its own account (`operator`), makes the `TenantNamespace`s, waits for deploymentproxy to report
+   them Ready, and installs or upgrades the release `schematic`, tenant namespaces' objects included.
+4. `apply` passes once the release `schematic`'s deployed revision is the render `diff` showed: the SHA-256 of its
+   manifest, read from helm's release Secret in `tac-seatrials`, is `RENDER_DIGEST`. It waits up to
+   `OPERATOR_APPLY_TIMEOUT` (900 s), then fails, saying which render the release is and showing the operator's log.
+
+The operator image is this fleet's: the operator library at `operator_commit`, generated against `build/proto` as
+`bin/schematic-operator` is (tacplus-dev/operator has no published image, tacplus-dev/operator#6, and none would know
+this fleet's services). The `images` job builds it on Cloud Build as it builds the services, by a fingerprint of
+the tacplus and operator commits, `build/proto` and the platforms, into
+`us-central1-docker.pkg.dev/tacplus-dev/seatrials/schematic/operator`.
+
+Later reconciles are the operator's: it renders again every 30 s, and once kernel records a tenant that
+`operator.yaml` does not list, its render (and the release) gains that tenant's instances. The next `apply` still
+checks the digest of the render `diff` showed, so `apply` fails then, by design, until `diff` renders the same
+(PROPOSALS.md).
 
 ### The certificate
 

@@ -40,6 +40,11 @@ case "$*" in
   "builds submit "*)
     for a in "$@"; do case "$a" in --substitutions=*|_REGISTRY=*) s=$a ;; esac; done
     svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
+  # The digest of an image tag STUB_SERVICE_TAGS lists; NOT_FOUND for any other.
+  "artifacts docker images describe "*)
+    tag=${5##*:}
+    [[ " ${STUB_SERVICE_TAGS:-} " == *" $tag "* ]] || { echo "ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: $5" >&2; exit 1; }
+    echo "sha256:$(printf '%064d' 7)" ;;
   "builds describe "*)
     id=$3; [ "$id" = "build-${STUB_FAIL:-none}" ] && echo FAILURE || echo SUCCESS ;;
   # A build's log: 100 numbered lines, or refused when STUB_LOG_DENIED is set.
@@ -65,11 +70,12 @@ run() { # NAME WANT(pass|fail) [VAR=VALUE...]
 }
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got [$2], want [$3]"; failures=$((failures + 1)); fi; }
 services=$(grep -c '^    - name: ' "$here/../fleet.lock")
+builds=$((services + 1))   # and the operator's (#76)
 
 run "without WAIT it returns after submitting" pass &&
   check "nothing waited for" "$(grep -c '^builds describe' "$work/log")" 0
 run "WAIT=1: every build succeeds" pass WAIT=1 &&
-  check "every build waited for" "$(grep '^builds describe' "$work/log" | sort -u | wc -l | tr -d ' ')" "$services"
+  check "every build waited for, the operator's too" "$(grep '^builds describe' "$work/log" | sort -u | wc -l | tr -d ' ')" "$builds"
 run "WAIT=1: one build fails" fail WAIT=1 STUB_FAIL=gateway
 : > "$work/log"
 out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" WAIT_INTERVAL=0 WAIT=1 STUB_FAIL=gateway "$here/build.sh" changed 2>&1)
@@ -279,7 +285,7 @@ out=$(STUB_SERVICE_TAGS=$(service_tags) platforms_run "platforms: [arm64]" chang
 for cmd in all gateway; do
   STUB_SERVICE_TAGS=$(service_tags) platforms_run "platforms: [arm64]" "$cmd" > /dev/null
   check "$cmd, a new build image: the services asked for, once each" "$(built_services | wc -w | tr -d ' ')" \
-    "$([ "$cmd" = all ] && echo "$services" || echo 1)"
+    "$([ "$cmd" = all ] && echo "$builds" || echo 1)"
 done
 
 # The build image's steps run unprivileged (#56; Trivy DS-0002): its last USER
@@ -306,6 +312,56 @@ check "the image step creates its builder from _BUILDKIT, on Cloud Build's netwo
   "$(grep -c -- 'docker buildx create --name fleet --driver docker-container --driver-opt image=${_BUILDKIT} --driver-opt network=cloudbuild --bootstrap' <<<"$image_step")" 1
 check "every buildx build runs in that builder" \
   "$(grep -c 'docker buildx build ' <<<"$image_step") $(grep -c 'docker buildx build --builder fleet ' <<<"$image_step")" "1 1"
+
+# The operator's image (#76): this fleet's operator, built as deploy/build-operator.sh
+# builds bin/schematic-operator (the operator library at operator_commit, generated
+# against build/proto), so the operator in cluster renders what diff's render did.
+# Its fingerprint is over the tacplus and operator commits, build/proto and the
+# platforms; `changed` builds it when the registry has no image with it, and
+# operator-ref names the image by digest for deploy/apply.sh.
+operator_subst() { # NAME -> its value in the operator's build
+  grep -m1 '^builds submit .*_SERVICE=operator,' "$work/log" | tr ',' '\n' | sed -n "s/^$1=//p" | cut -d' ' -f1
+}
+op_fp() { platforms_run "platforms: [arm64]" fingerprint | awk '$1 == "operator" { print $2 }'; }
+fp_operator=$(op_fp)
+[[ "$fp_operator" =~ ^[0-9a-f]{12}$ ]] && echo "ok   fingerprint prints the operator's" ||
+  { echo "FAIL fingerprint prints no operator fingerprint: [$fp_operator]"; failures=$((failures + 1)); }
+platforms_run "platforms: [arm64]" changed > /dev/null
+op_commit=$(sed -n 's/^operator_commit: *//p' "$here/pins.yaml")
+check "changed, no operator image: the operator is cloned at operator_commit" \
+  "$(grep -c "^git clone -q https://github.com/tacplus-dev/operator.git " "$work/log") $(grep -c "^git -C .* checkout -q $op_commit$" "$work/log")" "1 1"
+check "its build is cmd/cavalier-operator, pkg/bootstrap generated first, in the build image, by its fingerprint" \
+  "$(for v in _LANG _MAIN _GO_GENERATE _COMMIT _FINGERPRINT _TACPLUS_IMAGE; do operator_subst "$v"; done | xargs)" \
+  "go ./cmd/cavalier-operator ./pkg/bootstrap $op_commit $fp_operator us-central1-docker.pkg.dev/tacplus-dev/seatrials/ci/tacplus-build:fp-$fp_build"
+check "no service build runs go generate" \
+  "$(grep '^builds submit ' "$work/log" | grep -v '_SERVICE=operator,' | grep -c '_GO_GENERATE')" 0
+check "the service build runs _GO_GENERATE, for Go, before it builds" \
+  "$(grep -c '^            \[ -z "${_GO_GENERATE}" \] || go generate ${_GO_GENERATE}$' "$here/service.cloudbuild.yaml")" 1
+STUB_SERVICE_TAGS="fp-$fp_operator" platforms_run "platforms: [arm64]" changed > /dev/null
+check "changed, the operator image built: it is not built again" "$(operator_subst _SERVICE)" ""
+platforms_run "platforms: [arm64]" operator > /dev/null
+check "operator: the operator alone, after the build image" "$(submits) / $(built_services)" \
+  "tacplus-build.cloudbuild.yaml service.cloudbuild.yaml / operator"
+for change in "pins.yaml|s/^operator_commit: .*/operator_commit: 0000000000000000000000000000000000000000/" \
+              "pins.yaml|s/^tacplus_commit: .*/tacplus_commit: 0000000000000000000000000000000000000000/"; do
+  tree=$work/tree2; rm -rf "$tree"; cp -R "$work/tree" "$tree"; sed -i "${change#*|}" "$tree/images/pins.yaml"
+  fp=$(env PATH="$work/bin:$PATH" STUB_LOG=/dev/null "$tree/images/build.sh" fingerprint 2>&1 | awk '$1 == "operator" { print $2 }')
+  [ -n "$fp" ] && [ "$fp" != "$fp_operator" ] && echo "ok   ${change#*|} changes the operator's fingerprint" ||
+    { echo "FAIL ${change#*|} leaves the operator's fingerprint [$fp]"; failures=$((failures + 1)); }
+done
+tree=$work/tree2; rm -rf "$tree"; cp -R "$work/tree" "$tree"; echo 'syntax = "proto3";' > "$tree/build/proto/added.proto"
+fp=$(env PATH="$work/bin:$PATH" STUB_LOG=/dev/null "$tree/images/build.sh" fingerprint 2>&1 | awk '$1 == "operator" { print $2 }')
+[ -n "$fp" ] && [ "$fp" != "$fp_operator" ] && echo "ok   a change to build/proto changes the operator's fingerprint" ||
+  { echo "FAIL build/proto leaves the operator's fingerprint [$fp]"; failures=$((failures + 1)); }
+check "a platforms change changes the operator's fingerprint" \
+  "$(platforms_run "platforms: [arm64, amd64]" fingerprint | awk '$1 == "operator" { print $2 }' | grep -vcx "$fp_operator")" 1
+out=$(STUB_SERVICE_TAGS="fp-$fp_operator" platforms_run "platforms: [arm64]" operator-ref)
+check "operator-ref names the image by digest, building nothing" "$out $(grep -c '^builds submit ' "$work/log")" \
+  "us-central1-docker.pkg.dev/tacplus-dev/seatrials/schematic/operator@sha256:$(printf '%064d' 7) 0"
+out=$(platforms_run "platforms: [arm64]" operator-ref 2>&1) &&
+  { echo "FAIL operator-ref passes with no image: [$out]"; failures=$((failures + 1)); } ||
+  { [[ "$out" == *"no operator image fp-$fp_operator"* ]] && echo "ok   operator-ref fails, saying so, when the image is not built" ||
+    { echo "FAIL operator-ref with no image: [$out]"; failures=$((failures + 1)); }; }
 
 # A registry's transient 5xx or 429 on a push is retried with backoff (#74):
 # one 502 on eventbus's :local manifest PUT failed a whole deploy. The image

@@ -9,7 +9,7 @@
 # file from it. Every job checks this repository out at FLEET_COMMIT. Runbook,
 # variables and the GCP side: docs/deploy-pipeline.md.
 #
-#   tools     tacplus, schematic-operator, yq and opa, built from pinned sources
+#   tools     tacplus, schematic-operator, yq, opa and helm, built from pinned sources
 #   checks    the repository's script tests
 #   security  OSV-Scanner on the tree, govulncheck on the pinned binaries, gitleaks on the tree
 #             and its history, Trivy on the CI image; security-exceptions.yaml enforced (#36).
@@ -18,12 +18,14 @@
 #             of the secret tls-seatrials and, when lego says so (missing, expired, or due by
 #             ARI or the last third of its lifetime), obtains a new one by ACME DNS-01 as a new
 #             version; hands the version on to every job that renders
-#   images    images/build.sh changed on Cloud Build, waiting for every build
+#   images    images/build.sh changed on Cloud Build, waiting for every build: the services' and
+#             the fleet's operator's (#76)
 #   generate  schematic-operator generate with the fleet's key material and that certificate
 #             version (the gateway's, CERT_CHAIN); the routing policy checked
 #   diff      what an apply would change, by object name; records the render's digest
 #   apply     once diff succeeds, by itself (seatrials is not production), the render diff
-#             showed, by digest; protected environment seatrials
+#             showed, by digest, through the operator in cluster (#76): it installs the operator,
+#             which applies that render as its own account; protected environment seatrials
 #   test      the functional end-to-end suite (deploy/e2e.yaml), its report as the job's JUnit report
 #
 # Manual, because none of them is approval of the fleet: signin-secrets (a rotated secret),
@@ -296,7 +298,8 @@ diff:
 # decisions/deterministic-deployments-2026-11-02.md, addendum; #34). In the
 # protected environment seatrials. It applies the render diff showed, by its
 # digest (RENDER_DIGEST, diff's dotenv), with the certificate version cert
-# passed on.
+# passed on: deploy/apply.sh installs the operator's chart (cloned from GitHub,
+# hence ci_github), and the operator applies the render (#76).
 apply:
   stage: apply
   needs: [tools, cert, diff]
@@ -304,7 +307,7 @@ apply:
   resource_group: seatrials
   script:
     - |
-      cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
+      cd src && source ci/lib.sh && ci_github && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh

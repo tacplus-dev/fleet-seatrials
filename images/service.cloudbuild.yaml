@@ -13,6 +13,9 @@ substitutions:
   _SERVICE: unknown
   _LANG: go
   _MAIN: .            # go: the main package to build
+  # go: packages to `go generate` first, space-separated; none for a service.
+  # The operator's pkg/bootstrap embeds its registry so (images/build.sh, #76).
+  _GO_GENERATE: ""
   _COMMIT: unknown
   _FLEET_COMMIT: unknown
   # The build fingerprint: the service's own commit plus the compiler's and every
@@ -73,7 +76,9 @@ steps:
           java)
             mvn -q -B package -Dmaven.test.skip=true
             ;;
-          go) ;;
+          go)
+            [ -z "${_GO_GENERATE}" ] || go generate ${_GO_GENERATE}
+            ;;
           *) echo "unknown language ${_LANG}"; exit 1 ;;
         esac
         for arch in ${_PLATFORMS}; do

@@ -11,6 +11,8 @@
 #   images/build.sh changed            # only the services whose fingerprint has no image yet
 #                                      # (and, the build image new, one of each language)
 #   images/build.sh fingerprint        # print each service's fingerprint and whether it is built
+#   images/build.sh operator           # the fleet's operator image (`all` and `changed` build it too)
+#   images/build.sh operator-ref       # print the operator image of this checkout, by digest; fail if unbuilt
 #   WAIT=1 images/build.sh changed     # and wait for every build submitted; fail if one fails
 #
 # Service builds are submitted asynchronously and run in parallel. With WAIT=1
@@ -49,12 +51,22 @@
 # build source, with build/proto copied in at .fleet/proto; Cloud Build clones
 # nothing (the repos are private). Images land at
 #   <registry>/schematic/<service>:<fleet commit>  and  :local  and  :fp-<hash>
+#
+# The operator's image is built the same way (#76): the operator library at
+# images/pins.yaml's operator_commit, generated against build/proto as
+# deploy/build-operator.sh builds bin/schematic-operator, so the operator in
+# cluster renders exactly what that binary renders. It has no published image
+# a fleet could run (tacplus-dev/operator#6), and none would know this fleet's
+# services. Its fingerprint is over the compiler's and the operator's commits,
+# build/proto's content and the platforms; it lands at
+# <registry>/schematic/operator, and deploy/apply.sh runs it by digest.
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 registry=${REGISTRY:-us-central1-docker.pkg.dev/tacplus-dev/seatrials}
 tacplus_repo=https://github.com/tacplus-dev/tacplus.git
 tacplus_commit=$(sed -n 's/^tacplus_commit: *//p' "$here/images/pins.yaml")
 launcher_commit=$(sed -n 's/^launcher_commit: *//p' "$here/images/pins.yaml")
+operator_commit=$(sed -n 's/^operator_commit: *//p' "$here/images/pins.yaml")
 fleet_commit=$(git -C "$here" rev-parse --short=12 HEAD)
 # Every submit stages its source and writes its logs in this bucket. Staged in
 # the project's default bucket, gcloud first lists the project's buckets to
@@ -100,6 +112,15 @@ build_fingerprint() {
   printf 'tacplus %s\nlauncher %s\ndockerfile %s\ncloudbuild %s\n' "$tacplus_commit" "$launcher_commit" \
     "$(shasum -a 256 < "$here/images/tacplus-build.Dockerfile" | cut -c1-64)" \
     "$(shasum -a 256 < "$here/images/tacplus-build.cloudbuild.yaml" | cut -c1-64)" | shasum -a 256 | cut -c1-12
+}
+
+# operator_fingerprint -> sha256 (12 hex) over what the operator image is
+# built from: the tacplus and operator commits, build/proto (every file's path
+# and content) and the platforms, one per line.
+operator_fingerprint() {
+  printf 'tacplus %s\noperator %s\nproto %s\nplatforms %s\n' "$tacplus_commit" "$operator_commit" \
+    "$(cd "$here/build/proto" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -c1-64)" \
+    "$platforms" | shasum -a 256 | cut -c1-12
 }
 
 # built IMAGE FINGERPRINT -> 0 when the registry already holds an image built
@@ -148,6 +169,19 @@ service_lang() {
   echo "${lang%% *}"
 }
 
+# submit NAME SRC LANG COMMIT FINGERPRINT SUBSTITUTIONS: SRC, a checkout with build/proto at .fleet/proto,
+# submitted as NAME's build (service.cloudbuild.yaml), its id noted for wait_builds; SRC is removed.
+submit() {
+  local name=$1 src=$2 lang=$3 commit=$4 fp=$5 id
+  echo "== $name ($lang) @ ${commit:0:12}"
+  echo "$lang" >> "$languages"
+  id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
+    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,$6,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$build_image:fp-$build_fp")
+  echo "$id"
+  echo "$name $id" >> "$submitted"
+  rm -rf "$src"
+}
+
 build_service() {
   local name=$1 repo commit src
   repo=$(lock_field "$name" repo); commit=$(lock_field "$name" commit)
@@ -155,15 +189,29 @@ build_service() {
   git clone -q "$repo" "$src" && git -C "$src" checkout -q "$commit"
   mkdir -p "$src/.fleet" && cp -R "$here/build/proto" "$src/.fleet/proto"
   read -r lang main <<<"$(service_facts "$src" "$name")"
-  echo "== $name ($lang) @ ${commit:0:12}"
-  echo "$lang" >> "$languages"
-  local fp; fp=$(fingerprint "$name")
-  local id
-  id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
-    --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,_MAIN=$main,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$build_image:fp-$build_fp")
-  echo "$id"
-  echo "$name $id" >> "$submitted"
-  rm -rf "$src"
+  submit "$name" "$src" "$lang" "$commit" "$(fingerprint "$name")" "_MAIN=$main"
+}
+
+# build_operator: the operator's image, its binary built as deploy/build-operator.sh builds it (generated
+# against build/proto, then pkg/bootstrap's go generate), from cmd/cavalier-operator, into the operator's own
+# Dockerfile (bin/operator).
+build_operator() {
+  local src
+  src=$(mktemp -d)
+  git clone -q https://github.com/tacplus-dev/operator.git "$src" && git -C "$src" checkout -q "$operator_commit"
+  mkdir -p "$src/.fleet" && cp -R "$here/build/proto" "$src/.fleet/proto"
+  submit operator "$src" go "$operator_commit" "$(operator_fingerprint)" "_MAIN=./cmd/cavalier-operator,_GO_GENERATE=./pkg/bootstrap"
+}
+
+# operator_ref: the operator image of this checkout's fingerprint, <registry>/schematic/operator@<digest>;
+# fails, saying so, when the registry has none.
+operator_ref() {
+  local fp digest
+  fp=$(operator_fingerprint)
+  digest=$(gcloud artifacts docker images describe "$registry/schematic/operator:fp-$fp" --format 'value(image_summary.digest)' 2>&1) &&
+    [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+    { echo "no operator image fp-$fp in $registry/schematic/operator (images/build.sh operator builds it): $digest" >&2; exit 1; }
+  echo "$registry/schematic/operator@$digest"
 }
 
 # failed_log NAME ID: the last 80 lines of a failed build's log, each under the
@@ -201,13 +249,17 @@ trap 'rm -f "$submitted" "$languages"' EXIT
 case "${1:-}" in
   build-image) build_build_image ;;
   tacplus) echo "images/build.sh: there is no tacplus image since tacplus 2.4 (#65): images/build.sh build-image builds the build image, with the fleet's tacplus" >&2; exit 2 ;;
-  all) ensure_build_image; for s in $(services); do build_service "$s"; done ;;
+  all) ensure_build_image; for s in $(services); do build_service "$s"; done; build_operator ;;
+  operator) ensure_build_image; build_operator ;;
+  operator-ref) operator_ref ;;
   fingerprint)
     if built "$build_image" "$build_fp"; then echo "tacplus-build $build_fp built"; else echo "tacplus-build $build_fp NEEDS BUILD"; fi
     for s in $(services); do
       fp=$(fingerprint "$s")
       if built "$registry/schematic/$s" "$fp"; then echo "$s $fp built"; else echo "$s $fp NEEDS BUILD"; fi
-    done ;;
+    done
+    fp=$(operator_fingerprint)
+    if built "$registry/schematic/operator" "$fp"; then echo "operator $fp built"; else echo "operator $fp NEEDS BUILD"; fi ;;
   changed)
     ensure_build_image
     unchanged=()
@@ -215,6 +267,8 @@ case "${1:-}" in
       fp=$(fingerprint "$s")
       if built "$registry/schematic/$s" "$fp"; then echo "== $s unchanged ($fp)"; unchanged+=("$s"); else build_service "$s"; fi
     done
+    fp=$(operator_fingerprint)
+    if built "$registry/schematic/operator" "$fp"; then echo "== operator unchanged ($fp)"; else build_operator; fi
     # A new build image is an input of no service's fingerprint, so nothing
     # above was built in it for that. It is proven on each language it builds
     # (#56): the first unchanged service of every language no build above has.
@@ -226,7 +280,7 @@ case "${1:-}" in
         build_service "$s"
       done
     fi ;;
-  "") echo "usage: images/build.sh build-image | all | changed | fingerprint | <service>..." >&2; exit 2 ;;
+  "") echo "usage: images/build.sh build-image | all | changed | fingerprint | operator | operator-ref | <service>..." >&2; exit 2 ;;
   *) ensure_build_image; for s in "$@"; do build_service "$s"; done ;;
 esac
 wait_builds

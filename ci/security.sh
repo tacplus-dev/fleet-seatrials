@@ -11,7 +11,8 @@
 #   gitleaks      the history and the tree at HEAD, with .gitleaks.toml and .gitleaksignore
 #   Trivy         the CI image the jobs run in (every `image:` of ci/*.gitlab-ci.yml), for this platform,
 #                 and the images this repository deploys itself (#41: every container of test-idp/*.yaml),
-#                 for the architecture its nodeSelector picks
+#                 for the architecture its nodeSelector picks; the operator chart's init container
+#                 (images/pins.yaml operator_init_image, #76), for each of images/pins.yaml's platforms
 #
 # The policy, looper-scan's: any secret fails, and so does a HIGH or CRITICAL
 # finding with a fixed version, unless an unexpired entry of
@@ -149,6 +150,14 @@ if [ -e "${deployed[0]}" ]; then
   else
     problem "test-idp/*.yaml: its images could not be read: $(grep -m1 . "$work/deployed.err")"
   fi
+fi
+# The operator chart's init container (deploy/operator-post-render.sh pins it, #76), on the platforms the
+# fleet runs on.
+if [ -f "$tree/images/pins.yaml" ]; then
+  i=$(sed -n 's/^operator_init_image: *//p' "$tree/images/pins.yaml")
+  for a in $(sed -n 's/^platforms: *\[\(.*\)\] *$/\1/p' "$tree/images/pins.yaml" | tr ',' ' '); do
+    [ -z "$i" ] || { images+=("$i"); platforms+=("linux/$a"); }
+  done
 fi
 if need trivy; then
   n=0

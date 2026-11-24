@@ -4,6 +4,11 @@
 tacplus_commit: ef62327e2664a796543445b91829e3658dbdd448
 operator_commit: a17d50774e5ea8c565127e5334c336f3f87f8178
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708
+# The image of the operator chart's extract-config init container, which unpacks
+# the config bundle (deploy/apply.sh, #76): the chart says busybox:latest, and
+# deploy/operator-post-render.sh puts this in its place, pinned by digest (an
+# index: the operator runs on arm64).
+operator_init_image: docker.io/library/busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
 # The platforms every service image is built for (images/build.sh): arm64, what
 # the fleet runs on. amd64 is off to save the cost of a second build (Jody,
 # 2026-10-29: tacplus-dev/roadmap decisions/deployments-per-cluster-2026-10-26.md,

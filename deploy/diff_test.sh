@@ -6,7 +6,7 @@
 # deploy/diff-names.sh as kubectl diff's program on LIVE and MERGED
 # directories shaped as kubectl diff writes them: it names each object that
 # differs and never prints its content; diff.sh records the render's digest,
-# and deploy/apply.sh applies only that render. The letsencrypt guard is
+# and deploy/apply.sh applies only that render (deploy/apply_test.sh). The letsencrypt guard is
 # retired (#35): a render that changes or removes letsencrypt passes like any
 # other. Needs bash, jq and yq.
 #
@@ -209,55 +209,6 @@ out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FI
 status=$?
 [ "$status" -eq 0 ] && [ ! -s "$work/diffed" ] && [[ "$out" == *tac-seatrials-00000001.platform-ingress* ]] &&
   ok "a render with nothing in the platform namespace asks kubectl nothing" || fail "diff.sh tenant-only: status $status, kubectl given [$(cat "$work/diffed")]; out=[$out]"
-
-# apply.sh against a stub operator that logs what it runs.
-cat > "$work/bin/schematic-operator" <<'EOF'
-#!/usr/bin/env bash
-echo "operator $*" >> "$STUB_LOG"
-case "$*" in
-  generate) ;;
-  "apply --dry-run") cat "$STUB_MANIFEST" ;;
-  apply) echo "applied" ;;
-  *) echo "unexpected operator $*" >&2; exit 3 ;;
-esac
-EOF
-cat > "$work/bin/kubectl" <<'EOF'
-#!/usr/bin/env bash
-case "$*" in
-  "config current-context") echo "${STUB_CONTEXT:-gke_tacplus-dev_us-central1-a_dev}" ;;
-  "get pods -n tac-seatrials") ;;
-  *) echo "unexpected kubectl $*" >&2; exit 3 ;;
-esac
-EOF
-# The tree's operator.yaml names a deployment: apply.sh lists the pods of its
-# platform namespace (deploy/namespaces.sh, #4).
-mkdir -p "$work/tree/deploy/bootstrap" "$work/tree/bin"
-cp "$here/apply.sh" "$here/namespaces.sh" "$work/tree/deploy/"
-printf 'deployment: seatrials\ntenants: [alpha]\ntenant_ids: {alpha: 741kqltx}\n' > "$work/tree/deploy/bootstrap/operator.yaml"
-cp "$work/bin/schematic-operator" "$work/tree/bin/schematic-operator"
-# applysh NAME WANT(applied|refused) MANIFEST [ENV=VALUE...]
-applysh() {
-  local name=$1 want=$2 manifest=$3 out status
-  shift 3
-  : > "$work/log"
-  out=$(env -u RENDER_DIGEST PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_MANIFEST="$manifest" "$@" \
-    "$work/tree/deploy/apply.sh" 2>&1)
-  status=$?
-  case "$want" in
-    applied) [ "$status" -eq 0 ] && grep -qx "operator apply" "$work/log" ||
-      { fail "apply.sh $name: status $status; out=[$out]"; return; } ;;
-    refused) [ "$status" -ne 0 ] && ! grep -qx "operator apply" "$work/log" ||
-      { fail "apply.sh $name: applied; out=[$out]"; return; } ;;
-  esac
-  ok "apply.sh $name"
-}
-applysh "applies the render diff showed" applied "$work/with-le.yaml" RENDER_DIGEST="$want"
-applysh "refuses a render other than the one diff showed" refused "$work/other.yaml" RENDER_DIGEST="$want"
-applysh "refuses with no render digest" refused "$work/with-le.yaml"
-out=$(env PATH="$work/bin:$PATH" STUB_LOG="$work/log" STUB_MANIFEST="$work/other.yaml" RENDER_DIGEST="$want" \
-  "$work/tree/deploy/apply.sh" 2>&1)
-[[ "$out" == *"$want"* && "$out" == *diff* ]] && ok "apply.sh says which render diff showed" ||
-  fail "apply.sh refusal does not say why: [$out]"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1

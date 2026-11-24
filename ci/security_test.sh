@@ -177,6 +177,17 @@ exceptions "$r" CVE-2026-0002 2999-01-01
 scan "an exception accepts it in the deployed image too" pass "$r"
 
 stubs
+r=$(repo operator-init)
+mkdir -p "$r/images"
+printf 'operator_init_image: registry.example.invalid/busybox:1@sha256:0001\nplatforms: [arm64]\n' > "$r/images/pins.yaml"
+git -C "$r" add -A && git -C "$r" commit -qm pins
+scan "the operator's init image is scanned" pass "$r"
+jq -e '.images == ["registry.example.invalid/ci:1", "registry.example.invalid/busybox:1@sha256:0001"]' "$work/out/report.json" >/dev/null &&
+  grep -q -- "--platform linux/arm64 .*registry.example.invalid/busybox:1@sha256:0001" "$stub/trivy.args" &&
+  echo "ok   the operator chart's init image (#76) is scanned, for the fleet's platforms" ||
+  fail "the operator's init image: $(jq -c .images "$work/out/report.json") $(cat "$stub/trivy.args")"
+
+stubs
 r=$(repo binary)
 govulncheck_found > "$stub/govulncheck.json"
 scan "a vulnerability govulncheck finds in a pinned binary, with a fix, fails" fail "$r" "GO-2026-0003"
