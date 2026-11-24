@@ -46,3 +46,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue images: kernel, doppelganger, coop and redo fail on Cloud Build in the second deploy, and the job prints no reason; print a failed build's log, then fix the four (#67)
 - 2026-11-24 looper issue images/tacplus-build.Dockerfile: the build image runs as root (trivy DS-0002, HIGH, fails the build's security policy) (#56)
 - 2026-11-24 looper issue STATE.md's Blocked on names closed issues #1 and #4 (not what holds the first deploy now) (#66)
+- 2026-11-24 looper issue kernel's image fails to compile: its generated tacplus-backend sources import com.gitlab.seabeam.controlplane.schematic.services.kernel.graphs, which doesn't exist (#70)
