@@ -381,3 +381,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   image; kmaker neither). When every release the fleet runs publishes its image (looper#17, the release issues),
   delete the line and relock, so the lock records each image by digest; the deploy then needs the images' pull
   (PROPOSALS: what #8 needs) and `images/build.sh` builds nothing for them.
+- **The closure check for the Rust and Java services too** (2026-11-24, #68): `ci/closure_test.sh` generates and
+  builds every Go service at its locked commit against `build/proto`, which would have caught doppelganger v0.2.1
+  calling the `provider_model` llmproxy v0.1.6 lacks before the deploy did. gateway, oauth, llmproxy and redo
+  (Rust) and kernel, eventbus and stratum (Java) are still checked by the `images` job alone: gateway's generated
+  crate needs more memory than the gate has (STATE.md). A `cargo check` of each Rust service (no codegen) and a
+  `mvn -o compile` of each Java one would close it, if the gate's time and memory allow.
+- **`tacplus fleet build --check` in the nightly scan** (2026-11-24, #68): relocking llmproxy to 0.2 moved five
+  other services' patches with it (oauth 0.1.4, doppelganger 0.2.2, tenantecho 0.2.3, coop 0.1.6, pigeonhost
+  0.1.8), since the fleet build takes every line's newest patch. A scheduled `--check` that files the newer
+  patches as a relock issue would move them one small step at a time instead of with an unrelated fix.
