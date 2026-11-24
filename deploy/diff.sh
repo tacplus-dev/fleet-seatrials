@@ -16,6 +16,13 @@
 # digest once #28 lands). With RENDER_DIGEST set (the apply jobs), it fails on
 # any other render.
 #
+# It diffs only the objects outside the tenant namespaces (deploy/namespaces.sh:
+# all but the platform one). The deploy account's Role is in the platform
+# namespace alone, and the tenant namespaces are deploymentproxy's, where only
+# the operator's account is bound, so kubectl could never read their objects
+# (#75). It names those objects instead, by name only. The digest is still the
+# whole render's.
+#
 #   deploy/diff.sh     # exit 0: the diff ran (changes or not)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -37,8 +44,23 @@ if [ -n "${RENDER_DIGEST:-}" ] && [ "$digest" != "$RENDER_DIGEST" ]; then
 fi
 [ -z "${RENDER_DIGEST_OUT:-}" ] || echo "RENDER_DIGEST=$digest" > "$RENDER_DIGEST_OUT"
 
+# Split the render: the tenant namespaces' objects, and the rest.
+export TENANT_NAMESPACES
+TENANT_NAMESPACES=$("$here/deploy/namespaces.sh" | tail -n +2 | tr '\n' ' ')
+in_tenant='.metadata.namespace as $n | strenv(TENANT_NAMESPACES) | split(" ") | any_c(. == $n)'
+yq "select($in_tenant | not)" "$tmp/manifest.yaml" > "$tmp/platform.yaml"
+tenant=$(yq "select($in_tenant) | .apiVersion + \".\" + .kind + \".\" + .metadata.namespace + \".\" + .metadata.name" \
+  "$tmp/manifest.yaml" | tr / .)
+if [ -n "$tenant" ]; then
+  echo "in the tenant namespaces, not diffed: the operator applies these through deploymentproxy"
+  sed 's/^/  /' <<<"$tenant"
+fi
+if [ "$(yq ea '[select(.kind != null)] | length' "$tmp/platform.yaml")" -eq 0 ]; then
+  echo "nothing outside the tenant namespaces to diff"; exit 0
+fi
+
 status=0
-KUBECTL_EXTERNAL_DIFF="$here/deploy/diff-names.sh" kubectl diff -f "$tmp/manifest.yaml" || status=$?
+KUBECTL_EXTERNAL_DIFF="$here/deploy/diff-names.sh" kubectl diff -f "$tmp/platform.yaml" || status=$?
 case "$status" in
   0) echo "no difference: the render matches the cluster" ;;
   1) ;;

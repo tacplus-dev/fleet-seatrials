@@ -111,6 +111,11 @@ cat > "$work/bin/kubectl" <<'EOF'
 case "$*" in
   "config current-context") echo "${STUB_CONTEXT:-gke_tacplus-dev_us-central1-a_dev}" ;;
   "diff -f "*)
+    { echo "--- kubectl diff"; cat "$3"; } >> "${STUB_DIFFED:-/dev/null}"
+    # The deploy account's Role is in the platform namespace only (#75).
+    if grep -q 'namespace: tac-seatrials-' "$3"; then
+      echo 'Error from server (Forbidden): networkpolicies.networking.k8s.io "platform-ingress" is forbidden' >&2; exit 2
+    fi
     [ -n "${STUB_DIFF_STATUS:-}" ] && exit "$STUB_DIFF_STATUS"
     "$KUBECTL_EXTERNAL_DIFF" "$STUB_FIXTURE/LIVE" "$STUB_FIXTURE/MERGED" ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
@@ -122,6 +127,12 @@ cat > "$work/bin/schematic-operator" <<'EOF'
 cat "$STUB_MANIFEST"
 EOF
 chmod +x "$work/bin/"*
+# The tree diff.sh runs in: its operator.yaml names a deployment, so its
+# platform namespace is tac-seatrials and its tenant namespaces
+# tac-seatrials-<tid> (deploy/namespaces.sh, #4).
+mkdir -p "$work/dtree/deploy/bootstrap"
+cp "$here/diff.sh" "$here/diff-names.sh" "$here/namespaces.sh" "$work/dtree/deploy/"
+printf 'deployment: seatrials\ntenants: [alpha]\ntenant_ids: {alpha: 741kqltx}\n' > "$work/dtree/deploy/bootstrap/operator.yaml"
 le_deploy letsencrypt:a > "$work/with-le.yaml"; printf -- '---\n' >> "$work/with-le.yaml"; cm kernel-config one >> "$work/with-le.yaml"
 cm kernel-config one > "$work/without-le.yaml"
 
@@ -131,7 +142,7 @@ diffsh() {
   shift 4
   out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/$fx" \
     STUB_MANIFEST="$manifest" "$@" \
-    "$here/diff.sh" 2>&1)
+    "$work/dtree/deploy/diff.sh" 2>&1)
   status=$?
   if [[ "$out" == *SEKRIT* ]]; then fail "diff.sh $name: printed an object's content"; return; fi
   case "$want" in
@@ -150,7 +161,7 @@ diffsh "another kube context is refused" fail same "$work/with-le.yaml" STUB_CON
 diffsh "the old cluster (jody1's seatrials) is refused" fail same "$work/with-le.yaml" \
   STUB_CONTEXT=gke_old-project_us-central1-a_seatrials
 out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/kernel" \
-  STUB_MANIFEST="$work/with-le.yaml" "$here/diff.sh" 2>&1)
+  STUB_MANIFEST="$work/with-le.yaml" "$work/dtree/deploy/diff.sh" 2>&1)
 [[ "$out" == *"changed: v1.ConfigMap.schematic.kernel-config"* ]] && ok "diff.sh names what the apply would change" ||
   fail "diff.sh does not name the change: [$out]"
 
@@ -159,12 +170,45 @@ out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FI
 le_deploy letsencrypt:a > "$work/other.yaml"; printf -- '---\n' >> "$work/other.yaml"; cm kernel-config two >> "$work/other.yaml"
 want=sha256:$(sha256sum < "$work/with-le.yaml" | cut -d' ' -f1)
 out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/same" \
-  STUB_MANIFEST="$work/with-le.yaml" RENDER_DIGEST_OUT="$work/render.env" "$here/diff.sh" 2>&1)
+  STUB_MANIFEST="$work/with-le.yaml" RENDER_DIGEST_OUT="$work/render.env" "$work/dtree/deploy/diff.sh" 2>&1)
 [ "$(cat "$work/render.env" 2>/dev/null)" = "RENDER_DIGEST=$want" ] && [[ "$out" == *"$want"* ]] &&
   ok "diff.sh records and prints its render's digest" || fail "diff.sh digest: [$(cat "$work/render.env" 2>/dev/null)] out=[$out]"
 diffsh "the render diff showed passes" pass same "$work/with-le.yaml" RENDER_DIGEST="$want"
 diffsh "another render passes without a digest" pass same "$work/other.yaml"
 diffsh "a render other than the one diff showed fails" fail same "$work/other.yaml" RENDER_DIGEST="$want"
+
+# ---- Tenant namespaces (#75): the deploy account's Role is in the platform
+# namespace only, and the tenant namespaces are deploymentproxy's, so diff.sh
+# names a tenant namespace's object and never asks kubectl about it.
+np() { # a NetworkPolicy NAME in NAMESPACE
+  printf 'apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: %s\n  namespace: %s\nspec:\n  podSelector: {}\n' "$1" "$2"
+}
+cp "$work/with-le.yaml" "$work/tenant.yaml"
+{ printf -- '---\n'; np platform-ingress tac-seatrials-00000002; printf -- '---\n'; np platform-ingress tac-seatrials-741kqltx; } >> "$work/tenant.yaml"
+: > "$work/diffed"
+out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/kernel" \
+  STUB_MANIFEST="$work/tenant.yaml" STUB_DIFFED="$work/diffed" RENDER_DIGEST_OUT="$work/tenant.env" \
+  "$work/dtree/deploy/diff.sh" 2>&1)
+status=$?
+[ "$status" -eq 0 ] && ok "diff.sh passes a render with objects in tenant namespaces" || fail "diff.sh tenant: status $status; out=[$out]"
+[[ "$out" == *"changed: v1.ConfigMap.schematic.kernel-config"* ]] && ok "diff.sh still diffs the platform namespace's objects" ||
+  fail "diff.sh tenant: no platform diff: [$out]"
+[[ "$out" == *deploymentproxy* &&
+  "$out" == *"networking.k8s.io.v1.NetworkPolicy.tac-seatrials-00000002.platform-ingress"* &&
+  "$out" == *"networking.k8s.io.v1.NetworkPolicy.tac-seatrials-741kqltx.platform-ingress"* ]] &&
+  ok "diff.sh names the tenant namespaces' objects, applied through deploymentproxy" || fail "diff.sh tenant: not named: [$out]"
+diffed=$(cat "$work/diffed")
+[ "$(grep -c '^--- kubectl diff$' "$work/diffed")" -eq 1 ] && [[ "$diffed" == *kernel-config* && "$diffed" != *tac-seatrials-* ]] &&
+  ok "kubectl is asked about the platform namespace's objects only" || fail "diff.sh tenant: kubectl was given [$diffed]"
+[ "$(cat "$work/tenant.env" 2>/dev/null)" = "RENDER_DIGEST=sha256:$(sha256sum < "$work/tenant.yaml" | cut -d' ' -f1)" ] &&
+  ok "the digest is over the whole render, tenant namespaces' objects included" || fail "diff.sh tenant digest: [$(cat "$work/tenant.env" 2>/dev/null)]"
+{ np platform-ingress tac-seatrials-00000002; printf -- '---\n'; np platform-ingress tac-seatrials-00000001; } > "$work/tenant-only.yaml"
+: > "$work/diffed"
+out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/same" \
+  STUB_MANIFEST="$work/tenant-only.yaml" STUB_DIFFED="$work/diffed" "$work/dtree/deploy/diff.sh" 2>&1)
+status=$?
+[ "$status" -eq 0 ] && [ ! -s "$work/diffed" ] && [[ "$out" == *tac-seatrials-00000001.platform-ingress* ]] &&
+  ok "a render with nothing in the platform namespace asks kubectl nothing" || fail "diff.sh tenant-only: status $status, kubectl given [$(cat "$work/diffed")]; out=[$out]"
 
 # apply.sh against a stub operator that logs what it runs.
 cat > "$work/bin/schematic-operator" <<'EOF'
