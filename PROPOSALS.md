@@ -27,10 +27,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   operator pin's (#11): #1 moved the pin to operator v0.1.0 (a17d507), past operator#9 and #10, and #11
   removed 24 of them (govulncheck finds none in it any more); GO-2026-5932 stays for the CI image's gh and buildx. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`), and so is lego 5.6.0's GO-2026-5932 (x/crypto openpgp):
-  #52 builds it with x/crypto v0.59.0, which no lego release takes yet; the entry stays for
+  #52 built it with x/crypto v0.59.0, which lego v5.7.0 requires itself (#71); the entry stays for
   the CI image's gh and docker-buildx.
   On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
+- **Drop ci/tools.sh's otel and gorilla/websocket overrides once releases take them** (2026-11-24, #71): #68
+  builds `bin/osv-scanner` (v2.7.0; v2.7.1, the latest, still requires otel v1.45.0) and `bin/trivy` (v0.76.2, the
+  latest, otel v1.46.0) with otel v1.47.0 (GO-2026-6974), and `bin/lego` (v5.7.0, the latest, gorilla/websocket
+  v1.5.3) with gorilla/websocket at an untagged commit (GO-2026-6278: no release has the fix). When osv-scanner,
+  trivy and lego releases require the fixes, move their pins and drop `otel_fixes`, `otel_sdk_fixes` and
+  `websocket_fix`. Why: a pseudo-version of a dependency is one more pin to watch, and a release is what upstream tests.
 - **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
   (2026-11-09, #43): the CI image is `build:20261123-ef62327` by digest (#64, tacplus's 2.6 build image rebuilt on current Debian; every `image:` of `ci/*.gitlab-ci.yml`,
   `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`

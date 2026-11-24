@@ -12,7 +12,7 @@
 #
 # Trivy's, gitleaks', OSV-Scanner's and opa's (GO-2026-6860 6866, GO-2025-3922, GO-2026-6865 6888) are fixed: ci/tools.sh
 # builds them from source with the fixed dependencies (#40). So is lego 5.6.0's GO-2026-5932 (found 2026-11-05, when
-# the cert job pinned it): ci/tools.sh builds it with x/crypto v0.59.0, which no lego release requires yet (#52). build:2.3's ImageMagick and apt CVEs (#40) are fixed:
+# the cert job pinned it): #52 built it with x/crypto v0.59.0, which lego v5.7.0 requires itself (#71). build:2.3's ImageMagick and apt CVEs (#40) are fixed:
 # the CI image is ghcr.io/tacplus-dev/tacplus/build:20261123-ef62327 by digest (#64; build:2.6.12 from #43, #45, #50
 # until then), tacplus's 2.6 build image rebuilt on Debian 13.8 (tacplus Images run 45102777942), with ImageMagick
 # deb13u14, apt 3.0.4, zlib1g deb13u1 (CVE-2026-85091 76844), a gh on x/net v0.62.0 (CVE-2026-78661), OpenEXR
