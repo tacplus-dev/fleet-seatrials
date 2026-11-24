@@ -307,6 +307,64 @@ check "the image step creates its builder from _BUILDKIT, on Cloud Build's netwo
 check "every buildx build runs in that builder" \
   "$(grep -c 'docker buildx build ' <<<"$image_step") $(grep -c 'docker buildx build --builder fleet ' <<<"$image_step")" "1 1"
 
+# A registry's transient 5xx or 429 on a push is retried with backoff (#74):
+# one 502 on eventbus's :local manifest PUT failed a whole deploy. The image
+# step's script runs here as Cloud Build would run it, its substitutions made,
+# against a stub docker whose pushes (STUB_PUSH_FAIL: push, index or both) fail
+# STUB_PUSH_FAILS times with STUB_PUSH_ERROR first, and a sleep that only logs.
+step_script=$(awk '/^      - \|$/ { s = 1; next } /^[^ ]/ { s = 0 } s' <<<"$image_step" | sed 's/^        //' |
+  sed -e 's/\${_REGISTRY}/registry.test/g' -e 's/\${_SERVICE}/eventbus/g' -e 's/\${_LANG}/go/g' \
+      -e 's/\${_PLATFORMS}/arm64/g' -e 's/\${_FINGERPRINT}/85ceb8d1fb7a/g' -e 's/\${_FLEET_COMMIT}/e0dded1980b0/g' \
+      -e 's/\${_COMMIT}/0123456789ab/g' -e 's/\${_BINFMT}/binfmt.test/g' -e 's/\${_BUILDKIT}/buildkit.test/g' \
+      -e 's/\$\$/$/g')
+mkdir -p "$work/push/bin"
+cat > "$work/push/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$STUB_LOG"
+fail() { # KIND -> fails this call, STUB_PUSH_FAILS times per KIND
+  case " ${STUB_PUSH_FAIL:-} " in *" $1 "*) ;; *) return 0 ;; esac
+  n=$(grep -c "^failed $1$" "$STUB_LOG")
+  [ "$n" -lt "${STUB_PUSH_FAILS:-1}" ] || return 0
+  echo "failed $1" >> "$STUB_LOG"
+  echo "ERROR: failed commit on ref \"index-sha256:e51f362e\": unexpected status from PUT request to https://registry.test/v2/manifests/local: ${STUB_PUSH_ERROR:-502 Bad Gateway}" >&2
+  exit 1
+}
+case "$*" in
+  "version "*) echo arm64 ;;
+  "image inspect "*) echo linux/arm64 ;;
+  "push "*) fail push; echo "pushed $2" ;;
+  "buildx imagetools create "*) fail index ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\necho "sleep $*" >> "$STUB_LOG"\n' > "$work/push/bin/sleep"
+chmod +x "$work/push/bin/"*
+mkdir -p "$work/push/src/.fleet/out/arm64" && : > "$work/push/src/.fleet/out/arm64/eventbus"
+push_run() { # VAR=VALUE... -> the image step's status; its docker and sleep calls in $work/log
+  : > "$work/log"
+  (cd "$work/push/src" && env PATH="$work/push/bin:$PATH" STUB_LOG="$work/log" "$@" bash -ceu "$step_script" > "$work/push/out" 2>&1)
+}
+pushes() { grep -c "^docker $1" "$work/log"; }
+push_run; check "image step, no failure: one push, one index, no sleep" \
+  "$(pushes push) $(pushes 'buildx imagetools create') $(grep -c '^sleep' "$work/log")" "1 1 0"
+push_run STUB_PUSH_FAIL=index &&
+  check "the :local index PUT fails once with 502, then succeeds" \
+    "$(pushes 'buildx imagetools create') $(grep -c '^sleep' "$work/log")" "2 1" ||
+  { echo "FAIL a 502 on the index fails the step: [$(cat "$work/push/out")]"; failures=$((failures + 1)); }
+push_run STUB_PUSH_FAIL=push STUB_PUSH_ERROR="429 Too Many Requests" &&
+  check "a platform push fails once with 429, then succeeds" "$(pushes push)" 2 ||
+  { echo "FAIL a 429 on a push fails the step: [$(cat "$work/push/out")]"; failures=$((failures + 1)); }
+push_run STUB_PUSH_FAIL="push index" STUB_PUSH_ERROR="503 Service Unavailable" STUB_PUSH_FAILS=2 &&
+  check "each push retried on its own, with a growing backoff" \
+    "$(pushes push) $(pushes 'buildx imagetools create') $(grep '^sleep' "$work/log" | xargs)" "3 3 sleep 5 sleep 10 sleep 5 sleep 10" ||
+  { echo "FAIL two 503s fail the step: [$(cat "$work/push/out")]"; failures=$((failures + 1)); }
+push_run STUB_PUSH_FAIL=index STUB_PUSH_FAILS=9 &&
+  { echo "FAIL a registry that keeps failing passes the step"; failures=$((failures + 1)); } ||
+  check "a registry that keeps failing fails the step after 4 attempts" "$(pushes 'buildx imagetools create')" 4
+push_run STUB_PUSH_FAIL=index STUB_PUSH_ERROR="401 Unauthorized" &&
+  { echo "FAIL a 401 passes the step"; failures=$((failures + 1)); } ||
+  check "a 4xx but 429 is not retried" "$(pushes 'buildx imagetools create') $(grep -c '^sleep' "$work/log")" "1 0"
+check "and its error is in the step's log" "$(grep -c '401 Unauthorized' "$work/push/out")" 1
+
 if [ "$failures" -gt 0 ]; then
   echo "$failures failed"; exit 1
 fi

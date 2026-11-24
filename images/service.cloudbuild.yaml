@@ -104,6 +104,22 @@ steps:
       - -ceu
       - |
         repo=${_REGISTRY}/schematic/${_SERVICE}
+        # A registry's transient 5xx or 429 fails a push now and then (#74: one
+        # 502 on a :local manifest PUT failed a deploy). The images are content-
+        # addressed, so pushing again is idempotent: each push is tried up to 4
+        # times, 5s, 10s and 20s apart, while it fails with one; any other
+        # failure fails the step at once.
+        retry() { # COMMAND... -> its status, retried on a registry 5xx or 429
+          local attempt=1 out
+          until out=$$("$$@" 2>&1); do
+            printf '%s\n' "$$out" >&2
+            if [ "$$attempt" -ge 4 ] || ! grep -Eq ': (5[0-9]{2}|429) [A-Z]' <<<"$$out"; then return 1; fi
+            echo "a transient registry error; trying again (attempt $$((attempt + 1)) of 4)" >&2
+            sleep $$((5 << (attempt - 1)))
+            attempt=$$((attempt + 1))
+          done
+          printf '%s\n' "$$out"
+        }
         native=$$(docker version --format '{{.Server.Arch}}')
         emulate=
         for arch in ${_PLATFORMS}; do [ "$$arch" = "$$native" ] || emulate=$$emulate$${emulate:+,}$$arch; done
@@ -122,13 +138,13 @@ steps:
             --tag="$$image" .
           platform=$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$$image")
           [ "$$platform" = "linux/$$arch" ] || { echo "$$image is $$platform, not linux/$$arch"; exit 1; }
-          docker push "$$image"
+          retry docker push "$$image"
         done
         # One index over the platforms, under the tags the fleet references; it
         # is pushed last, so fp-<fingerprint> exists only when every platform does.
         sources=
         for arch in ${_PLATFORMS}; do sources="$$sources $$repo:fp-${_FINGERPRINT}-$$arch"; done
-        docker buildx imagetools create --prefer-index \
+        retry docker buildx imagetools create --prefer-index \
           --tag="$$repo:${_FLEET_COMMIT}" --tag="$$repo:local" --tag="$$repo:fp-${_FINGERPRINT}" $$sources
         docker buildx imagetools inspect "$$repo:fp-${_FINGERPRINT}"
 options:
