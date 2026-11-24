@@ -138,7 +138,7 @@ lang:
 registry:
     gitlab_project_id: "79641700"
     imports:
-        java: com.gitlab.seabeam.controlplane.schematic.services.kernel
+        java: com.github.tacplusdev.kernel
     interfaces:
         rust: seabeam-controlplane-interfaces
 tools:

@@ -6,8 +6,8 @@
 # is a YAML string (an unquoted 1.80 is the float 1.8, which `tacplus fleet
 # build` writes into build/proto as a version Maven Central does not have), and
 # the copies generated from it, build/proto/dependencies.yaml (`tacplus fleet
-# build`) and the client's client/proto/dependencies.yaml, carry the same pins.
-# Needs bash and yq.
+# build`) and the client's client/proto/dependencies.yaml, carry the same pins;
+# and all three import Java from kernel's package (#70). Needs bash and yq.
 #
 #   ci/pins_test.sh
 set -uo pipefail
@@ -31,6 +31,17 @@ for copy in build/proto/dependencies.yaml client/proto/dependencies.yaml; do
   else
     fail "$copy differs from dependencies.yaml's lang pins (rerun tacplus fleet build; the client's is build/proto's):"; echo "$d"
   fi
+done
+
+# registry.imports.java is the Java package every Java service's generated backend
+# imports kernel's runtime from (`<it>.graphs.Manager`, ...): kernel's own, as kernel,
+# eventbus and stratum declare it. The fleet's build/proto overrides theirs, and the
+# SeaBeam one it held broke kernel's compile (#70).
+java_import=com.github.tacplusdev.kernel
+for f in dependencies.yaml build/proto/dependencies.yaml client/proto/dependencies.yaml; do
+  got=$(yq '.registry.imports.java' "$here/$f")
+  [ "$got" = "$java_import" ] && ok "$f imports Java from $java_import" \
+    || fail "$f registry.imports.java is $got, not kernel's $java_import"
 done
 
 [ "$failed" = 0 ] && echo "pins: all passed" || { echo "pins: failed"; exit 1; }

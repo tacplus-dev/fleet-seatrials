@@ -360,6 +360,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   fleet's `dependencies.yaml`, so an unquoted `1.80` came out in `build/proto` as `1.8`, a Maven version that does
   not exist. `ci/pins_test.sh` now catches it here. Every fleet and project would be covered if tacplus read
   `lang:` versions as strings and refused a number. That is new tacplus behaviour, so it needs design first.
+- **The image fingerprint should cover `build/proto/dependencies.yaml`** (2026-11-23, #70): `images/build.sh`'s
+  `fingerprint` hashes the compiler line, the service's commit, its `inputs_digest` (descriptors only) and the
+  platforms. The fleet's `dependencies.yaml` shapes generated code too: `registry.imports.java` is the package the
+  Java backend imports kernel's runtime from (#70), and a `lang:` Java pin switches code on (google-cloud-storage).
+  A change there leaves every fingerprint alone, so `changed` keeps an image built from the old config. #70 needed
+  no rebuild (kernel had no image). Adding the file's hash to the fingerprint fixes it, at the cost of one rebuild
+  of every image when it lands.
+- **Drop the SeaBeam leftovers in `dependencies.yaml`'s `registry`** (2026-11-23, #70): `gitlab_project_id:
+  "79641700"` (a SeaBeam GitLab project, which tacplus writes into generated package.json and pyproject files as
+  their registry) and `interfaces.rust: seabeam-controlplane-interfaces` (read by tacplus 2.6.14, never used).
+  #70 fixed only `imports.java`, the one that broke a build. Removing these needs a check that no generated
+  TypeScript or Python package the fleet builds publishes or resolves through that registry.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)

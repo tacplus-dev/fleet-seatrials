@@ -4,7 +4,7 @@ registry:
     interfaces:
         rust: seabeam-controlplane-interfaces
     imports:
-        java: com.gitlab.seabeam.controlplane.schematic.services.kernel
+        java: com.github.tacplusdev.kernel
 tools:
     go: "1.23"
     java: "17"
