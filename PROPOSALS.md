@@ -343,6 +343,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   for key material) and prints the public `cred_pair`, which a commit puts in `root_cred_pairs` in place of the
   orphaned one. Revoking the old pairs (`root`, `alpha`, `beta`) is optional: the fresh deploy has none of their
   state. Needs Jody's word on where the key lives and on the client reading it from there.
+- **Apply the tenant namespaces' objects through the in-cluster operator** (2026-11-24, #75, #76): `diff` now
+  names the objects in `tac-seatrials-<tid>` and leaves them out of `kubectl diff`. But `deploy/apply.sh`'s
+  `schematic-operator apply` (the CLI, operator a17d507) still helm-installs them as `seatrials-deploy`, and it
+  never makes the `TenantNamespace`s (only the in-cluster reconciler does). The first apply is Forbidden there.
+  Proposal: `apply` installs the operator's own chart in `tac-seatrials`, and the operator, under its own
+  account, applies the release. Open: the operator image (tacplus-dev/operator#6) and what the render digest
+  covers then.
 - **Read the tenant namespaces' pods in the post-deploy checks** (2026-11-23, #4): `seatrials-deploy` has its
   Role in `tac-seatrials` only, and deploymentproxy binds only the operator's account in `tac-seatrials-<tid>`,
   so `deploy/checks.sh pods` reads the platform namespace alone: a tenant's app service that never comes up
