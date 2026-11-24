@@ -47,3 +47,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue images/tacplus-build.Dockerfile: the build image runs as root (trivy DS-0002, HIGH, fails the build's security policy) (#56)
 - 2026-11-24 looper issue STATE.md's Blocked on names closed issues #1 and #4 (not what holds the first deploy now) (#66)
 - 2026-11-24 looper issue kernel's image fails to compile: its generated tacplus-backend sources import com.gitlab.seabeam.controlplane.schematic.services.kernel.graphs, which doesn't exist (#70)
+- 2026-11-24 looper issue Relock redo to v0.1.7 and llmproxy/doppelganger to a consistent pair: redo has no Dockerfile at v0.1.5; doppelganger calls GetProviderModel the locked llmproxy lacks (#68)
