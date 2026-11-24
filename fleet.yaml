@@ -43,7 +43,7 @@ services:
     version: "0.1"
     repo: https://github.com/tacplus-dev/kmaker.git
   - name: llmproxy
-    version: "0.1"
+    version: "0.2"
     repo: https://github.com/tacplus-dev/llmproxy.git
   - name: doppelganger
     version: "0.2"

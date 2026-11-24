@@ -25,5 +25,5 @@ depends:
   - oauth@0.1
   - coop@0.1
   - eventbus@0.1
-  - llmproxy@0.1
+  - llmproxy@0.2
   - stratum@0.1

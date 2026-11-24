@@ -154,6 +154,45 @@ message Config {
 
   // --- Models (see ModelRoute): the aliases this proxy serves. Empty serves none. ---
   repeated ModelRoute models = 19 [(spec.assert_max_size) = 64];
+
+  // latest_cache_ttl_ms is how long one vendor's model listing is reused to
+  // resolve its `latest` routes (ModelRoute.latest_pattern) before it is
+  // fetched again. A failed fetch keeps serving the last listing.
+  int64 latest_cache_ttl_ms = 20 [(spec.default_int) = 300000, (spec.assert_ge) = 0];
+
+  // --- OpenAI: workload identity federation (RFC 8693 token exchange). Ids, not secrets. ---
+  //
+  // A kernel-signed JWT for this service (aud = openai_subject_audience) is
+  // exchanged at openai_token_url for a short-lived token of the OpenAI
+  // project service account. All three ids set, or none (no OpenAI route works).
+  string openai_identity_provider_id = 21 [(spec.assert_max_size) = 256];
+  string openai_service_account_id = 22 [(spec.assert_max_size) = 256];
+  // openai_subject_audience is the audience OpenAI's identity provider expects.
+  string openai_subject_audience = 23 [(spec.assert_max_size) = 256];
+  // Empty means https://api.openai.com and https://auth.openai.com/oauth/token.
+  string openai_base_url = 24 [(spec.assert_max_size) = 256];
+  string openai_token_url = 25 [(spec.assert_max_size) = 256];
+
+  // --- Google (Gemini on Vertex AI): GKE Workload Identity, token from the metadata server. ---
+  //
+  // vertex_project_id is the GCP project Vertex AI is enabled on; empty, no
+  // Google route works.
+  string vertex_project_id = 26 [(spec.assert_max_size) = 128];
+  string vertex_location = 27 [(spec.default_string) = "global", (spec.assert_max_size) = 64];
+  // Empty means the location's own aiplatform.googleapis.com host.
+  string vertex_base_url = 28 [(spec.assert_max_size) = 256];
+}
+
+// Vendor is whose own API serves a route: never a reseller or aggregator
+// (Jody, 2026-10-31, #13). xAI is not here: it has no keyless auth yet, and
+// llmproxy holds no static vendor key (README, Vendors).
+enum Vendor {
+  // On a ModelRoute, Anthropic: every route written before vendors existed.
+  VENDOR_UNSPECIFIED = 0;
+  VENDOR_ANTHROPIC = 1;
+  VENDOR_OPENAI = 2;
+  // Gemini, through Vertex AI.
+  VENDOR_GOOGLE = 3;
 }
 
 // LlmProxyState is this service's state root, stored in kernel's cluster. Empty today
@@ -237,6 +276,11 @@ message GenerateCompletionResponse {
   // (Phase 3 of the design doc) lands, and cheap to carry now rather than widen the
   // response message later.
   Usage usage = 3;
+  // provider_model and vendor: which model answered, as the alias resolved for
+  // this call (a `latest` alias moves), so a caller can record it.
+  // `harness-scripted` with VENDOR_UNSPECIFIED for the scripted stand-in.
+  string provider_model = 4 [(spec.assert_max_size) = 256];
+  Vendor vendor = 5;
 }
 
 message Usage {
@@ -305,6 +349,10 @@ message SessionTurnResponse {
   repeated Message appended = 1 [(spec.assert_max_size) = 256];
   StopReason stop_reason = 2 [(spec.assert_enum_defined) = true];
   Usage usage = 3;
+  // provider_model and vendor: the model every provider call of this turn
+  // went to (see GenerateCompletionResponse).
+  string provider_model = 4 [(spec.assert_max_size) = 256];
+  Vendor vendor = 5;
 }
 
 message GetBudgetRequest {}
@@ -329,21 +377,45 @@ message ListModelsRequest {}
 // to sort on (same reason jwk.Jwks wraps its keys in a message rather than
 // returning bare strings).
 message ModelAlias {
-  string name = 1;
+  string name = 1 [(spec.assert_max_size) = 128];
+  // provider_model is what the alias resolves to now; a `latest` alias's
+  // changes when its vendor ships a newer model, which is how a caller tells
+  // that "latest" moved. Empty when it cannot be resolved now (the vendor's
+  // listing failed with nothing cached, or the vendor is not live).
+  string provider_model = 2 [(spec.assert_max_size) = 256];
+  Vendor vendor = 3;
 }
 
 // ModelRoute is one alias this proxy serves and what it is on the provider.
 // Config, not code (Jody, 2026-10-24): the provider model behind an alias
 // changes with a config push, never a rebuild, and callers keep asking for
 // the alias. Prices ride along because a price belongs to the provider model.
+//
+// A route names its model one of two ways, exactly one set: provider_model
+// pins it; latest_pattern resolves it at call time to the vendor's newest
+// model whose id matches (#13).
 message ModelRoute {
   // alias is what callers put in model_alias.
   string alias = 1 [(spec.assert_required) = true, (spec.assert_max_size) = 128];
-  // provider_model is the provider's own model id, e.g. an Anthropic model name.
-  string provider_model = 2 [(spec.assert_required) = true, (spec.assert_max_size) = 256];
-  // Micro-USD per token, metered into the caller's bucket.
+  // provider_model is the vendor's own model id, e.g. an Anthropic model name.
+  string provider_model = 2 [(spec.assert_max_size) = 256];
+  // Micro-USD per token, metered into the caller's bucket. On a `latest`
+  // route the price covers whatever the alias resolves to.
   int64 input_micro_usd_per_token = 3 [(spec.assert_ge) = 0];
   int64 output_micro_usd_per_token = 4 [(spec.assert_ge) = 0];
+  // vendor serves the route; unspecified is Anthropic.
+  Vendor vendor = 5;
+  // latest_pattern is a regular expression the whole model id must match, out
+  // of the vendor's model listing (cached, Config.latest_cache_ttl_ms). Among
+  // the matches the newest wins: its capture groups read as numbers, compared
+  // left to right (an absent group is 0), and a tie goes to the greater id.
+  // So `gpt-(\d+)(?:\.(\d+))?` is OpenAI's flagship line without its dated
+  // snapshots or minis, `claude-opus-(\d+)(?:-(\d))?-\d{8}` Anthropic's Opus,
+  // `gemini-(\d+)(?:\.(\d+))?-pro` Gemini Pro.
+  string latest_pattern = 6 [(spec.assert_max_size) = 256];
+  // allow_preview lets a `latest` route resolve to a preview or experimental
+  // model; by default only generally available ones count.
+  bool allow_preview = 7;
 }
 
 message ListModelsResponse {
