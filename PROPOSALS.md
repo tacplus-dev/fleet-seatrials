@@ -379,6 +379,29 @@ the looper then marks it `promoted` or `declined` here with the date.
   their registry) and `interfaces.rust: seabeam-controlplane-interfaces` (read by tacplus 2.6.14, never used).
   #70 fixed only `imports.java`, the one that broke a build. Removing these needs a check that no generated
   TypeScript or Python package the fleet builds publishes or resolves through that registry.
+- **`diff` renders the tenants kernel records too** (2026-11-24, #76): `apply` now hands the render to the operator
+  in cluster and passes once the operator's release `schematic` is the render `diff` showed (its manifest's
+  digest). The operator renders `operator.yaml`'s tenants and, once kernel is up, the tenants kernel records
+  (`NewServiceConfigProvider`); `schematic-operator apply --dry-run` renders `operator.yaml`'s alone. The first
+  tenant approved in kernel and not in `operator.yaml` makes every later `apply` fail on the digest, saying so.
+  Fix with the uni-config record (#28, the digest becomes the record's), or the operator reporting the digest of
+  the render it applied in a status `diff` can read (a feature of tacplus-dev/operator).
+- **The operator's Role in `tac-seatrials` from the cluster pipeline** (2026-11-24, #76): with `deployment` set the
+  operator's chart renders no Role, saying the cluster pipeline grants the operator admin in `tac-<deployment>`.
+  tacplus-dev/cluster binds it there only to deploymentproxy's TenantNamespaces Role, so `apply` adds the chart's
+  own Role (`deploy/operator-role.yaml`, each rule within `fleet-deploy`) to the operator's release. Moving it to
+  tacplus-dev/cluster's per-deployment render (an `operatorRole` beside `fleet-deploy`) would keep a deployment's
+  RBAC in one place; the fleet's file is the stopgap.
+- **The operator's kernel identity in `tac-seatrials`** (2026-11-24, #76): the in-cluster operator reads kernel's
+  tenant records with a kernel token for its account, `tac-seatrials/operator` (operator chart,
+  `KERNEL_K8S_TOKEN_FILE`). Whether `services/kernel.yaml` has a delegate that admits it is untried until the first
+  apply: without one the operator renders `operator.yaml`'s tenants only, which is all seatrials has today. Check
+  the operator's log after the first apply (`kernel tenant records`) and add the delegate if it is refused.
+- **Let the deploy account read `TenantNamespace`s** (2026-11-24, #76): `apply` waits on the operator's release and
+  shows the operator's log when it does not come; the deploy account cannot read the `TenantNamespace`s the
+  operator makes (`fleet-deploy` has no `deploymentproxy.tacplus.dev`), so a namespace deploymentproxy never makes
+  Ready shows only in that log. get/list/watch on `tenantnamespaces` in `tac-seatrials` (tacplus-dev/cluster)
+  would let `apply` name it.
 
 ## Promoted / declined
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)
