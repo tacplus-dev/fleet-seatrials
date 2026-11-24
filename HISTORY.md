@@ -44,3 +44,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue ci/security.sh red on main: GO-2026-6278 (gorilla/websocket v1.5.3 in bin/lego) and GO-2026-6974 (otel/trace v1.45.0 in bin/lego, bin/osv-scanner) (#71)
 - 2026-11-24 looper issue images: service builds use Cloud Build's old docker frontend, which can't parse coop's ADD --checksum; build with a BuildKit that does (#69)
 - 2026-11-24 looper issue images: kernel, doppelganger, coop and redo fail on Cloud Build in the second deploy, and the job prints no reason; print a failed build's log, then fix the four (#67)
+- 2026-11-24 looper issue images/tacplus-build.Dockerfile: the build image runs as root (trivy DS-0002, HIGH, fails the build's security policy) (#56)
