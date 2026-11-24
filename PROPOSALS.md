@@ -5,6 +5,17 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **Build the fleet's gateway with `tacplus fleet gateway`** (2026-11-24, #73; tacplus-dev/tacplus#195): pin gateway
+  `"0.3"` (v0.3.0, released 2026-11-23; it serves `/-/apps/<service>/` and `/-/apps.json`), move to tacplus 2.7 (the
+  pins, the CI image, `build.lock`), add `fleet.yaml`'s `launcher:` and re-lock, then build the gateway image from the
+  lock (its `gateway:` section committed in `fleet.lock`). That image is the one seatrials deploys, pushed as
+  `schematic/gateway` with its digest checked against the lock, and `images/build.sh` stops building gateway.
+  `tacplus fleet gateway --check` is the gate. Why: #195's acceptance (gateway-per-fleet, a merged webapp) is checked
+  on this fleet, whose tenantecho contributes the webapp `web` (Echo). Blocked on tacplus v2.7.0 (tacplus#954,
+  #955): `fleet gateway` is only on tacplus main. Open (design on #73): the step builds for the machine's arch,
+  but the fleet runs arm64; gateway's Rust build needs more than 4 GB; whether `--check` can run without Docker
+  as a land gate; which launcher commit to use (lock v0.1.0 0e139ca, the build image's c575e14); whether
+  gateway 0.3 lands first on 2.6 through `images/build.sh`.
 - **The fleet's gateway behind the Gateway on the reserved address `gateway`** (2026-11-06, #39; split out by
   the hub, 2026-11-05, which files the roadmap item once Jody says where TLS ends): the operator renders the
   gateway as a `type: LoadBalancer` Service, a regional passthrough load balancer that the global address
