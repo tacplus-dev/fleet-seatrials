@@ -118,15 +118,22 @@ as that account, and it never makes the `TenantNamespace`s (#76). [`deploy/apply
    directory, `deploy/bootstrap`: `operator.yaml`, `crypto.yaml`, and the rest (`services/`, `tenants/`) as the
    chart's bundle. These are the inputs `diff`'s render was made from, so the operator renders the same.
    [`deploy/operator-post-render.sh`](../deploy/operator-post-render.sh) pins the chart's `busybox:latest` init
-   container to `operator_init_image`, and adds the operator's Role and RoleBinding in `tac-seatrials`
-   ([`deploy/operator-role.yaml`](../deploy/operator-role.yaml): the chart's own Role, each rule within
-   `fleet-deploy`). With `deployment` set the chart leaves that Role to the cluster pipeline, and the cluster
-   pipeline binds the operator's account in `tac-seatrials` only to deploymentproxy's Role (`TenantNamespace`s).
+   container to `operator_init_image`. With `deployment` set the chart renders no Role: the operator's rights in
+   `tac-seatrials` are the cluster's, the Role and RoleBinding `deployment-operator` (the chart's `role.yaml`
+   rules, bound to `tac-seatrials/operator`) that tacplus-dev/cluster's per-deployment render grants, each rule
+   within `fleet-deploy` (its `ci/policy.sh`; tacplus-dev/cluster#59). `apply` refuses before installing anything
+   until both are there ("apply the cluster first"), so the operator is never without them (#78).
 3. The operator, as its own account (`operator`), makes the `TenantNamespace`s, waits for deploymentproxy to report
    them Ready, and installs or upgrades the release `schematic`, tenant namespaces' objects included.
 4. `apply` passes once the release `schematic`'s deployed revision is the render `diff` showed: the SHA-256 of its
    manifest, read from helm's release Secret in `tac-seatrials`, is `RENDER_DIGEST`. It waits up to
-   `OPERATOR_APPLY_TIMEOUT` (900 s), then fails, saying which render the release is and showing the operator's log.
+   `OPERATOR_APPLY_TIMEOUT` (900 s), then fails, saying which render the release is, naming each tenant namespace
+   deploymentproxy has not made Ready, then showing the operator's log. The tenant namespaces are read from their
+   `TenantNamespace`s in `tac-seatrials` (`fleet-deploy` may `get`, `list`, `watch` them there, never write them;
+   tacplus-dev/cluster#59), for each tid `operator.yaml` expects (`deploy/namespaces.sh`): `<tid>: not Ready:
+   <reason>: <message>` from its `Ready` condition, or `<tid>: no TenantNamespace` when the operator has not made
+   it; when every one is Ready it says so, and the operator's log is the place to look. A read that fails (Forbidden,
+   say) is one line, and the timeout still fails as it did (#78).
 
 The operator image is this fleet's: the operator library at `operator_commit`, generated against `build/proto` as
 `bin/schematic-operator` is (tacplus-dev/operator has no published image, tacplus-dev/operator#6, and none would know

@@ -386,24 +386,21 @@ the looper then marks it `promoted` or `declined` here with the date.
   tenant approved in kernel and not in `operator.yaml` makes every later `apply` fail on the digest, saying so.
   Fix with the uni-config record (#28, the digest becomes the record's), or the operator reporting the digest of
   the render it applied in a status `diff` can read (a feature of tacplus-dev/operator).
-- **The operator's Role in `tac-seatrials` from the cluster pipeline** (2026-11-24, #76): with `deployment` set the
-  operator's chart renders no Role, saying the cluster pipeline grants the operator admin in `tac-<deployment>`.
-  tacplus-dev/cluster binds it there only to deploymentproxy's TenantNamespaces Role, so `apply` adds the chart's
-  own Role (`deploy/operator-role.yaml`, each rule within `fleet-deploy`) to the operator's release. Moving it to
-  tacplus-dev/cluster's per-deployment render (an `operatorRole` beside `fleet-deploy`) would keep a deployment's
-  RBAC in one place; the fleet's file is the stopgap.
 - **The operator's kernel identity in `tac-seatrials`** (2026-11-24, #76): the in-cluster operator reads kernel's
   tenant records with a kernel token for its account, `tac-seatrials/operator` (operator chart,
   `KERNEL_K8S_TOKEN_FILE`). Whether `services/kernel.yaml` has a delegate that admits it is untried until the first
   apply: without one the operator renders `operator.yaml`'s tenants only, which is all seatrials has today. Check
   the operator's log after the first apply (`kernel tenant records`) and add the delegate if it is refused.
-- **Let the deploy account read `TenantNamespace`s** (2026-11-24, #76): `apply` waits on the operator's release and
-  shows the operator's log when it does not come; the deploy account cannot read the `TenantNamespace`s the
-  operator makes (`fleet-deploy` has no `deploymentproxy.tacplus.dev`), so a namespace deploymentproxy never makes
-  Ready shows only in that log. get/list/watch on `tenantnamespaces` in `tac-seatrials` (tacplus-dev/cluster)
-  would let `apply` name it.
+- **`apply` fails early on a TenantNamespace that will not be Ready** (2026-11-25, #78): on a timeout `apply` now
+  names each TenantNamespace not Ready with its reason, but it still waits the whole `OPERATOR_APPLY_TIMEOUT`
+  (900 s) first. Some reasons clear up on their own (a quota, a namespace still terminating); once the first
+  applies on `dev` show a reason that never does, `apply` could fail on it as soon as it is seen. Why: a stuck
+  apply costs 15 minutes of the pipeline today.
 
 ## Promoted / declined
+- 2026-11-25 The operator's Role from the cluster's render, and `apply` naming a TenantNamespace not Ready (with
+  #76's "The operator's Role in `tac-seatrials` from the cluster pipeline" and "Let the deploy account read
+  `TenantNamespace`s"): on ROADMAP.md ("seatrials applies through the in-cluster operator"), built (#78; tacplus-dev/cluster#59)
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
 - **`ci_gcp` fails silently too** (2026-11-02, #31): every job calls `ci/lib.sh`'s helpers in an `&&` list, where

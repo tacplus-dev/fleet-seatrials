@@ -20,8 +20,11 @@
 #
 # The operator runs this fleet's own image, built by the images job
 # (images/build.sh operator), by digest. The chart's init container is pinned
-# and the operator's Role in the platform namespace added by
-# deploy/operator-post-render.sh.
+# by deploy/operator-post-render.sh. The operator's Role in the platform
+# namespace, deployment-operator, is the cluster's (tacplus-dev/cluster
+# render.sh, cluster#59): apply refuses until it is there (#78). When the
+# operator has not applied the render in time, apply names each TenantNamespace
+# deploymentproxy has not made Ready, then shows the operator's log.
 #
 #   RENDER_DIGEST=sha256:<hex> deploy/apply.sh
 #   OPERATOR_APPLY_TIMEOUT=900   # seconds to wait for the operator's release to be that render
@@ -45,6 +48,9 @@ if [ "$digest" != "$RENDER_DIGEST" ]; then
   exit 1
 fi
 image=$(images/build.sh operator-ref) || { echo "refused: no operator image for this commit (the images job builds it)" >&2; exit 1; }
+kubectl get role/deployment-operator rolebinding/deployment-operator -n "$ns" -o name >/dev/null ||
+  { echo "refused: the cluster's render has not granted the operator its Role deployment-operator in $ns" \
+      "(tacplus-dev/cluster#59): apply the cluster first" >&2; exit 1; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -78,6 +84,29 @@ applied() {
   [ -n "${release% *}" ] || return 0
   echo "sha256:$(base64 -d <<<"${release% *}" | base64 -d | gzip -dc | jq -j .manifest | sha256sum | cut -d' ' -f1) ${release##* }"
 }
+# tenant_report: on stderr, each tenant namespace of this config whose
+# TenantNamespace in the platform namespace deploymentproxy has not made Ready
+# (its Ready condition's reason and message), or the operator has not made.
+# The deploy account reads them there (fleet-deploy, cluster#59), never the
+# tenant namespaces themselves.
+tenant_report() {
+  local tids tns
+  tids=$(deploy/namespaces.sh | sed -n "s/^$ns-//p")
+  if ! tns=$(kubectl get tenantnamespaces.deploymentproxy.tacplus.dev -n "$ns" -o json --request-timeout=10s 2>&1); then
+    echo "the TenantNamespaces in $ns could not be read: $(tail -n1 <<<"$tns")" >&2
+    return 0
+  fi
+  jq -r --arg ns "$ns" --arg tids "$tids" '
+    (.items | map({key: .spec.tid, value: ((.status.conditions // []) | map(select(.type == "Ready")) | first)}) | from_entries) as $tn
+    | [$tids | split("\n")[] | select(. != "")
+       | . as $tid | $tn[$tid] as $ready
+       | if ($tn | has($tid)) | not then "\($tid): no TenantNamespace (the operator has not made it)"
+         elif $ready.status == "True" then empty
+         else "\($tid): not Ready: \($ready.reason // "no Ready condition")\(if ($ready.message // "") != "" then ": " + $ready.message else "" end)"
+         end]
+    | if length == 0 then "every TenantNamespace in \($ns) is Ready" else .[] end' <<<"$tns" >&2 ||
+    echo "the TenantNamespaces in $ns could not be read" >&2
+}
 start=$SECONDS
 while :; do
   seen=$(applied)
@@ -88,6 +117,7 @@ while :; do
   if [ $((SECONDS - start)) -ge "$timeout" ]; then
     echo "the operator has not applied render $RENDER_DIGEST in ${timeout}s: release schematic is" \
       "${seen:+render ${seen% *} (revision ${seen##* })}${seen:-not deployed}" >&2
+    tenant_report
     kubectl logs -n "$ns" deployment/schematic-operator --tail=80 2>&1 | sed 's/^/operator| /' >&2
     exit 1
   fi
