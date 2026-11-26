@@ -23,6 +23,7 @@ Google, Microsoft and Apple sign-in; Google (thescottsweb.com) routes to alpha, 
 - Google sign-in client out of jody1 into seabeam.net, created and maintained by the pipeline, its secret in Secret Manager; design first (#46). Agent, at Jody's request, 2026-11-09.
 - Drop kmaker from the fleet: retired, the operator no longer renders it (#47). Agent, at Jody's request, 2026-11-10.
 - The tacplus-reader key and account move to tacplus-ci: TACPLUS_READER_KMS_KEY and TACPLUS_READER_SA (#48). Agent, at Jody's request, 2026-11-11 (tacplus-dev/cloud#30).
+- Dev rolls to each green main release by digest, never back to an older one; tacplus's consumers checked against the release before deploy (#82; tacplus-dev/looper#252). Hub, at Jody's request, 2026-11-26 (`tacplus-dev/roadmap:decisions/agentic-dev-flow-2026-11-25.md`; "dont wait on me unless you absolutely have to").
 
 ## Later
 - Move the fleet to tacplus 2.6 and relock; eventbus, stratum, oauth and redo built by the fleet from their release tags for the first deploy (#1). Jody, 2026-11-22 (tacplus-dev/roadmap `decisions/ci-on-gitlab-2026-10-27.md`, 2026-11-22 addendum).
