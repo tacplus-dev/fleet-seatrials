@@ -150,7 +150,16 @@ while IFS=$'\t' read -r name issuer; do
   mv "$tmp/t.json" "$tmp/test_idp.json"
   rm -f "$tmp/test_secret"
 done < <(jq -r --arg p "$test_idp" '.[] | select((.issuer // "") | startswith($p)) | [.name, .issuer] | @tsv' "$tmp/bundle.json")
-kubectl -n "$ns" get configmap kernel-config-override -o jsonpath='{.data.override\.json}' > "$tmp/current.json"
+# The current override: none yet on a namespace's first deploy (deploy pipeline 3120891349, 2026-11-26: "configmaps
+# "kernel-config-override" not found" ended the first apply after the operator had applied the render), so this
+# run makes it. Any other failure to read it ends the run: an override rebuilt from nothing would drop the
+# secrets the cluster holds.
+if ! kubectl -n "$ns" get configmap kernel-config-override -o jsonpath='{.data.override\.json}' > "$tmp/current.json" 2> "$tmp/get.err"; then
+  grep -q 'NotFound' "$tmp/get.err" || { cat "$tmp/get.err" >&2; exit 1; }
+  echo "override: no kernel-config-override in $ns yet (a first deploy): this run makes it"
+  : > "$tmp/current.json"
+fi
+[ -s "$tmp/current.json" ] || echo '{}' > "$tmp/current.json"
 jq --slurpfile bundle "$tmp/bundle.json" --rawfile ms "$tmp/ms_secret" --rawfile google "$tmp/google_secret" \
    --slurpfile test_idp "$tmp/test_idp.json" --arg test_prefix "$test_idp" \
    --argjson apple_ready "$apple_ready" --arg now "$(($(date +%s) * 1000))" '

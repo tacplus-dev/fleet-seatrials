@@ -31,6 +31,10 @@ echo "$*" >> "$STUB_LOG"
 case "$*" in
   "config current-context") echo gke_tacplus-dev_us-central1-a_dev ;;
   *"get configmap kernel-config-override"*)
+    case "${STUB_OVERRIDE_GET:-}" in
+      missing) echo 'Error from server (NotFound): configmaps "kernel-config-override" not found' >&2; exit 1 ;;
+      forbidden) echo 'Error from server (Forbidden): configmaps "kernel-config-override" is forbidden' >&2; exit 1 ;;
+    esac
     echo '{"configs":{"oauth_config":{"providers":[{"name":"Google","client_secret":"kept-google"},{"name":"Microsoft","client_secret":"kept-microsoft"}]}}}' ;;
   *"get secret"*) printf '%s' "${STUB_APPLE_B64:-}" ;;
   *"create configmap"*"--dry-run=client"*)
@@ -147,6 +151,12 @@ run "a bare Google secret from Secret Manager is written" write GOOGLE_SIGNIN_FI
   check "Google on" "$(provider Google enable)" true &&
   check "Microsoft still kept" "$(provider Microsoft client_secret)" kept-microsoft &&
   check "Google was asked whether it takes the secret" "$(grep -c 'oauth2.googleapis.com/token' "$work/log")" 1
+# A namespace's first deploy has no override yet: this run makes it, from the bundle's providers and the secrets
+# given. An override that cannot be read for any other reason is never rebuilt from nothing.
+run "a first deploy, no override yet: it is made" write GOOGLE_SIGNIN_FILE="$work/google-bare" STUB_OVERRIDE_GET=missing &&
+  check "the new override has Google's secret, on" "$(provider Google client_secret) $(provider Google enable)" "GOCSPX-bare-secret-0123456789 true" &&
+  check "and Microsoft off, with no secret" "$(provider Microsoft enable)" false
+run "an override that cannot be read is not rebuilt" refuse GOOGLE_SIGNIN_FILE="$work/google-bare" STUB_OVERRIDE_GET=forbidden
 run "the client JSON the Console downloads is written" write GOOGLE_SIGNIN_FILE="$work/google-json" &&
   check "the Google secret is the JSON's" "$(provider Google client_secret)" GOCSPX-json-secret-0123456789
 if run "a client JSON for another client is refused" refuse GOOGLE_SIGNIN_FILE="$work/google-other"; then
