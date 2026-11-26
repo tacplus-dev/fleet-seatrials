@@ -19,7 +19,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | --- | --- | --- |
 | tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa, gitleaks, the security job's scanners and `lego` ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)) and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
-| checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image ([below](#the-security-job)). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
+| checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image and the images this repository deploys ([below](#the-security-job)). It fails only on what ships; CI tooling's findings are reported, never failing (#72). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
 | cert | `cert` | [`ci/cert.sh`](../ci/cert.sh): the pipeline owns the certificate ([below](#the-certificate)). It checks the current version of the secret `tls-seatrials` and has `lego` obtain or renew it by ACME DNS-01 when it is missing, expired or due, as a new version. It hands the secret and version to every job that renders. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails, and prints the last 80 lines of each failed build's log, each line prefixed `<service>| ` (#67), read from the build bucket. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). When it builds a new build image (`ci/tacplus-build`: tacplus's build image of the fleet's line, with the fleet's `tacplus` and the launcher built in it from `images/pins.yaml`'s commits; tacplus has published no tacplus image since 2.4, #65), it also builds the first service of each language (Go, Rust, Java) in it, changed or not, so a build image that can't build one fails this job (#56). The build image's steps run as its unprivileged user `build`, and each service build's first step gives it `/workspace` and `$HOME`. It builds the fleet's operator image too, `schematic/operator`, which `apply` runs ([below](#apply-goes-through-the-operator)). |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from the Secret Manager secrets `fleet-crypto-seatrials` and `fleet-ca-seatrials`, and the certificate version `cert` passed on installed as the gateway's, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
@@ -55,13 +55,17 @@ vulnerability in it fails the job (#49: GO-2026-6859, fixed in go1.27.4). Each b
 that toolchain. lego is built from source as its release builds it, because its release binary's standard library
 had that vulnerability. opa, gitleaks, osv-scanner and Trivy are built
 from source, each in a module of its own that raises a dependency with a fixed vulnerability its release doesn't
-take yet (klauspost/compress, andybalholm/brotli, ulikunitz/xz; #40), each pinned by version and module hash too. **It fails** on any secret, and on any HIGH or
-CRITICAL finding with a fixed version, unless an unexpired entry of
-[`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias. It also fails on a
-tool that cannot run, and on an entry that has expired or has any field other than `id`, `reason`,
+take yet (klauspost/compress, andybalholm/brotli, ulikunitz/xz; #40), each pinned by version and module hash too. **It fails only on what ships** (#72;
+tacplus-dev/looper#225, tacplus-dev/roadmap `decisions/security-gates-ship-only-2026-11-23.md`): each finding has a
+`scope`, set by the scan that found it. `shipped` is OSV-Scanner on the tree, gitleaks, and Trivy on the images
+this repository deploys (an image that is a CI image too is shipped); `tooling` is govulncheck on `bin/` and Trivy on
+the CI images, listed in the report and in the summary's "CI tooling (reported, never failing)" section, never
+failing. It fails on any shipped secret, and on any shipped HIGH or CRITICAL finding with a fixed version, unless an
+unexpired entry of [`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias (an
+entry accepts a tooling finding too). It also fails on a tool that cannot run, on a tooling target too, and on an entry that has expired or has any field other than `id`, `reason`,
 `decided_by` and `expires` (YYYY-MM-DD), the form looper-scan reads. Its tests are
 [`ci/security_test.sh`](../ci/security_test.sh), run by `checks`: a planted secret fails, an expired exception
-fails, a clean tree passes, and a finding in a deployed image fails like one in the CI image.
+fails, a clean tree passes, a finding in a deployed image or a lock file fails, and one in a pinned binary or the CI image is reported and passes.
 
 It runs on every pipeline here, a scheduled one included. Pushes and pull requests happen on GitHub, so the
 same job runs there too, on every push to main, every pull request and nightly
@@ -71,7 +75,8 @@ deletes the runner's preinstalled toolsets, then runs `ci/tools.sh` and `ci/secu
 the image, and `ci/tools.sh` empties Go's build and module caches after each tool it builds (#37,
 [`ci/workflows_test.sh`](../ci/workflows_test.sh)).
 
-**A new finding** fails every pipeline until it is fixed or accepted. Fix it if this repository can: bump the
+**A new shipped finding** fails every pipeline until it is fixed or accepted; a tooling one is fixed by moving
+its pin or the CI image. Fix it if this repository can: bump the
 pin or the dependency (for a tool, a fixed dependency version in `ci/tools.sh`'s `go_build_fixed`). Otherwise add an entry with the reason it is acceptable here, who decided, and an expiry
 30 days out. Run it locally after `ci/tools.sh`: `PATH=$PWD/bin:$PATH ci/security.sh` (needs the network).
 

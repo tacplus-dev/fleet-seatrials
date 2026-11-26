@@ -14,13 +14,20 @@
 #                 for the architecture its nodeSelector picks; the operator chart's init container
 #                 (images/pins.yaml operator_init_image, #76), for each of images/pins.yaml's platforms
 #
-# The policy, looper-scan's: any secret fails, and so does a HIGH or CRITICAL
-# finding with a fixed version, unless an unexpired entry of
-# security-exceptions.yaml accepts it (by its id or an alias). An entry has
+# The policy, looper-scan's (tacplus-dev/looper#225, #72): a land fails only on what ships. Each
+# finding has a scope, set by the scan that found it:
+#
+#   shipped   OSV-Scanner on the tree, gitleaks, and Trivy on the images this repository deploys
+#             (test-idp/*.yaml, the operator's init image); an image both deployed and a CI image is shipped
+#   tooling   govulncheck on bin/, and Trivy on the CI images: reported, never failing
+#
+# Any shipped secret fails, and so does a shipped HIGH or CRITICAL finding with a
+# fixed version, unless an unexpired entry of security-exceptions.yaml accepts it
+# (by its id or an alias; an entry accepts a tooling finding too). An entry has
 # exactly id, reason, decided_by and expires (YYYY-MM-DD); one that has expired,
-# or says less or more, fails, and so does a tool that cannot run. The JSON
-# report, every finding with whether it fails or is accepted, is
-# $SECURITY_OUT/report.json (the job's artifact; raw/ has each tool's own).
+# or says less or more, fails, and so does a tool that cannot run, on a tooling
+# target too. The JSON report, every finding with its scope and whether it fails
+# or is accepted, is $SECURITY_OUT/report.json (the job's artifact; raw/ has each tool's own).
 #
 #   ci/security.sh [REPO]   # needs git, jq, yq and the pinned scanners (ci/tools.sh builds them into bin/)
 #
@@ -48,17 +55,17 @@ tree=$work/tree
 mkdir -p "$tree" && git -C "$repo" archive HEAD | tar -x -C "$tree" || exit 1
 
 # A finding, normalized as looper-scan's: {tool, kind (sca|secret), id,
-# aliases, severity, fix, where, title}.
+# aliases, severity, fix, where, title, scope (shipped|tooling)}.
 JQ_LIB='
 def bucket: if . == null then "UNKNOWN" elif . >= 9 then "CRITICAL" elif . >= 7 then "HIGH"
   elif . >= 4 then "MEDIUM" elif . > 0 then "LOW" else "UNKNOWN" end;
 def finding($tool; $kind; $id; $aliases; $sev; $fix; $where; $title):
   {tool: $tool, kind: $kind, id: $id, aliases: ($aliases // [] | map(select(. != $id)) | unique),
-   severity: $sev, fix: $fix, where: $where, title: ($title // "" | tostring | .[0:300])};
+   severity: $sev, fix: $fix, where: $where, title: ($title // "" | tostring | .[0:300]), scope: $scope};
 '
-norm() { # name jq-program raw [jq args...]
-  local name=$1 prog=$2 raw=$3; shift 3
-  jq -s "$@" "$JQ_LIB $prog" "$raw" > "$out/norm/$name.json" || problem "$name: its report could not be read"
+norm() { # name scope jq-program raw [jq args...]
+  local name=$1 scope=$2 prog=$3 raw=$4; shift 4
+  jq -s --arg scope "$scope" "$@" "$JQ_LIB $prog" "$raw" > "$out/norm/$name.json" || problem "$name: its report could not be read"
 }
 
 # OSV-Scanner: the manifests and lock files of the tree (exit 1: found some; 128: no manifest).
@@ -67,7 +74,7 @@ if need osv-scanner; then
   osv-scanner scan source -r --no-call-analysis=all --format json --output-file "$out/raw/osv-scanner.json" "$tree" \
     >/dev/null 2>"$out/raw/osv-scanner.log" || rc=$?
   case $rc in
-    0|1) norm osv-scanner '
+    0|1) norm osv-scanner shipped '
            [.[0].results[]? | (.source.path | ltrimstr($root + "/")) as $where | .packages[]? | .package as $p
             | (.vulnerabilities // []) as $vs | .groups[]? | . as $g
             | ([$vs[] | select(.id as $i | $g.ids | index($i)) | .affected[]?.ranges[]?.events[]? | .fixed // empty] | length > 0) as $fix
@@ -91,7 +98,7 @@ if need govulncheck; then
     if ! govulncheck -mode=binary -format json "$b" > "$out/raw/govulncheck-$name.json" 2>"$out/raw/govulncheck-$name.log"; then
       problem "govulncheck: ${b#"$repo"/}: $(grep -m1 . "$out/raw/govulncheck-$name.log")"; continue
     fi
-    norm "govulncheck-$name" '
+    norm "govulncheck-$name" tooling '
       ([.[] | .osv // empty | {(.id): .}] | add // {}) as $osv
       | [.[] | .finding // empty | select(.trace[0].function != null)] | unique_by(.osv)
       | map(.trace[0] as $t
@@ -114,7 +121,7 @@ if need gitleaks; then
         >/dev/null 2>"$out/raw/gitleaks-$scan.log" || rc=$?
     fi
     [ "$rc" = 0 ] || { problem "gitleaks ($scan) exited $rc: $(tail -1 "$out/raw/gitleaks-$scan.log")"; continue; }
-    norm "gitleaks-$scan" '
+    norm "gitleaks-$scan" shipped '
       [.[0][]? | (.File | ltrimstr($root + "/")) as $f
        | (if $scan == "history" then .Fingerprint else $f + ":" + .RuleID + ":" + (.StartLine | tostring) end) as $id
        | finding("gitleaks"; "secret"; $id; [.RuleID]; "CRITICAL"; true;
@@ -135,8 +142,16 @@ else
 fi
 ((${#images[@]})) || problem "no CI image to check in ci/*.gitlab-ci.yml"
 case $(uname -m) in aarch64|arm64) platform=linux/arm64 ;; *) platform=linux/amd64 ;; esac
-platforms=()
-for i in "${images[@]+"${images[@]}"}"; do platforms+=("$platform"); done
+platforms=() scopes=()
+for i in "${images[@]+"${images[@]}"}"; do platforms+=("$platform") scopes+=(tooling); done
+# shipped IMAGE PLATFORM: an image this repository deploys; a CI image it already lists becomes shipped.
+shipped() {
+  local k
+  for k in "${!images[@]}"; do
+    [ "${images[k]} ${platforms[k]}" != "$1 $2" ] || { scopes[k]=shipped; return; }
+  done
+  images+=("$1") platforms+=("$2") scopes+=(shipped)
+}
 # The deployed ones: every container of test-idp/*.yaml (the test IdP's Keycloak), for the
 # architecture its pod's nodeSelector picks, else this platform's.
 deployed=("$tree"/test-idp/*.yaml)
@@ -145,7 +160,7 @@ if [ -e "${deployed[0]}" ]; then
             | (.containers + (.initContainers // []))[] | .image + " " + $a' "${deployed[@]}" > "$work/deployed" 2>"$work/deployed.err"; then
     while read -r i a; do
       [ -n "$i" ] || continue
-      images+=("$i"); platforms+=("linux/${a:-${platform#linux/}}")
+      shipped "$i" "linux/${a:-${platform#linux/}}"
     done < <(LC_ALL=C sort -u "$work/deployed")
   else
     problem "test-idp/*.yaml: its images could not be read: $(grep -m1 . "$work/deployed.err")"
@@ -156,7 +171,7 @@ fi
 if [ -f "$tree/images/pins.yaml" ]; then
   i=$(sed -n 's/^operator_init_image: *//p' "$tree/images/pins.yaml")
   for a in $(sed -n 's/^platforms: *\[\(.*\)\] *$/\1/p' "$tree/images/pins.yaml" | tr ',' ' '); do
-    [ -z "$i" ] || { images+=("$i"); platforms+=("linux/$a"); }
+    [ -z "$i" ] || shipped "$i" "linux/$a"
   done
 fi
 if need trivy; then
@@ -166,7 +181,7 @@ if need trivy; then
     trivy image -q --scanners vuln --platform "${platforms[n - 1]}" --format json -o "$out/raw/trivy-$n.json" "$i" \
       2>"$out/raw/trivy-$n.log" || rc=$?
     [ "$rc" = 0 ] || { problem "trivy: $i exited $rc: $(tail -1 "$out/raw/trivy-$n.log")"; continue; }
-    norm "trivy-$n" '
+    norm "trivy-$n" "${scopes[n - 1]}" '
       [.[0].Results[]? | .Target as $t | (.Vulnerabilities // [])[]
        | finding("trivy"; "sca"; .VulnerabilityID; []; (.Severity // "UNKNOWN"); ((.FixedVersion // "") != "");
                  (.PkgName + "@" + (.InstalledVersion // "") + " (" + $image + ": " + $t + ")"); .Title)]' \
@@ -198,13 +213,14 @@ while IFS= read -r e; do [ -z "$e" ] || problem "$e"; done < <(jq -r --arg today
 norms=("$out"/norm/*.json)
 [ -e "${norms[0]}" ] || norms=(/dev/null)
 jq -s --argjson exc "$exceptions" --arg today "$today" '
-  [.[][]] | unique_by([.tool, .id, .where]) | map(
+  [.[][]] | sort_by(.scope) | unique_by([.tool, .id, .where]) | map(
     . as $f
     | ([$exc[] | select(type == "object" and (.expires | tostring) >= $today
                         and (.id as $x | $f.id == $x or any($f.aliases[]; . == $x)))][0]) as $e
     | . + {excepted: ($e.id // null),
-           blocking: ($e == null and (.kind == "secret" or ((.severity == "HIGH" or .severity == "CRITICAL") and .fix)))})
-  | sort_by(if .blocking then 0 else 1 end, {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[.severity] // 4, .tool, .id, .where)' \
+           blocking: (.scope == "shipped" and $e == null
+                      and (.kind == "secret" or ((.severity == "HIGH" or .severity == "CRITICAL") and .fix)))})
+  | sort_by(if .blocking then 0 else 1 end, .scope, {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[.severity] // 4, .tool, .id, .where)' \
   "${norms[@]}" > "$work/findings.json" || { problem "the findings could not be read together"; echo '[]' > "$work/findings.json"; }
 
 blocking=$(jq '[.[] | select(.blocking)] | length' "$work/findings.json")
@@ -224,10 +240,13 @@ jq -n --arg commit "$commit" --arg started "$started" --arg verdict "$verdict" -
    tools: {"osv-scanner": $osv, govulncheck: $govulncheck, gitleaks: $gitleaks, trivy: $trivy},
    images: $images, platform: $platform, binaries: $binaries, findings: $findings[0]}' > "$out/report.json"
 
-# The summary: what fails, what is accepted, and why.
-jq -r '"\(.findings | length) finding(s): \([.findings[] | select(.blocking)] | length) failing the policy, \([.findings[] | select(.excepted)] | length) accepted by security-exceptions.yaml; checked \(.binaries | length) binaries and \(.images | join(", ")) (\(.platform))",
+# The summary: what fails, the CI tooling's (#72), what is accepted, and why.
+jq -r '[.findings[] | select(.scope == "tooling" and .excepted == null)] as $tooling
+  | "\(.findings | length) finding(s): \([.findings[] | select(.blocking)] | length) failing the policy, \($tooling | length) CI tooling (reported, never failing), \([.findings[] | select(.excepted)] | length) accepted by security-exceptions.yaml; checked \(.binaries | length) binaries and \(.images | join(", ")) (\(.platform))",
        (.problems[] | "problem: \(.)"),
        (.findings[] | select(.blocking) | "FAIL \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)"),
+       (if $tooling != [] then "CI tooling (reported, never failing):" else empty end),
+       ($tooling[] | "tooling \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)"),
        (.findings[] | select(.excepted) | "accepted \(.excepted): \(.tool) \(.id) \(.where)")' "$out/report.json"
 if [ "$verdict" = pass ]; then echo "security verdict: pass ($commit)"; exit 0; fi
 echo "security verdict: FAIL: ${verdict#fail: } (${out#"$repo"/}/report.json)"

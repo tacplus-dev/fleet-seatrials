@@ -36,11 +36,11 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Clear the security exceptions before they expire, 2026-12-04** (2026-11-04, #36): the security job's first
   run accepted 28 ids in `security-exceptions.yaml`, none with a fix this repository can take. 25 are the
   operator pin's (#11): #1 moved the pin to operator v0.1.0 (a17d507), past operator#9 and #10, and #11
-  removed 24 of them (govulncheck finds none in it any more); GO-2026-5932 stays for the CI image's gh and buildx. Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
+  removed 24 of them (govulncheck finds none in it any more); GO-2026-5932, left for the CI image's gh and buildx, went with #72 (CI tooling, reported, never failing). Trivy's and gitleaks' (6860, 6866, GO-2025-3922) are cleared: #40 builds them from source with the
   fixed dependencies (`ci/tools.sh`, `go_build_fixed`), and so is lego 5.6.0's GO-2026-5932 (x/crypto openpgp):
-  #52 built it with x/crypto v0.59.0, which lego v5.7.0 requires itself (#71); the entry stays for
-  the CI image's gh and docker-buildx.
-  On 2026-12-04 every pipeline fails until each is cleared or decided again. Why: an expired entry fails the
+  #52 built it with x/crypto v0.59.0, which lego v5.7.0 requires itself (#71).
+  The 2026-12-04 deadline is gone with it; the deployed images' entries expire from 2026-12-06, when every pipeline
+  fails until each is cleared or decided again. Why: an expired entry fails the
   job, by design. A warning a week before expiry, in the job's summary, would make that date visible sooner.
 - **Drop ci/tools.sh's otel and gorilla/websocket overrides once releases take them** (2026-11-24, #71): #68
   builds `bin/osv-scanner` (v2.7.0; v2.7.1, the latest, still requires otel v1.45.0) and `bin/trivy` (v0.76.2, the
@@ -48,12 +48,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   v1.5.3) with gorilla/websocket at an untagged commit (GO-2026-6278: no release has the fix). When osv-scanner,
   trivy and lego releases require the fixes, move their pins and drop `otel_fixes`, `otel_sdk_fixes` and
   `websocket_fix`. Why: a pseudo-version of a dependency is one more pin to watch, and a release is what upstream tests.
-- **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto, before 2026-12-04**
+- **Move the CI image to a line image whose gh and docker-buildx have the fixed x/crypto**
   (2026-11-09, #43): the CI image is `build:20261123-ef62327` by digest (#64, tacplus's 2.6 build image rebuilt on current Debian; every `image:` of `ci/*.gitlab-ci.yml`,
   `.github/workflows/security.yml` and `images/tacplus-build.Dockerfile`'s `BUILD_IMAGE`; `ci/workflows_test.sh`
   checks they are one image), and `build.lock` pins that image (#42; `ci/build_lock_test.sh`). Its `gh` and
-  `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932, accepted until 2026-12-04). When a line image moves them,
-  move the four references and `build.lock` to its tag and digest and drop them from GO-2026-5932's reason.
+  `docker-buildx` carry x/crypto v0.58.0 (GO-2026-5932: CI tooling, reported and never failing since #72, so no
+  longer a deadline). When a line image moves them, move the four references and `build.lock` to its tag and digest.
   Each build image patch is now a commit here: no tag moves under the jobs.
 - **Drop the fixed-dependency overrides when the tools' releases take them** (2026-11-06, #40): `ci/tools.sh`
   builds opa, gitleaks, osv-scanner and Trivy with klauspost/compress v1.20.3, gitleaks also with brotli v1.2.8
@@ -299,26 +299,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   tests and the docs' description of both paths, after a pipeline's `fleet-plan` has signed as the account.
   Also: the block always signs with `cryptoKeyVersions/1`, so a re-import of the key (a rotation, version 2)
   would be ignored; it could take the key's primary or newest enabled version instead.
-- **`ci/security.sh` fails only on what ships; CI tooling is reported, never failing** (2026-11-23, #72;
-  tacplus-dev/looper#225, tacplus-dev/roadmap `decisions/security-gates-ship-only-2026-11-23.md`): every finding
-  gets a `scope`, set by the scan that found it. `shipped`: OSV-Scanner on the tree, gitleaks, and Trivy on
-  `test-idp/*.yaml`'s images. `tooling`: govulncheck on `bin/*` and Trivy on the CI images. Only a shipped finding
-  can be `blocking`. Tooling findings are listed in the report and in a "CI tooling (reported, never failing)"
-  section of the summary. Exceptions still accept both kinds, and problems still fail (a tool that cannot run, an
-  expired or malformed exception). Why: #71's advisories in `bin/lego`, `bin/osv-scanner` and `bin/trivy`, tools
-  only the pipeline runs, stopped every land, like most of the week's security issues. Small: `ci/security.sh`
-  and `ci/security_test.sh`. Open for Jody (design on #72): whether the same land removes the exceptions that
-  accept only tooling findings (GO-2026-5932, GO-2026-6278, GO-2026-6974), so their expiry can't stop lands;
-  whether a tooling scan that cannot run still fails; and that lego and the CI image, which run with deploy
-  secrets, get no stricter rule.
 - **Scope each security exception to where it applies (`where`)** (2026-11-21, nightly scan
   `looper-runs/20261121T094329Z-scan`, at a5ca8d8): the build's security report warns, for every one of the 32
   entries of `security-exceptions.yaml`, "exception <id> has no where: it accepts <id> in every file (scope it:
   where)". This repository can't follow that advice today. `ci/security.sh` (lines 168-180) holds each entry to
   exactly id, reason, decided_by and expires, and it fails the security job on any other field. So an entry made
   for one place also accepts the same id anywhere else it turns up later. CVE-2026-119373 is accepted for the
-  test IdP's Keycloak, and its reason says it covers the CI image's libsqlite3 too. GO-2026-5932 covers
-  schematic-operator, gh and docker-buildx. A new appearance of an id in a deployed image would pass the
+  test IdP's Keycloak, and its reason says it covers the CI image's libsqlite3 too. A new appearance of an id in a deployed image would pass the
   gates silently. Proposal: `ci/security.sh` accepts an optional `where` (a finding's file or image, as
   looper-scan reads it; README: Security checks of tacplus-dev/looper) and matches an entry only there. Then
   split the shared entries by where, with tests in `ci/security_test.sh`. This needs the field list of looper#49
@@ -404,6 +391,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   would let `apply` name it.
 
 ## Promoted / declined
+- 2026-11-26 `ci/security.sh` fails only on what ships; CI tooling is reported, never failing: approved on #72 (Jody's ship-only decision of 2026-11-23), built (#72), the tooling-only exception GO-2026-5932 removed
 - 2026-11-11 The reader's key and account move to tacplus-ci: on ROADMAP.md at Jody's request, built (#48)
 - 2026-10-29 agent decision Service images for arm64, amd64 behind a setting: on ROADMAP.md (Next), at Jody's request (#23)
 - **`ci_gcp` fails silently too** (2026-11-02, #31): every job calls `ci/lib.sh`'s helpers in an `&&` list, where

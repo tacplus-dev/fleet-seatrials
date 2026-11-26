@@ -4,10 +4,11 @@
 #
 # Tests ci/security.sh (#36) on throwaway repositories: a planted secret fails
 # the job, an expired exception fails it, and a clean tree passes; a HIGH or
-# CRITICAL finding with a fix fails unless an unexpired exception accepts it,
-# one with no fix does not, in the CI image and in an image this repository
-# deploys (#41), scanned for its nodes' platform; a malformed exception and a
-# tool that cannot run fail; the JSON report is written either way. gitleaks is the real one, with
+# CRITICAL finding with a fix in what ships (the tree's lock files, an image this
+# repository deploys, #41, scanned for its nodes' platform) fails unless an
+# unexpired exception accepts it, one with no fix does not; one in CI tooling (a
+# pinned binary, the CI image) is reported, never failing (#72); a malformed
+# exception and a tool that cannot run fail; the JSON report is written either way. gitleaks is the real one, with
 # this repository's configuration. OSV-Scanner, govulncheck and Trivy are
 # stand-ins on PATH that answer what each case sets in $stub (their real runs
 # need the network and change with each day's databases). Needs git, gitleaks,
@@ -92,6 +93,11 @@ govulncheck_found() {
   echo '{"finding": {"osv": "GO-2026-0003", "fixed_version": "v1.2.3", "trace": [{"module": "example.com/m", "version": "v1.2.2", "package": "example.com/m/p", "function": "F"}]}}'
 }
 
+# report NAME JQ: the last scan's report.json satisfies JQ.
+report() {
+  jq -e "$2" "$work/out/report.json" >/dev/null 2>&1 && echo "ok   $1" ||
+    fail "$1: $(jq -c .findings "$work/out/report.json" 2>&1)"
+}
 # scan NAME WANT REPO [GREP]: ci/security.sh on REPO exits 0 (WANT pass) or
 # not (fail), writes its JSON report either way, and says GREP if given.
 scan() {
@@ -120,12 +126,14 @@ mkdir -p "$r/deploy/bootstrap"
 key > "$r/deploy/bootstrap/kernel.yaml"
 git -C "$r" add -A && git -C "$r" commit -qm key
 scan "a planted secret fails" fail "$r" "private-key"
+report "a secret is shipped, and blocking" '.findings | length > 0 and all(.scope == "shipped" and .blocking)'
 git -C "$r" rm -q deploy/bootstrap/kernel.yaml && git -C "$r" commit -qm "remove the key"
 scan "a secret removed from the tree but in the history still fails" fail "$r" "private-key"
 
 r=$(repo vulnerable)
 osv_high 0.62.0 > "$stub/osv-scanner.json"
 scan "a HIGH dependency vulnerability with a fix fails" fail "$r" "GO-2026-0001"
+report "a lockfile's finding is shipped, and blocking" '.findings == [.findings[] | select(.scope == "shipped" and .blocking)] and (.findings | length) == 1'
 exceptions "$r" CVE-2026-0001 2999-01-01
 scan "an unexpired exception accepts it, by an alias" pass "$r"
 exceptions "$r" GO-2026-0001 2020-01-01
@@ -141,9 +149,15 @@ scan "a HIGH vulnerability with no fix does not fail" pass "$r"
 stubs
 r=$(repo image)
 trivy_critical > "$stub/trivy.json"
-scan "a CRITICAL in the CI image with a fix fails" fail "$r" "CVE-2026-0002"
+scan "a CRITICAL in the CI image with a fix is CI tooling: reported, never failing" pass "$r" "CI tooling (reported, never failing)"
+report "the CI image's finding is tooling, not blocking" '.findings | length == 1 and all(.scope == "tooling" and (.blocking | not) and .id == "CVE-2026-0002")'
+scan "the summary lists it, and counts it" pass "$r" "1 CI tooling (reported, never failing)"
+scan "the summary lists the finding" pass "$r" "tooling CRITICAL trivy CVE-2026-0002: libssl3@3.0.0 (registry.example.invalid/ci:1"
 exceptions "$r" CVE-2026-0002 2999-01-01
-scan "an exception accepts it" pass "$r"
+scan "an exception still accepts a tooling finding" pass "$r" "accepted CVE-2026-0002: trivy CVE-2026-0002"
+report "the accepted tooling finding is excepted" '.findings | length == 1 and all(.scope == "tooling" and .excepted == "CVE-2026-0002")'
+exceptions "$r" CVE-2026-0002 2020-01-01
+scan "an expired exception still fails, though it names only a tooling finding" fail "$r" "expired on 2020-01-01"
 
 stubs
 r=$(repo deployed)
@@ -166,7 +180,10 @@ spec:
 EOF
 git -C "$r" add -A && git -C "$r" commit -qm idp
 trivy_critical > "$stub/trivy.json"
-scan "a CRITICAL with a fix in an image this repository deploys fails" fail "$r" "registry.example.invalid/idp:1@sha256:0000"
+scan "a CRITICAL with a fix in an image this repository deploys fails" fail "$r" "FAIL CRITICAL trivy CVE-2026-0002: libssl3@3.0.0 (registry.example.invalid/idp:1@sha256:0000"
+report "the deployed image's finding is shipped and blocking, the CI image's copy tooling" '
+  ([.findings[] | select(.where | contains("(registry.example.invalid/idp:1")) | [.scope, .blocking]] == [["shipped", true]])
+  and ([.findings[] | select(.where | contains("(registry.example.invalid/ci:1:")) | [.scope, .blocking]] == [["tooling", false]])'
 jq -e '.images == ["registry.example.invalid/ci:1", "registry.example.invalid/idp:1@sha256:0000"]' "$work/out/report.json" >/dev/null &&
   echo "ok   the report names the deployed image beside the CI image" ||
   fail "the deployed image's report: $(jq -c .images "$work/out/report.json")"
@@ -186,11 +203,23 @@ jq -e '.images == ["registry.example.invalid/ci:1", "registry.example.invalid/bu
   grep -q -- "--platform linux/arm64 .*registry.example.invalid/busybox:1@sha256:0001" "$stub/trivy.args" &&
   echo "ok   the operator chart's init image (#76) is scanned, for the fleet's platforms" ||
   fail "the operator's init image: $(jq -c .images "$work/out/report.json") $(cat "$stub/trivy.args")"
+trivy_critical > "$stub/trivy.json"
+scan "a CRITICAL with a fix in the operator's init image fails" fail "$r" "FAIL CRITICAL trivy CVE-2026-0002: libssl3@3.0.0 (registry.example.invalid/busybox:1@sha256:0001"
+
+stubs
+r=$(repo both)
+mkdir -p "$r/test-idp"
+printf 'kind: Pod\nspec:\n  containers:\n    - name: x\n      image: registry.example.invalid/ci:1\n' > "$r/test-idp/x.yaml"
+git -C "$r" add -A && git -C "$r" commit -qm both
+trivy_critical > "$stub/trivy.json"
+scan "an image both the CI image and deployed is shipped: it fails" fail "$r" "FAIL CRITICAL trivy CVE-2026-0002"
+report "it is scanned once, its finding shipped" '.images == ["registry.example.invalid/ci:1"] and ([.findings[] | .scope] == ["shipped"])'
 
 stubs
 r=$(repo binary)
 govulncheck_found > "$stub/govulncheck.json"
-scan "a vulnerability govulncheck finds in a pinned binary, with a fix, fails" fail "$r" "GO-2026-0003"
+scan "a vulnerability govulncheck finds in a pinned binary, with a fix, is CI tooling: it passes" pass "$r" "tooling HIGH govulncheck GO-2026-0003: bin/tool"
+report "the binary's finding is tooling, not blocking" '.findings | length == 1 and all(.scope == "tooling" and (.blocking | not))'
 
 stubs
 r=$(repo broken)
