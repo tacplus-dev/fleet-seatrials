@@ -175,6 +175,11 @@ submit() {
   local name=$1 src=$2 lang=$3 commit=$4 fp=$5 id
   echo "== $name ($lang) @ ${commit:0:12}"
   echo "$lang" >> "$languages"
+  # What is built is the checkout as cloned, less its .git. Without a .gcloudignore gcloud leaves out what the
+  # checkout's .gitignore names, and the operator's names `cavalier-operator` (its old binaries): its
+  # cmd/cavalier-operator was never uploaded, and the build ended "stat /workspace/cmd/cavalier-operator:
+  # directory not found" (deploy pipeline 3120764140, 2026-11-26).
+  printf '.git\n' > "$src/.gcloudignore"
   id=$(gcloud builds submit "$src" --config "$here/images/service.cloudbuild.yaml" "${staging[@]}" --async --quiet --format 'value(id)' \
     --substitutions "_REGISTRY=$registry,_SERVICE=$name,_LANG=$lang,$6,_COMMIT=$commit,_FLEET_COMMIT=$fleet_commit,_FINGERPRINT=$fp,_PLATFORMS=$platforms,_TACPLUS_IMAGE=$build_image:fp-$build_fp")
   echo "$id"

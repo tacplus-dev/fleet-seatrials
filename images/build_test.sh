@@ -39,7 +39,9 @@ case "$*" in
   "artifacts docker tags list "*) for t in ${STUB_SERVICE_TAGS:-}; do echo "$t"; done ;;
   "builds submit "*)
     for a in "$@"; do case "$a" in --substitutions=*|_REGISTRY=*) s=$a ;; esac; done
-    svc=${s#*_SERVICE=}; svc=${svc%%,*}; echo "build-$svc" ;;
+    svc=${s#*_SERVICE=}; svc=${svc%%,*}
+    [ ! -f "$3/.gcloudignore" ] || echo "gcloudignore $svc $(tr '\n' ' ' < "$3/.gcloudignore")" >> "$STUB_LOG"
+    echo "build-$svc" ;;
   # The digest of an image tag STUB_SERVICE_TAGS lists; NOT_FOUND for any other.
   "artifacts docker images describe "*)
     tag=${5##*:}
@@ -342,6 +344,10 @@ check "changed, the operator image built: it is not built again" "$(operator_sub
 platforms_run "platforms: [arm64]" operator > /dev/null
 check "operator: the operator alone, after the build image" "$(submits) / $(built_services)" \
   "tacplus-build.cloudbuild.yaml service.cloudbuild.yaml / operator"
+# Its upload is the checkout less .git, by a .gcloudignore of its own: gcloud otherwise leaves out what the
+# checkout's .gitignore names, the operator's cmd/cavalier-operator among it.
+check "operator: its upload leaves out .git alone, never what the checkout's .gitignore names" \
+  "$(grep -m1 '^gcloudignore operator ' "$work/log")" "gcloudignore operator .git "
 for change in "pins.yaml|s/^operator_commit: .*/operator_commit: 0000000000000000000000000000000000000000/" \
               "pins.yaml|s/^tacplus_commit: .*/tacplus_commit: 0000000000000000000000000000000000000000/"; do
   tree=$work/tree2; rm -rf "$tree"; cp -R "$work/tree" "$tree"; sed -i "${change#*|}" "$tree/images/pins.yaml"
