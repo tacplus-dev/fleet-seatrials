@@ -22,8 +22,13 @@ platform=$("$here/namespaces.sh" platform)
 # there alone (tacplus-dev/cluster, fleet-deploy), so -A would be forbidden.
 cat > "$work/bin/kubectl" <<EOF
 #!/usr/bin/env bash
-[ "\$*" = "get pods -n $platform -o json" ] || { echo "unexpected kubectl \$*" >&2; exit 3; }
-cat "\$STUB_PODS"
+case "\$*" in
+  "get pods -n $platform -o json") cat "\$STUB_PODS" ;;
+  "get events -n $platform --field-selector involvedObject.name=gateway0-b -o json")
+    echo '{"items":[{"type":"Warning","reason":"FailedMount","message":"MountVolume.SetUp failed for volume \"tls\": secret \"gateway-tls\" not found","lastTimestamp":"2026-11-26T23:00:00Z"},{"type":"Normal","reason":"Pulled","message":"pulled"}]}' ;;
+  "logs -n $platform gateway0-b --all-containers --previous --tail=12") echo "gateway: no certificate at /tls/tls.crt" ;;
+  *) echo "unexpected kubectl \$*" >&2; exit 3 ;;
+esac
 EOF
 cat > "$work/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -54,7 +59,10 @@ pod() { # NAMESPACE NAME PHASE READY
 }
 { pod "$platform" kernel0-a Running True; pod "$platform" tenantecho-1 Running True
   pod "$platform" job-x Succeeded False; } | jq -s '{items: .}' > "$work/pods-ok.json"
-{ pod "$platform" kernel0-a Running True; pod "$platform" gateway0-b Running False; } | jq -s '{items: .}' > "$work/pods-bad.json"
+{ pod "$platform" kernel0-a Running True
+  pod "$platform" gateway0-b Running False | jq '.status.containerStatuses = [{name: "gateway", ready: false, restartCount: 13,
+    state: {waiting: {reason: "CrashLoopBackOff", message: "back-off 5m0s restarting failed container"}},
+    lastState: {terminated: {reason: "Error", exitCode: 1}}}]'; } | jq -s '{items: .}' > "$work/pods-bad.json"
 echo '{"items": []}' > "$work/pods-none.json"
 
 h=$work/http
@@ -125,6 +133,10 @@ run() {
 
 run "pods: all Ready (finished Jobs aside), in $platform" pass "all 2 Ready" pods
 run "pods: one not Ready" fail "$platform/gateway0-b" pods -- STUB_PODS="$work/pods-bad.json"
+run "pods: a pod not Ready says its container's state and restarts" fail \
+  "gateway: waiting, CrashLoopBackOff: back-off 5m0s restarting failed container, 13 restarts, the last ended Error (exit 1)" pods -- STUB_PODS="$work/pods-bad.json"
+run "pods: and its last warning event" fail 'event FailedMount: MountVolume.SetUp failed for volume "tls": secret "gateway-tls" not found' pods -- STUB_PODS="$work/pods-bad.json"
+run "pods: and its last log lines" fail "log| gateway: no certificate at /tls/tls.crt" pods -- STUB_PODS="$work/pods-bad.json"
 run "pods: none at all" fail "none in $platform" pods -- STUB_PODS="$work/pods-none.json"
 run "cert: verifies, not expiring" pass "subject=CN=seatrials.tacplus.dev" cert
 run "cert: expiring" fail "expires within 14 days" cert -- STUB_EXPIRING=1

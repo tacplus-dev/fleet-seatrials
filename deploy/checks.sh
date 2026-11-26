@@ -28,6 +28,35 @@ failed=0
 bad() { echo "FAIL $*"; failed=1; }
 good() { echo "ok   $*"; }
 
+# Why each pod that is not Ready is not (2026-11-26: the first deploy through the operator left ten pods not
+# Ready for an hour, and the pipeline said only their names): its conditions and containers' states from the
+# pods already read, then its last events and its log's end, as far as the deploy account may read them.
+pods_why() { # PODS-JSON
+  local name restarts
+  while read -r name restarts; do
+    [ -n "$name" ] || continue
+    echo "       --- $name"
+    jq -r --arg n "$name" '.items[] | select(.metadata.name == $n)
+      | ([.status.conditions[]? | select(.status == "False" and ((.message // "") != "")) | "\(.type): \(.message)"]
+         + [((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[]
+            | select(.ready != true and (.state.terminated.reason // "") != "Completed")
+            | "\(.name): "
+              + (if .state.waiting then "waiting, \(.state.waiting.reason // "no reason")" + (if .state.waiting.message then ": \(.state.waiting.message)" else "" end)
+                 elif .state.terminated then "terminated, \(.state.terminated.reason // "no reason") (exit \(.state.terminated.exitCode))"
+                 else "running, not ready" end)
+              + (if (.restartCount // 0) > 0 then ", \(.restartCount) restarts, the last ended \(.lastState.terminated.reason // "?") (exit \(.lastState.terminated.exitCode // "?"))" else "" end)])
+      | .[] | "         " + .[0:400]' <<<"$1"
+    kubectl get events -n "$namespace" --field-selector "involvedObject.name=$name" -o json 2>/dev/null |
+      jq -r '[.items[] | select(.type != "Normal")] | sort_by(.lastTimestamp // .eventTime // "") | .[-3:][]
+        | "         event \(.reason): \(.message // "")"[0:400]' 2>/dev/null || true
+    if [ "$restarts" -gt 0 ]; then
+      kubectl logs -n "$namespace" "$name" --all-containers --previous --tail=12 2>/dev/null | cut -c1-300 | sed 's/^/         log| /' || true
+    fi
+  done < <(jq -r '.items[] | select(.status.phase != "Succeeded")
+    | select([.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length == 0)
+    | "\(.metadata.name) \([((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[] | .restartCount // 0] | add // 0)"' <<<"$1")
+}
+
 check_pods() {
   local json not_ready total
   json=$(kubectl get pods -n "$namespace" -o json)
@@ -37,7 +66,8 @@ check_pods() {
     | "\(.metadata.namespace)/\(.metadata.name) (\(.status.phase))"' <<<"$json")
   if [ "$total" -eq 0 ]; then bad "pods: none in $namespace"; return; fi
   if [ -n "$not_ready" ]; then
-    bad "pods: not Ready:"; sed 's/^/       /' <<<"$not_ready"; return
+    bad "pods: not Ready:"; sed 's/^/       /' <<<"$not_ready"
+    pods_why "$json"; return
   fi
   good "pods: all $total Ready"
 }
