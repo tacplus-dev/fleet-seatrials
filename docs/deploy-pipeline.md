@@ -497,9 +497,10 @@ certificate and no account key is carried over.
   spent is the old letsencrypt's, for the set `seatrials.tacplus.dev`, which nothing orders any more. The `cert`
   job's set is `tacplus.dev` and `*.tacplus.dev`, a budget of its own (5 per 7 days): it orders only when the
   version is missing, expired, wrong or invalid, and renews when due, so one order a cycle.
-- **The trust domain** stays `local.dev` until #16: it is the fleet's, Jody's to name, not derived from the
-  FQDN. When it changes, every SPIFFE id changes, every outstanding token and session credential stops working
-  and people sign in again; the Anthropic federation rule `llmproxy-seatrials` must change with it (#16).
+- **The trust domain** is `tacplus.dev` (#16, Jody's name): the fleet's, not derived from the FQDN, set once as
+  `operator.yaml`'s `spiffe_prefix` (`deploy/trust-domain_test.sh` renders the fleet and checks it). When it
+  changes, every SPIFFE id changes, every outstanding token and session credential stops working and people
+  sign in again; the Anthropic federation rule `llmproxy-seatrials` must name the new llmproxy subject by then.
 - **The root credential.** `operator.yaml`'s `root_cred_pairs` registers `root-feb39e0fd6b526ff`, whose private
   key was deleted with `~/.seatrials` (hub, 2026-10-30), so on the first deploy nobody holds a root key. A new
   root pair, its private key kept by the pipeline and never on a laptop, replaces it before the client steps of

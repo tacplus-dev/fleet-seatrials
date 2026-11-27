@@ -4,7 +4,8 @@
 # These are ids, not secrets. Console objects (2026-10-24): issuer "seatrials"
 # (https://seatrials.tacplus.dev, OIDC discovery), service account
 # "llmproxy-seatrials", rule "llmproxy-seatrials" (sub
-# spiffe://local.dev/system/services/llmproxy, scope workspace:developer).
+# spiffe://tacplus.dev/system/services/llmproxy, the fleet's trust domain in
+# operator.yaml's spiffe_prefix, #16; scope workspace:developer).
 anthropic_federation_rule_id: fdrl_01Fvxu1oSKHN6rwtdZmRbGY8
 anthropic_organization_id: deec78e0-a50d-4817-89e4-043b3d94a5a0
 anthropic_service_account_id: svac_01EoVk8wqp7sVYgBkRyyd5MT

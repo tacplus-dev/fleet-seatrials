@@ -15,6 +15,15 @@ dev: true
 deployment: seatrials
 fqdn: seatrials.tacplus.dev
 port: 443
+# The fleet's SPIFFE trust domain, shared by all its deployments and not derived
+# from a deployment's FQDN (tacplus-dev/roadmap decisions/deployments-per-cluster-
+# 2026-10-26.md, the 2026-10-29 addendum): tacplus.dev, Jody's name (#16). Set
+# here alone: kernel and every service config take it from this (operator#14),
+# and generate refuses a services/kernel.yaml spiffe_trust_domain that differs.
+# Changing it changes every SPIFFE id: every token and session credential
+# stops working, and Anthropic's federation rule llmproxy-seatrials must name
+# the new llmproxy subject (deploy/bootstrap/services/llmproxy.yaml).
+spiffe_prefix: tacplus.dev
 optional_services:
     oauth: true
 tenants:
