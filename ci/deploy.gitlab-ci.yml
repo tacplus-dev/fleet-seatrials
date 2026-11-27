@@ -14,6 +14,10 @@
 #   security  OSV-Scanner on the tree, govulncheck on the pinned binaries, gitleaks on the tree
 #             and its history, Trivy on the CI image; security-exceptions.yaml enforced (#36).
 #             Nothing is built or applied until it passes
+#   releases  every service's main release record read and checked (#82, ci/releases.sh): one
+#             that cannot be read, is malformed, is older than what is deployed or was built
+#             with another tacplus than tacplus's own main release (D4) holds the fleet where
+#             it is; generate waits for it
 #   cert      the pipeline owns the certificate (#35, ci/cert.sh): checks the current version
 #             of the secret tls-seatrials and, when lego says so (missing, expired, or due by
 #             ARI or the last third of its lifetime), obtains a new one by ACME DNS-01 as a new
@@ -25,7 +29,8 @@
 #   diff      what an apply would change, by object name; records the render's digest
 #   apply     once diff succeeds, by itself (seatrials is not production), the render diff
 #             showed, by digest, through the operator in cluster (#76): it installs the operator,
-#             which applies that render as its own account; protected environment seatrials
+#             which applies that render as its own account; protected environment seatrials.
+#             Never an older set than the one deployed, which it records once applied (#82)
 #   test      the functional end-to-end suite (deploy/e2e.yaml), its report as the job's JUnit report
 #
 # Manual, because none of them is approval of the fleet: signin-secrets (a rotated secret),
@@ -60,7 +65,7 @@
 # Deploy jobs run only on the dedicated deploy runner (tag `deploy`: VMs used
 # once, max_use_count = 1), never on the agents' runner.
 
-stages: [tools, checks, cert, images, generate, diff, apply, test]
+stages: [tools, checks, releases, cert, images, generate, diff, apply, test]
 
 variables:
   GIT_STRATEGY: none
@@ -239,6 +244,22 @@ security:
     paths: [src/security/]
     expire_in: 30 days
 
+# Dev rolls to each green main release, never back (#82; tacplus-dev/roadmap
+# decisions/agentic-dev-flow-2026-11-25.md, step 8, D4): ci/releases.sh reads
+# every service's record, release-<repo>/main/record in tacplus-dev/build's
+# package registry, with the job's own token, and the set apply recorded in
+# the cluster. A record it cannot read, a malformed one, one behind or
+# diverged from the deployed release, or one built with another tacplus than
+# tacplus's main release fails it, and generate waits for it: dev stays where
+# it is. A service with no main release stays on its tag; none rolls until the
+# lock can follow a release (tacplus-dev/tacplus#981).
+releases:
+  stage: releases
+  needs: [tools, checks]
+  environment: { name: seatrials, action: prepare }
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_kube && ci/releases.sh plan
+
 # The certificate (#35; tacplus-dev/roadmap decisions/certificates-by-pipeline-2026-11-03.md):
 # ci/cert.sh checks the current version and has lego obtain or renew it, as
 # the deploy account (the two secrets and the challenge zone are all it may
@@ -270,7 +291,7 @@ images:
 # misleading error (#62; ci/pipeline_test.sh).
 generate:
   stage: generate
-  needs: [checks, tools, security, cert]
+  needs: [checks, tools, security, releases, cert]
   environment: { name: seatrials, action: prepare }
   script:
     - |
@@ -299,7 +320,11 @@ diff:
 # protected environment seatrials. It applies the render diff showed, by its
 # digest (RENDER_DIGEST, diff's dotenv), with the certificate version cert
 # passed on: deploy/apply.sh installs the operator's chart (cloned from GitHub,
-# hence ci_github), and the operator applies the render (#76).
+# hence ci_github), and the operator applies the render (#76). Inside the
+# resource group, so two pipelines that overlap cannot put an older set on
+# after a newer one, ci/releases.sh guard refuses a set older than the one
+# deployed, service by service, and once applied, ci/releases.sh record makes
+# this set the deployed one (#82).
 # deploy/unattachable-volumes.sh then gives a new volume to a pod that never started because its disk type is one
 # its node cannot attach (a claim made before the cluster's default StorageClass was Hyperdisk).
 apply:
@@ -310,9 +335,11 @@ apply:
   script:
     - |
       cd src && source ci/lib.sh && ci_github && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
+      ci/releases.sh guard
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh
+      ci/releases.sh record
       deploy/unattachable-volumes.sh
       ci_test_idp_seeds optional
       ci_google_signin

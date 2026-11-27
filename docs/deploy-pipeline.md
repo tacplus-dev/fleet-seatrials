@@ -20,18 +20,19 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa, gitleaks, the security job's scanners and `lego` ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)) and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image and the images this repository deploys ([below](#the-security-job)). It fails only on what ships; CI tooling's findings are reported, never failing (#72). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
+| releases | `releases` | [`ci/releases.sh plan`](../ci/releases.sh), as the deploy account: reads every service's main release record, `release-<repo>/main/record`, and checks it against the set deployed ([below](#dev-rolls-to-each-green-main-release-never-back)). A record it can't read, a malformed one, one older than what is deployed, or one built with another tacplus than tacplus's own main release fails it. `generate` waits for it, so dev stays where it is. |
 | cert | `cert` | [`ci/cert.sh`](../ci/cert.sh): the pipeline owns the certificate ([below](#the-certificate)). It checks the current version of the secret `tls-seatrials` and has `lego` obtain or renew it by ACME DNS-01 when it is missing, expired or due, as a new version. It hands the secret and version to every job that renders. |
 | images | `images` | Runs `WAIT=1 images/build.sh changed` on Cloud Build and waits for every build it submitted. The job fails if any build fails, and prints the last 80 lines of each failed build's log, each line prefixed `<service>| ` (#67), read from the build bucket. Each image is built for `images/pins.yaml`'s `platforms` (`[arm64]`). When it builds a new build image (`ci/tacplus-build`: tacplus's build image of the fleet's line, with the fleet's `tacplus` and the launcher built in it from `images/pins.yaml`'s commits; tacplus has published no tacplus image since 2.4, #65), it also builds the first service of each language (Go, Rust, Java) in it, changed or not, so a build image that can't build one fails this job (#56). The build image's steps run as its unprivileged user `build`, and each service build's first step gives it `/workspace` and `$HOME`. It builds the fleet's operator image too, `schematic/operator`, which `apply` runs ([below](#apply-goes-through-the-operator)). |
 | generate | `generate` | Runs `schematic-operator generate` with `deploy/bootstrap/crypto.yaml` and `ca.pem` taken from the Secret Manager secrets `fleet-crypto-seatrials` and `fleet-ca-seatrials`, and the certificate version `cert` passed on installed as the gateway's, then the routing check: `deploy/checks.sh opa` (`opa eval`) on the rendered `tenants/namespace.rego`. Each tenant's claim matcher must route to that tenant, and a different claim value to none. |
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials, of the objects outside the tenant namespaces: those in `tac-seatrials-<tid>` are deploymentproxy's, where the deploy account cannot read, so it names them instead (#75). It prints object **names** only, and the digest of the whole render, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
-| apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh` and `deploy/signin-secrets.sh`. |
+| apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Refuses a set older than the one deployed (`ci/releases.sh guard`), checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh`, `ci/releases.sh record` (this set becomes the deployed one) and `deploy/signin-secrets.sh`. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and Secret Manager and nothing else, after a secret is rotated. |
 | generate | `init-secrets` | Manual, in the protected environment `init-secrets`. A deployment's first run: generates the fleet's crypto file and CA and adds a version to `fleet-crypto-seatrials` and `fleet-ca-seatrials` in Secret Manager, as `seatrials-init-secrets` through WIF ([below](#generated-secrets-the-init-secrets-job)). |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP's seeds (the first time), its certificate, and Keycloak with its realms on the `dev` cluster ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | The same apply first (main's realms; the certificate renewed when due), then [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
 
-Every pipeline deploys: tools, checks, cert, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails stops it before `apply`. A daily schedule runs the same pipeline ([below](#the-daily-schedule)).
+Every pipeline deploys: tools, checks, releases, cert, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails stops it before `apply`. A daily schedule runs the same pipeline ([below](#the-daily-schedule)).
 
 ### The security job
 
@@ -106,6 +107,66 @@ or the images changed in between. Run the pipeline again. Every job renders the 
 passed on, never the secret's latest, so the digest covers the certificate, and a renewal by another pipeline
 in between can't split `diff` from `apply`. Once the uni-config lands (#28), the digest becomes the uni-config
 record's.
+
+### Dev rolls to each green main release, never back
+
+In the approved development flow, dev (seatrials) is where main's green output runs first (#82; tacplus-dev/roadmap
+`decisions/agentic-dev-flow-2026-11-25.md`, step 8, the panel's item 12 and D4). The release build publishes each
+repository's main release by digest and records it in tacplus-dev/build's generic package `release-<repo>`, version
+`main`, file `record` (tacplus-dev/looper#252):
+
+```
+repo <repo>
+branch main
+commit <40 hex>
+image us-docker.pkg.dev/jody1-328023/tacplus/<repo>:main-<commit, 12 hex>@sha256:<64 hex>
+tacplus <40 hex> <image by digest>      the tacplus it was built with (tacplus-dev/looper#262)
+run <the pipeline>
+at <UTC time>
+```
+
+[`ci/releases.sh`](../ci/releases.sh) works on **sets**, one line per service: `<service> <commit> <version>`. The
+version is a tag's (`0.1.7`) or a main release's (`main-<12 hex>`). The **deployed set** is the one the last
+`apply` recorded, in the ConfigMap `seatrials-releases` of `tac-seatrials` (data key `set`).
+
+- **`releases`** (`ci/releases.sh plan`) reads every service's record once, with the job's own `CI_JOB_TOKEN`,
+  passed in a header file, never on a command line (tacplus-dev/build admits this project: tacplus-dev/looper#262).
+  Each record must name its repository (pigeonhost's is `pigeon`), branch `main`, a 40-hex commit, and the image
+  `<registry>/<repo>:main-<that commit's 12 hex>@sha256:<64 hex>`.
+  - **Forward only, by ancestry, never by time.** A main release must be the deployed one or a descendant of it.
+    The deployed commit must be its ancestor, read with `git` from the service's public repository. Behind or
+    diverged is refused.
+  - **D4.** Each release about to roll must have been built with tacplus's own main release
+    (`release-tacplus/main/record`): consumers are checked against tacplus's release before deploy, not in
+    tacplus's merge path.
+  - **Nothing new on doubt.** A record it can't read, a malformed one, or one that is older or diverged fails the
+    job, naming the record and why. `generate` waits for it, so the whole fleet stays where it is and the failure
+    is seen. The whole fleet holds, not only the one service, because a partial roll would mix contracts that no
+    lock has checked.
+  - **No release yet.** A service with no main release (404) stays on its tag. GitLab also answers 404 for a
+    package of a project the token may not read. So until tacplus-dev/build admits this project
+    (tacplus-dev/looper#262), every service reads as having no main release.
+- **`apply`**, inside the resource group `seatrials`, refuses a set older than the deployed one before it applies
+  (`ci/releases.sh guard`), service by service. A lower tag, a tag after a main release, and an older or diverged
+  main release are all refused. Once applied, it records the set (`ci/releases.sh record`). So two pipelines that
+  overlap can't put an older set on after a newer one, whichever finishes last. This sits on top of the record's
+  own ordering: the release build never moves a record back.
+
+**What doesn't roll yet:** the lock. The operator renders the fleet's contracts (`build/proto`, the generated config)
+from `fleet.lock`, which `tacplus fleet build` resolves at each line's newest tag. Running a main image beside them
+would run main's code against the tag's contracts. So until `tacplus fleet build` can lock a service at a release's
+commit and image (tacplus-dev/tacplus#981), `releases` checks every record and names the release each service would
+roll to, but dev deploys its tags.
+
+The roll will then generate the lock from the records. It will copy each release image by digest into
+`us-central1-docker.pkg.dev/tacplus-dev/seatrials/schematic/<service>`, which needs the deploy account to read the
+release registry (tacplus-dev/cloud#115). The operator then renders it by digest (`image_digests`,
+`deploy/bootstrap/images.yaml`). A green main release will start this pipeline (tacplus-dev/looper#262), with the
+daily schedule as the catch-up.
+
+There is no rollback by redeploy: a bad main release is undone by a newer one (a revert on main, then the next
+release). Production is not this repository. It rolls from its protected release branch's record
+(`release-<repo>/release-X.Y/record`), through canary, and its version is Jody's.
 
 ### Apply goes through the operator
 

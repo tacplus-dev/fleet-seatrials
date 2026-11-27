@@ -5,6 +5,30 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **Dev rolls to each green main release by digest: the roll itself** (2026-11-26, #82; tacplus-dev/looper#252,
+  tacplus-dev/roadmap `decisions/agentic-dev-flow-2026-11-25.md` step 8, item 12, D4). Built so far:
+  - The `releases` job (`ci/releases.sh plan`) reads and checks every record, forward only by ancestry, and checks
+    each release against tacplus's own release (D4).
+  - `apply` refuses an older set and records the deployed one in the ConfigMap `seatrials-releases`.
+
+  Left, once tacplus-dev/tacplus#981 (lock at a commit and image) and tacplus-dev/cloud#115 (the release registry's
+  read) are done:
+  - `releases` writes the lock from the records' commits and images, and every later job renders from that
+    artifact, so a record that moves mid-pipeline cannot split `diff` from `apply`.
+  - It copies each release image by digest into `seatrials/schematic/<service>` and writes
+    `deploy/bootstrap/images.yaml` (`image_digests`), and it checks that the image is arm64.
+  - `images/build.sh` builds no image for a rolled service.
+  - `ci/fleet_lock_test.sh` moves from "at its tag" to "at its record".
+  - `ci/closure_test.sh` runs at the rolled commits against tacplus's release.
+
+  tacplus-dev/looper#262 adds the record's `tacplus` line, this project's read of the packages, and a trigger
+  after each main release. Also open:
+  - **Rollback.** Forward-only leaves "a revert on main and the next release" as the only rollback; a Jody-only
+    override (a protected variable naming `<service>@<commit>`) would add a manual one.
+  - **Staleness.** An alarm when the deployed set is older than two nightly releases, since a held fleet only
+    fails red.
+  - **Compiler.** The fleet's own compiler (`images/pins.yaml`) could follow tacplus's main release instead of
+    v2.6.14.
 - **Drop coop.yaml's `pigeons_namespace` with the move to the operator that renders `pigeons_namespaces`**
   (2026-11-27, #83; tacplus-dev/operator#47, tacplus-dev/coop#17): in one change, remove `pigeons_namespace:
   schematic-pigeons` (and its comment; the header's `<fleet>-pigeons` too) from `services/coop.yaml`, move coop to

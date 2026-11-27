@@ -103,8 +103,13 @@ want "the test IdP's issuers in oauth.yaml" "$(yq '.providers[] | select(.name =
 # Nothing names jody1-328023, or its project number: the Google OAuth client,
 # the last thing there, is tacplus-dev's (#46), and the reader and its KMS key are
 # tacplus-ci's (#48). HISTORY.md and ROADMAP.md record the past and are not this
-# repository's to edit; this test names it.
-stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' ':!ci/target_test.sh' || true)
+# repository's to edit; this test names it. The one exception is the registry
+# the main releases are published to, us-docker.pkg.dev/jody1-328023/tacplus
+# (tacplus-dev/looper#252), which dev reads release images from and never
+# deploys to (#82, ci/releases.sh).
+stray=$(git -C "$here" grep -n -I -e jody1-328023 -e 23279701427 -- . ':!HISTORY.md' ':!ROADMAP.md' ':!ci/target_test.sh' |
+  sed 's|us-docker\.pkg\.dev/jody1-328023/tacplus/||g; s|us-docker\.pkg\.dev/jody1-328023/tacplus\([^/a-z0-9-]\)|\1|g; s|us-docker\.pkg\.dev/jody1-328023/tacplus$||' |
+  grep -e jody1-328023 -e 23279701427 || true)
 [ -z "$stray" ] && ok "nothing names jody1-328023" ||
   fail "these still name jody1-328023 (or 23279701427):
 $stray"

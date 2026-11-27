@@ -74,6 +74,26 @@ check "nothing is built or applied before the security job passes" \
   '([.images.needs[], .generate.needs[]] | map(if type == "object" then .job else . end)) as $n
    | ($n | map(select(. == "security")) | length) == 2'
 
+# --- dev rolls to each green main release, never back (#82) ---
+check "releases reads and checks the main release records (ci/releases.sh plan), as the deploy account in the cluster" \
+  '.releases.script | join("\n") | test("ci_gcp && ci_kube && ci/releases.sh plan")'
+check "releases is not manual and a failed releases fails the pipeline" \
+  '.releases.when == "on_success" and .releases.allow_failure == false'
+check "generate waits for releases, so a record in doubt deploys nothing new" \
+  '[.generate.needs[] | if type == "object" then .job else . end] | index("releases") != null'
+[ "$(yq -o=json '.stages' "$here/ci/deploy.gitlab-ci.yml" | jq '(index("checks") < index("releases")) and (index("releases") < index("generate"))')" = true ] &&
+  ok "the releases stage comes after checks and before generate" || fail "the releases stage is not between checks and generate"
+apply_lines=$(job apply '.script | join("\n")' | jq -r . | sed 's/^ *//')
+guard_at=$(grep -nx 'ci/releases.sh guard' <<<"$apply_lines" | cut -d: -f1)
+record_at=$(grep -nx 'ci/releases.sh record' <<<"$apply_lines" | cut -d: -f1)
+apply_at=$(grep -nx 'deploy/apply.sh' <<<"$apply_lines" | cut -d: -f1)
+[ -n "$guard_at" ] && [ -n "$apply_at" ] && [ "$guard_at" -lt "$apply_at" ] &&
+  ok "apply refuses a set older than the deployed one before it applies (ci/releases.sh guard)" ||
+  fail "apply does not run ci/releases.sh guard before deploy/apply.sh"
+[ -n "$record_at" ] && [ -n "$apply_at" ] && [ "$record_at" -gt "$apply_at" ] &&
+  ok "apply records the set it applied once applied (ci/releases.sh record)" ||
+  fail "apply does not run ci/releases.sh record after deploy/apply.sh"
+
 for j in test-idp signin-secrets init-secrets; do
   check "$j stays manual" ".[\"$j\"].when == \"manual\""
 done
@@ -128,7 +148,7 @@ check "diff waits for cert (the certificate is in the render it shows)" \
   ok "the workflow admits the daily schedule" || fail "the workflow does not admit a schedule"
 [ "$(yq '.workflow // "none"' "$here/ci/deploy.gitlab-ci.yml")" = none ] &&
   ok "the child pipeline has no workflow of its own to drop a schedule" || fail "the child pipeline has a workflow"
-for j in cert generate diff apply test; do
+for j in releases cert generate diff apply test; do
   check "$j has no rule that skips it on a schedule" \
     "[.$j.rules[]? | select((.if // \"\") | test(\"schedule\")) | select(.when == \"never\" or .when == \"manual\")] | length == 0"
   check "$j has no except or only that drops a schedule" ".$j.only == null and .$j.except == null"
