@@ -1,0 +1,7 @@
+# The generation of the fleet's key material (deploy/init-secrets.sh): the version each of fleet-crypto-seatrials
+# and fleet-ca-seatrials must have reached. Raise it, in the commit that makes the stored material stale, and run
+# the manual init-secrets job, then the pipeline again.
+#   1  the first (2026-11-08)
+#   2  2026-11-26: the trust domain is tacplus.dev (#16); kernel's certificates carry it, and the stored ones
+#      were issued for local.dev, so every render issued its own
+2

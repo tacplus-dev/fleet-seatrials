@@ -19,7 +19,10 @@
 # else, and no token is stored anywhere. The deploy jobs read them as
 # seatrials-deploy (ci_crypto in ci/lib.sh).
 #
-# Both have an enabled version: nothing is generated or added. One only:
+# Both have an enabled version at the generation deploy/key-generation names, or
+# later: nothing is generated or added. Both behind it: generated again, a new
+# version of each (the trust domain changed, say: kernel's certificates carry
+# it). One only:
 # refused, since a CA and its crypto.yaml are a pair, and the hub disables the
 # one that is there (or restores the other). Neither: generated in a scratch
 # directory, and one version added to each, the crypto file first. Nothing here
@@ -54,18 +57,31 @@ add() {
   added=$n
 }
 
+# The generation of the key material this commit needs (deploy/key-generation: one number). A secret's version
+# number is its generation: the pair is generated when neither has an enabled version, and generated again, a new
+# version of each, when both are behind the generation. The deploy jobs read the latest version (ci_crypto).
+generation=${FLEET_KEY_GENERATION:-$(grep -v '^[[:space:]]*\(#\|$\)' "$here/deploy/key-generation" 2>/dev/null | head -n 1 | tr -d '[:space:]')}
+[[ $generation =~ ^[1-9][0-9]*$ ]] || die "deploy/key-generation holds no generation number (a positive integer): [$generation]"
+
 crypto=$(version "$crypto_secret")
 ca=$(version "$ca_secret")
+if [ -n "$crypto" ] && [ -n "$ca" ]; then
+  if [ "$crypto" -ge "$generation" ] && [ "$ca" -ge "$generation" ]; then
+    echo "init-secrets: $crypto_secret (version $crypto) and $ca_secret (version $ca) exist (project $project), at generation $generation or later: nothing to generate"; exit 0
+  fi
+  [ "$crypto" = "$ca" ] ||
+    die "$crypto_secret is at version $crypto and $ca_secret at version $ca, not both behind generation $generation (project $project): they are a pair; disable the newer one's versions past the other's, and run this job again"
+  echo "init-secrets: $crypto_secret and $ca_secret are at version $crypto, behind generation $generation (deploy/key-generation): generating the pair again"
+fi
 case ${crypto:+1}${ca:+2} in
-  12) echo "init-secrets: $crypto_secret (version $crypto) and $ca_secret (version $ca) exist (project $project): nothing to generate"; exit 0 ;;
   1) die "$crypto_secret has a version but $ca_secret has none (project $project): they are a pair; restore $ca_secret, or disable $crypto_secret's versions to generate both" ;;
   2) die "$ca_secret has a version but $crypto_secret has none (project $project): they are a pair; restore $crypto_secret, or disable $ca_secret's versions to generate both" ;;
 esac
 
 # A copy of deploy/bootstrap: init rewrites operator.yaml, and the checkout's
 # deploy/bootstrap must not hold key material.
-mkdir "$tmp/bootstrap"
-cp -R "$here/deploy/bootstrap/operator.yaml" "$here/deploy/bootstrap/services" "$tmp/bootstrap/"
+cp -R "$here/deploy/bootstrap" "$tmp/bootstrap"
+rm -rf "$tmp/bootstrap/configs" "$tmp/bootstrap/crypto.yaml" "$tmp/bootstrap/ca.pem"
 fqdn=$(yq '.fqdn' "$here/deploy/bootstrap/operator.yaml")
 gateways=$(yq '.topology.gateway_nodes // 1' "$here/deploy/bootstrap/operator.yaml")
 export SCHEMATIC_OPERATOR_DIR=$tmp/bootstrap
@@ -73,6 +89,22 @@ schematic-operator init ca > "$tmp/init.log" 2>&1 &&
   schematic-operator init cluster --fqdn "$fqdn" --type small --gateways "$gateways" --dev >> "$tmp/init.log" 2>&1 ||
   die "schematic-operator init failed: $(grep -m3 -i 'error' "$tmp/init.log" || echo 'no error line')"
 [ -s "$tmp/bootstrap/crypto.yaml" ] && [ -s "$tmp/bootstrap/ca.pem" ] || die "schematic-operator init wrote no crypto.yaml or ca.pem"
+
+# The key material as this fleet's config needs it, not as init leaves it. init issues kernel's certificates for
+# the default trust domain, and generate issues them again, with new keys, whenever crypto.yaml's are not for the
+# config's (operator.yaml's spiffe_prefix). Stored as init left them, every job of the deploy pipeline issued its own
+# and no two renders were the same: apply refused each one as "not the one diff showed" (2026-11-26, once the trust
+# domain was tacplus.dev). So: the committed operator.yaml back in place of init's, generate once, and what is
+# stored is what generate leaves. A second generate must leave it as it is, or the pipeline could never apply.
+cp "$here/deploy/bootstrap/operator.yaml" "$tmp/bootstrap/operator.yaml"
+export SCHEMATIC_LOCAL_IMAGES=${REGISTRY:-us-central1-docker.pkg.dev/tacplus-dev/seatrials}
+schematic-operator generate --output "$tmp/charts" >> "$tmp/init.log" 2>&1 ||
+  die "schematic-operator generate failed on the new key material: $(grep -m3 -i 'error' "$tmp/init.log" || echo 'no error line')"
+before=$(sha256sum < "$tmp/bootstrap/crypto.yaml")
+schematic-operator generate --output "$tmp/charts" >> "$tmp/init.log" 2>&1 ||
+  die "schematic-operator generate failed the second time: $(grep -m3 -i 'error' "$tmp/init.log" || echo 'no error line')"
+[ "$(sha256sum < "$tmp/bootstrap/crypto.yaml")" = "$before" ] ||
+  die "schematic-operator generate changes crypto.yaml every time it runs: no two renders would be the same, and nothing is stored"
 
 # The crypto file first: once it has a version, a run that stops before the
 # CA's is refused next time (a half pair), never generated twice.

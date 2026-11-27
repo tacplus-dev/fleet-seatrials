@@ -60,6 +60,12 @@ case "$1 $2" in
   "init ca") printf 'pki:\n  root_ca: GENERATED-CA-KEY\n' > "$d/crypto.yaml"; echo GENERATED-CA-CERT > "$d/ca.pem" ;;
   "init cluster") [ -f "$d/crypto.yaml" ] && printf '  cluster: GENERATED-CLUSTER-KEY\n' >> "$d/crypto.yaml"
     printf 'fqdn: rewritten\n' > "$d/operator.yaml" ;;
+  # generate issues kernel's certificates for operator.yaml's trust domain when crypto.yaml's are not for it, and
+  # leaves them alone when they are; with STUB_REISSUE it issues them every time.
+  "generate --output") p=$(sed -n 's/^spiffe_prefix: *//p' "$d/operator.yaml")
+    if [ -n "${STUB_REISSUE:-}" ] || ! grep -q "kernel_tls: GENERATED-KERNEL-TLS-FOR-${p:-none}\$" "$d/crypto.yaml"; then
+      printf '  kernel_tls: GENERATED-KERNEL-TLS-FOR-%s\n' "${p:-none}" >> "$d/crypto.yaml"
+    fi ;;
 esac
 EOF
 chmod +x "$work/bin/"*
@@ -72,7 +78,7 @@ fresh() { rm -rf "$work/sm"; mkdir -p "$sm/fleet-ca-seatrials" "$sm/fleet-crypto
 run() {
   local name=$1 want=$2 expect=$3 status; shift 3
   : > "$work/calls"
-  out=$(env PATH="$work/bin:$PATH" STUB_SM="$work/sm" STUB_CALLS="$work/calls" "$@" "$here/init-secrets.sh" 2>&1)
+  out=$(env PATH="$work/bin:$PATH" STUB_SM="$work/sm" STUB_CALLS="$work/calls" FLEET_KEY_GENERATION=1 "$@" "$here/init-secrets.sh" 2>&1)
   status=$?
   if { [ "$want" = pass ] && [ "$status" -ne 0 ]; } || { [ "$want" = fail ] && [ "$status" -eq 0 ]; } ||
      [[ "$out" != *"$expect"* ]]; then
@@ -97,7 +103,9 @@ run "first run: both generated, a version added to each" pass \
   "init-secrets: fleet-ca-seatrials: version 1 added"
 want "fleet-crypto-seatrials: one version, crypto.yaml as it is (the CA and the cluster PKI)" \
   test "$(versions fleet-crypto-seatrials)/$(cat "$sm/fleet-crypto-seatrials/1")" = \
-    "1/$(printf 'pki:\n  root_ca: GENERATED-CA-KEY\n  cluster: GENERATED-CLUSTER-KEY')"
+    "1/$(printf 'pki:\n  root_ca: GENERATED-CA-KEY\n  cluster: GENERATED-CLUSTER-KEY\n  kernel_tls: GENERATED-KERNEL-TLS-FOR-tacplus.dev')"
+want "generate ran on the committed operator.yaml, not init's rewrite, twice (the second must change nothing)" \
+  test "$(grep -c 'schematic-operator generate --output' "$work/calls")" = 2
 want "fleet-ca-seatrials: one version, ca.pem as it is" \
   test "$(versions fleet-ca-seatrials)/$(cat "$sm/fleet-ca-seatrials/1")" = 1/GENERATED-CA-CERT
 want "the crypto file is added before the CA" \
@@ -110,6 +118,25 @@ want "the committed operator.yaml untouched" grep -q "^fqdn: seatrials.tacplus.d
 run "second run: skipped, both have a version" pass "nothing to generate"
 want "second run: no version added" test "$(versions fleet-crypto-seatrials)/$(versions fleet-ca-seatrials)" = 1/1
 want "second run: the operator not run" test -z "$(grep schematic-operator "$work/calls")"
+
+# A later generation (deploy/key-generation): both behind it are generated again, a new version of each; at it,
+# nothing; one ahead of the other, refused.
+run "generation 2, both at version 1: generated again" pass "behind generation 2 (deploy/key-generation): generating the pair again" FLEET_KEY_GENERATION=2
+want "generation 2: a second version of each" test "$(versions fleet-crypto-seatrials)/$(versions fleet-ca-seatrials)" = 2/2
+no_leak "generation 2: no secret in the output or a command line"
+run "generation 2, both at version 2: nothing" pass "at generation 2 or later: nothing to generate" FLEET_KEY_GENERATION=2
+want "generation 2 again: no version added, the operator not run" \
+  test "$(versions fleet-crypto-seatrials)/$(versions fleet-ca-seatrials)/$(grep -c schematic-operator "$work/calls")" = 2/2/0
+rm "$sm/fleet-ca-seatrials/2"
+run "generation 3, the crypto file at 2 and the CA at 1: refused" fail "they are a pair" FLEET_KEY_GENERATION=3
+want "an uneven pair: nothing added, no operator" \
+  test "$(versions fleet-crypto-seatrials)/$(versions fleet-ca-seatrials)/$(grep -c 'schematic-operator\|versions add' "$work/calls")" = 2/1/0
+run "a generation that is no number: refused" fail "holds no generation number" FLEET_KEY_GENERATION=two
+fresh
+run "an operator that issues new keys on every generate: refused, nothing stored" fail \
+  "changes crypto.yaml every time it runs" STUB_REISSUE=1
+want "nothing stored" test "$(versions fleet-crypto-seatrials)/$(versions fleet-ca-seatrials)" = 0/0
+want "the committed generation is a number" grep -qx '[1-9][0-9]*' <(grep -v '^[[:space:]]*\(#\|$\)' "$here/key-generation")
 
 fresh; echo CRYPTO > "$sm/fleet-crypto-seatrials/1"
 run "half pair (the crypto file only): refused" fail \
