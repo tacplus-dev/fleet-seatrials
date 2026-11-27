@@ -52,3 +52,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue images: retry a transient registry 5xx on push (eventbus :local manifest PUT 502 failed deploy #5) (#74)
 - 2026-11-25 looper issue apply: schematic-operator apply installs tenant-namespace objects as the deploy account; nothing makes the TenantNamespaces (after #75's diff, apply is next to fail) (#76)
 - 2026-11-26 looper issue ci/security.sh: fail only on findings in what ships; report CI tooling (bin/ binaries, the CI image), never blocking (looper#225) (#72)
+- 2026-11-27 looper issue seatrials runs with SPIFFE trust domain local.dev: every subject reads spiffe://local.dev/… (#16)
