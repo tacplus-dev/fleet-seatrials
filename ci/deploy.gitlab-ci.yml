@@ -308,6 +308,9 @@ diff:
   script:
     - |
       cd src && source ci/lib.sh && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
+      # A claim that never bound cannot be diffed against a render that asks another size of it ("spec is
+      # immutable after creation ... for bound claims", pipeline 3122317467): it is made again first.
+      deploy/unattachable-volumes.sh
       RENDER_DIGEST_OUT=$CI_PROJECT_DIR/render.env deploy/diff.sh
   # RENDER_DIGEST, the digest of the render diff showed, for apply.
   artifacts:
@@ -325,9 +328,10 @@ diff:
 # after a newer one, ci/releases.sh guard refuses a set older than the one
 # deployed, service by service, and once applied, ci/releases.sh record makes
 # this set the deployed one (#82).
-# deploy/unattachable-volumes.sh, before and after it, gives a new volume to a pod that never started because its
-# disk type is one its node cannot attach, or because its claim was never provisioned: before, so that the release
-# can put a claim of another size in the place of one that never bound; after, for a StatefulSet's.
+# deploy/unattachable-volumes.sh, before the diff (here and in the diff job) and after the apply, gives a new
+# volume to a pod that never started because its disk type is one its node cannot attach, or because its claim was
+# never provisioned: before, so that the render can be diffed against, and the release can put, a claim of another
+# size in the place of one that never bound; after, for a StatefulSet's.
 apply:
   stage: apply
   needs: [tools, cert, diff]
@@ -337,9 +341,9 @@ apply:
     - |
       cd src && source ci/lib.sh && ci_github && ci_gcp && ci_crypto && ci_cert && ci_kube || exit
       ci/releases.sh guard
+      deploy/unattachable-volumes.sh
       deploy/diff.sh
       deploy/secrets.sh
-      deploy/unattachable-volumes.sh
       deploy/apply.sh
       ci/releases.sh record
       deploy/unattachable-volumes.sh
