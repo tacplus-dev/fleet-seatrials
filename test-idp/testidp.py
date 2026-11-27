@@ -21,6 +21,9 @@ message.
                                       signs USERNAME in at https://HOST through oauth (Authorize,
                                       the realm's login page, MintCallbackTokens) and checks the
                                       kernel session names the realm and the user's sub
+  testidp.py tacplus-refused HOST ISSUER_URL REALM.json USERNAME
+                                      the same sign-in for a user no tenant claims:
+                                      MintCallbackTokens must refuse, with no session
   testidp.py remove ADMIN_URL REALM.json USERNAME
                                       deletes the user at the IdP
   testidp.py refused ISSUER_URL REALM.json USERNAME
@@ -506,12 +509,16 @@ def find_strings(value, path=""):
         yield path, value
 
 
-def tacplus_check(host, issuer, realm, username):
+def tacplus_check(host, issuer, realm, username, refused=False):
     """The full sign-in at tacplus.dev, as a browser does it: the realm's
     provider from ListProviders, Authorize, the realm's login page, the
     redirect back to https://HOST/ (not loaded), MintCallbackTokens. The kernel
     session's access token must verify with the host's JWKS and name the realm
-    as the issuer and the user's sub, as the realm's own ID token has it."""
+    as the issuer and the user's sub, as the realm's own ID token has it.
+
+    With refused, the user is one no tenant claims (a personal account at a
+    realm that is none of kernel's people issuers): the same steps, and
+    MintCallbackTokens must refuse, with no session."""
     base = f"https://{host}"
     name = PROVIDER_NAMES[realm["realm"]]
     expect = claims_check(issuer, realm, username)
@@ -528,6 +535,15 @@ def tacplus_check(host, issuer, realm, username):
     if f"client_id={TACPLUS_CLIENT}" not in redirect:
         raise Failure(f"{name}'s Authorize does not name client_id {TACPLUS_CLIENT}")
     got = sign_in_at_idp(browser, redirect, username, secret(f"user/{realm['realm']}/{username}"), base + "/")
+    if refused:
+        status, _, body = browser.request("POST", f"{base}/oauth/Auth/MintCallbackTokens",
+                                          {"code": got["code"], "state": got["state"]})
+        if status == 200:
+            raise Failure(f"{name}/{username}: MintCallbackTokens gave a session to a user no tenant claims")
+        if "accessToken" in body or "access_token" in body:
+            raise Failure(f"{name}/{username}: MintCallbackTokens answered HTTP {status} with a token in its body")
+        print(f"ok   tacplus {host} {name}/{username}: no tenant claims this user, and no session is given (HTTP {status})")
+        return
     minted = browser.json("POST", f"{base}/oauth/Auth/MintCallbackTokens", {"code": got["code"], "state": got["state"]})
     access = minted.get("accessToken") or minted.get("access_token")
     if not access or not (minted.get("refreshToken") or minted.get("refresh_token")):
@@ -563,6 +579,8 @@ def main(argv):
             claims_check(args[0].rstrip("/"), load(args[1]), args[2])
         elif cmd == "tacplus" and len(args) == 4:
             tacplus_check(args[0], args[1].rstrip("/"), load(args[2]), args[3])
+        elif cmd == "tacplus-refused" and len(args) == 4:
+            tacplus_check(args[0], args[1].rstrip("/"), load(args[2]), args[3], refused=True)
         elif cmd == "remove" and len(args) == 3:
             remove(args[0].rstrip("/"), load(args[1]), args[2])
         elif cmd == "refused" and len(args) == 3:

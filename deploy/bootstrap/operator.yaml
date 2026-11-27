@@ -39,7 +39,11 @@ topology:
     kmaker_nodes: 1
     oauth_nodes: 1
     opa_nodes: 1
-    stratum_nodes: 3 # the durability floor: a node restoring from peers needs two durable copies besides itself
+    # No stratum for now (Jody, 2026-11-27: "deployed without the record store"): stratum 0.1 runs only as a
+    # tenant's ("not a tenant's Stratum identity … /system/services/stratum"), and the operator this fleet can pin
+    # renders one for the platform. It comes back per tenant with #3 (tacplus-dev/operator#2, stratum#26,
+    # kernel#34); 3 members then: a node restoring from peers needs two durable copies besides itself.
+    stratum_nodes: 0
     app_services:
         # llmproxy is an app service to the operator (the library knows the
         # kernel-side platform set; everything else is named here).
