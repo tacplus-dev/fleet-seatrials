@@ -325,8 +325,9 @@ diff:
 # after a newer one, ci/releases.sh guard refuses a set older than the one
 # deployed, service by service, and once applied, ci/releases.sh record makes
 # this set the deployed one (#82).
-# deploy/unattachable-volumes.sh then gives a new volume to a pod that never started because its disk type is one
-# its node cannot attach (a claim made before the cluster's default StorageClass was Hyperdisk).
+# deploy/unattachable-volumes.sh, before and after it, gives a new volume to a pod that never started because its
+# disk type is one its node cannot attach, or because its claim was never provisioned: before, so that the release
+# can put a claim of another size in the place of one that never bound; after, for a StatefulSet's.
 apply:
   stage: apply
   needs: [tools, cert, diff]
@@ -338,6 +339,7 @@ apply:
       ci/releases.sh guard
       deploy/diff.sh
       deploy/secrets.sh
+      deploy/unattachable-volumes.sh
       deploy/apply.sh
       ci/releases.sh record
       deploy/unattachable-volumes.sh
