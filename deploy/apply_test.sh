@@ -97,8 +97,11 @@ case "$*" in
       jq -n --arg r "$(base64 -w0 < "$STUB_STATE")" --arg o "$(base64 -w0 < "$STUB_STATE.old")" \
         '{items: [{metadata: {labels: {version: "10"}}, data: {release: $r}}, {metadata: {labels: {version: "9"}}, data: {release: $o}}]}'
     else echo '{"items": []}'; fi ;;
+  "get secret -n tac-seatrials -l owner=helm,name=schematic -o json")
+    echo '{"items": [{"metadata": {"labels": {"version": "3", "status": "pending-upgrade"}, "creationTimestamp": "2026-11-27T11:01:00Z"}}]}' ;;
   "logs -n tac-seatrials deployment/schematic-operator "*) echo "waiting for tenant namespace tac-seatrials-741kqltx"
     echo '{"level":"warn","msg":"IdentityManager: initial token exchange failed, retrying","attempt":7}'
+    echo '{"level":"warn","msg":"ServiceManager init: identity not ready, retrying"}'
     echo '{"level":"warn","msg":"auto-upgrade: failed to get registry creds"}' ;;
   "get pods -n tac-seatrials") ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
@@ -176,8 +179,10 @@ applysh "fails when the operator applies another render" refused "$work/render.y
 applysh "fails when the operator never applies" refused "$work/render.yaml" RENDER_DIGEST="$want" &&
   { [[ "$out" == *"has not applied render $want"*"not deployed"* ]] && ok "it says the release is not deployed" ||
       fail "never applied: [$out]"; }
-[[ "$out" == *"operator| waiting for tenant namespace"* && "$out" != *"token exchange failed"* && "$out" != *"registry creds"* ]] &&
+[[ "$out" == *"operator| waiting for tenant namespace"* && "$out" != *"token exchange failed"* && "$out" != *"identity not ready"* && "$out" != *"registry creds"* ]] &&
   ok "the operator's log is shown without the lines it repeats while it waits" || fail "the log's repeated lines: [$out]"
+[[ "$out" == *"release schematic: revision 3 pending-upgrade 2026-11-27T11:01:00Z"* ]] &&
+  ok "it lists the release's revisions with their status" || fail "the release's revisions: [$out]"
 applysh "an older revision of this render is not this apply" refused "$work/render.yaml" RENDER_DIGEST="$want" \
   STUB_APPLIED="$work/other.yaml" STUB_OLDER="$work/render.yaml"
 cp "$tree/deploy/bootstrap/operator.yaml" "$work/operator.yaml.keep"

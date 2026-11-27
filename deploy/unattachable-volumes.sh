@@ -28,16 +28,20 @@ want_ctx=gke_${GCP_PROJECT:-tacplus-dev}_${ZONE:-us-central1-a}_${CLUSTER:-dev}
 ns=$("$here/deploy/namespaces.sh" platform)
 
 # The pods whose disk type their node cannot attach.
-unattachable=$(kubectl get events -n "$ns" --field-selector reason=FailedAttachVolume -o json |
-  jq -r '[.items[] | select(.involvedObject.kind == "Pod" and ((.message // "") | test("disk type cannot be used by")))
-          | .involvedObject.name] | unique | .[]')
+# An event outlives what it is about, and a pod or claim made again has its name: each is matched by uid, so that what
+# this step made again a pipeline ago is not deleted for its predecessor's refusal.
+attach=$(kubectl get events -n "$ns" --field-selector reason=FailedAttachVolume -o json |
+  jq -c '[.items[] | select(.involvedObject.kind == "Pod" and ((.message // "") | test("disk type cannot be used by")))
+          | .involvedObject.uid] | unique')
+unattachable=$(kubectl get pods -n "$ns" -o json |
+  jq -r --argjson uids "$attach" '.items[] | select(.metadata.uid | IN($uids[])) | .metadata.name')
 # The pods that mount a claim never provisioned: still Pending, and refused by the provisioner.
 refused=$(kubectl get events -n "$ns" --field-selector reason=ProvisioningFailed -o json |
-  jq -c '[.items[] | select(.involvedObject.kind == "PersistentVolumeClaim") | .involvedObject.name] | unique')
+  jq -c '[.items[] | select(.involvedObject.kind == "PersistentVolumeClaim") | .involvedObject.uid] | unique')
 unprovisioned=""
 if [ "$refused" != "[]" ]; then
   pending=$(kubectl get persistentvolumeclaims -n "$ns" -o json |
-    jq -c --argjson refused "$refused" '[.items[] | select(.status.phase == "Pending") | .metadata.name | select(IN($refused[]))]')
+    jq -c --argjson refused "$refused" '[.items[] | select(.status.phase == "Pending" and (.metadata.uid | IN($refused[]))) | .metadata.name]')
   if [ "$pending" != "[]" ]; then
     unprovisioned=$(kubectl get pods -n "$ns" -o json |
       jq -r --argjson claims "$pending" '.items[]

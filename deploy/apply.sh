@@ -88,11 +88,16 @@ while :; do
   if [ $((SECONDS - start)) -ge "$timeout" ]; then
     echo "the operator has not applied render $RENDER_DIGEST in ${timeout}s: release schematic is" \
       "${seen:+render ${seen% *} (revision ${seen##* })}${seen:-not deployed}" >&2
-    # Its last 80 lines but the two it repeats while it waits (for kernel, for a registry secret this fleet has
-    # none of): on 2026-11-27 they were all a tail of 80 held, and what its reconcile said was not shown.
-    kubectl logs -n "$ns" deployment/schematic-operator --tail=3000 2>&1 |
-      { grep -v -E 'initial token exchange failed, retrying|auto-upgrade: failed to get registry creds' || true; } |
-      tail -80 | sed 's/^/operator| /' >&2
+    # What the operator's release holds (each revision's status: one left pending stops every upgrade), then its
+    # log's first 40 and last 60 lines but those it repeats while it waits (for kernel's identity, for a registry
+    # secret this fleet has none of): on 2026-11-27 a plain tail held nothing else, and what its reconcile said
+    # (or that it said nothing) was not shown.
+    kubectl get secret -n "$ns" -l owner=helm,name=schematic -o json 2>&1 |
+      jq -r '.items[] | "release schematic: revision \(.metadata.labels.version) \(.metadata.labels.status) \(.metadata.creationTimestamp)"' >&2 || true
+    kubectl logs -n "$ns" deployment/schematic-operator --tail=5000 2>&1 |
+      { grep -v -E 'IdentityManager|ServiceManager init|auto-upgrade: failed to get registry creds' || true; } > "$tmp/operator.log"
+    { head -40 "$tmp/operator.log"; [ "$(wc -l < "$tmp/operator.log")" -le 100 ] || echo "…"; tail -n +41 "$tmp/operator.log" | tail -60; } |
+      sed 's/^/operator| /' >&2
     exit 1
   fi
   sleep "$interval"

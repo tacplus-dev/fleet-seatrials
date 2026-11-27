@@ -33,7 +33,7 @@ failures=0
 ok() { echo "ok   $*"; }
 fail() { echo "FAIL $*"; failures=$((failures + 1)); }
 event() { # POD MESSAGE
-  jq -n --arg p "$1" --arg m "$2" '{reason: "FailedAttachVolume", message: $m, involvedObject: {kind: "Pod", name: $p}}'
+  jq -n --arg p "$1" --arg m "$2" '{reason: "FailedAttachVolume", message: $m, involvedObject: {kind: "Pod", name: $p, uid: ("uid-" + $p)}}'
 }
 cannot='AttachVolume.Attach failed for volume "pvc-1" : rpc error: code = InvalidArgument desc = Failed to Attach: failed cloud service attach disk call: googleapi: Error 400: pd-balanced disk type cannot be used by c4a-standard-2 machine type., badRequest'
 # kernel-0 never started (its init container waits); stratum-0 has run before; eventbus0-x is gone since.
@@ -48,17 +48,17 @@ jq -n '{status: {phase: "Pending", containerStatuses: []}, spec: {volumes: [{nam
 echo '{"items": []}' > "$work/none.json"
 # Claims: kernel's and stratum's bound (to disks their nodes cannot attach), other-0's bound; eventbus's and
 # gateway's Pending. The provisioner refused eventbus's (below the disk type's minimum size); gateway's is only new.
-for p in kernel-0 stratum-0 other-0; do jq --arg n "$p" '.metadata.name = $n' "$work/pods/$p" > "$work/pods/$p.new" && mv "$work/pods/$p.new" "$work/pods/$p"; done
-jq -n '{metadata: {name: "eventbus0-y"}, status: {phase: "Pending", containerStatuses: []},
+for p in kernel-0 stratum-0 other-0; do jq --arg n "$p" '.metadata = {name: $n, uid: ("uid-" + $n)}' "$work/pods/$p" > "$work/pods/$p.new" && mv "$work/pods/$p.new" "$work/pods/$p"; done
+jq -n '{metadata: {name: "eventbus0-y", uid: "uid-eventbus0-y"}, status: {phase: "Pending", containerStatuses: []},
         spec: {volumes: [{name: "data", persistentVolumeClaim: {claimName: "eventbus0-data"}}]}}' > "$work/pods/eventbus0-y"
-jq -n '{metadata: {name: "gateway0-z"}, status: {phase: "Pending", containerStatuses: []},
+jq -n '{metadata: {name: "gateway0-z", uid: "uid-gateway0-z"}, status: {phase: "Pending", containerStatuses: []},
         spec: {volumes: [{name: "data", persistentVolumeClaim: {claimName: "gateway0-data"}}]}}' > "$work/pods/gateway0-z"
-jq -n '{items: [{metadata: {name: "data-kernel-0"}, status: {phase: "Bound"}}, {metadata: {name: "data-stratum-0"}, status: {phase: "Bound"}},
-                {metadata: {name: "data-other-0"}, status: {phase: "Bound"}},
-                {metadata: {name: "eventbus0-data"}, status: {phase: "Pending"}}, {metadata: {name: "gateway0-data"}, status: {phase: "Pending"}}]}' > "$work/claims.json"
+jq -n '{items: [{metadata: {name: "data-kernel-0", uid: "uid-data-kernel-0"}, status: {phase: "Bound"}}, {metadata: {name: "data-stratum-0", uid: "uid-data-stratum-0"}, status: {phase: "Bound"}},
+                {metadata: {name: "data-other-0", uid: "uid-data-other-0"}, status: {phase: "Bound"}},
+                {metadata: {name: "eventbus0-data", uid: "uid-eventbus0-data"}, status: {phase: "Pending"}}, {metadata: {name: "gateway0-data", uid: "uid-gateway0-data"}, status: {phase: "Pending"}}]}' > "$work/claims.json"
 jq -n '{items: [{reason: "ProvisioningFailed", message: "failed to provision volume with StorageClass \"hyperdisk-balanced\": rpc error: code = InvalidArgument desc = disk size 2 GiB is below the minimum",
-                 involvedObject: {kind: "PersistentVolumeClaim", name: "eventbus0-data"}},
-                {reason: "ProvisioningFailed", message: "an old refusal", involvedObject: {kind: "PersistentVolumeClaim", name: "data-other-0"}}]}' > "$work/claim-events.json"
+                 involvedObject: {kind: "PersistentVolumeClaim", name: "eventbus0-data", uid: "uid-eventbus0-data"}},
+                {reason: "ProvisioningFailed", message: "an old refusal", involvedObject: {kind: "PersistentVolumeClaim", name: "data-other-0", uid: "uid-data-other-0"}}]}' > "$work/claim-events.json"
 
 # run EVENTS [VAR=VALUE...]: the script's output in $out, its exit in $rc, kubectl's calls in $work/log.
 run() {
@@ -75,7 +75,7 @@ run "$work/events.json"
 [[ "$out" == *"kernel-0 has never started: its claim data-kernel-0 is on a disk type its node cannot attach"* ]] &&
   ok "it says which claim and why" || fail "the reason: [$out]"
 [[ "$out" == *"stratum-0 has run: its volume is left as it is"* ]] && ok "a pod that has run is left, saying so" || fail "a pod that has run: [$out]"
-[[ "$out" == *"eventbus0-x is gone since"* ]] && ok "a pod gone since is skipped" || fail "a pod gone: [$out]"
+! grep -q 'eventbus0-x' "$work/log" && ok "a pod gone since is not looked for" || fail "a pod gone: $(cat "$work/log")"
 ! grep -q 'other-0' "$work/log" && ok "another attach failure is not this one" || fail "another attach failure: $(cat "$work/log")"
 # A claim never provisioned: still Pending, and refused by the provisioner. A claim that is only new (Pending, no
 # refusal) and a bound claim with an old refusal are left.
@@ -88,6 +88,13 @@ run "$work/none.json" STUB_CLAIM_EVENTS="$work/claim-events.json"
 run "$work/events.json" STUB_CLAIM_EVENTS="$work/claim-events.json"
 [ "$rc" = 0 ] && [ "$(deleted)" = "delete persistentvolumeclaim eventbus0-data;delete pod eventbus0-y;delete persistentvolumeclaim data-kernel-0;delete pod kernel-0;" ] &&
   ok "both kinds in one run" || fail "both kinds: [$(deleted)] rc=$rc out=[$out]"
+# What this step made again has its predecessor's name, and the predecessor's events are still there: a claim and a
+# pod with another uid than the events name are left.
+jq '.items |= map(.involvedObject.uid = "uid-of-the-one-before")' "$work/events.json" > "$work/events-before.json"
+jq '.items |= map(.involvedObject.uid = "uid-of-the-one-before")' "$work/claim-events.json" > "$work/claim-events-before.json"
+run "$work/events-before.json" STUB_CLAIM_EVENTS="$work/claim-events-before.json"
+[ "$rc" = 0 ] && [ -z "$(deleted)" ] && ok "a pod and a claim made again are not deleted for their predecessors' events" ||
+  fail "predecessors' events: rc=$rc [$(deleted)] [$out]"
 run "$work/none.json"
 [ "$rc" = 0 ] && [ -z "$(deleted)" ] && [[ "$out" == *"none in $platform that cannot be had"* ]] &&
   ok "with no such event nothing is deleted" || fail "no event: rc=$rc [$(deleted)] [$out]"
