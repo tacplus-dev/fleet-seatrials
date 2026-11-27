@@ -5,6 +5,17 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **Drop coop.yaml's `pigeons_namespace` with the move to the operator that renders `pigeons_namespaces`**
+  (2026-11-27, #83; tacplus-dev/operator#47, tacplus-dev/coop#17): in one change, remove `pigeons_namespace:
+  schematic-pigeons` (and its comment; the header's `<fleet>-pigeons` too) from `services/coop.yaml`, move coop to
+  `"0.2"` (v0.2.0, released 2026-11-26; an older coop refuses the key) and relock, move `operator_commit` to the
+  release carrying operator#47, regenerate `services/kernel.yaml`, and check in `ci/target_test.sh` that the
+  rendered coop config maps `/tenants/alpha` and `/tenants/beta` to their `tac-seatrials-<tid>`. Why: that
+  operator fills the map from the tenants it grants the pigeons Role to and refuses a coop.yaml naming a namespace
+  beside a deployment; `schematic-pigeons` is a namespace nothing creates, so pigeon runs cannot work until then.
+  Blocked on operator#47's release and on the operator move past v0.1.0, which waits on stratum#26's release (above).
+  Open (design on #83): order (with the move, or the line now); waiting for stratum or an operator v0.1.x backport;
+  the map's key form (tenant names or tids, operator#47's question 1); fixing `fleet.yaml`'s stale "MODE_MOCK here".
 - **Build the fleet's gateway with `tacplus fleet gateway`** (2026-11-24, #73; tacplus-dev/tacplus#195): pin gateway
   `"0.3"` (v0.3.0, released 2026-11-23; it serves `/-/apps/<service>/` and `/-/apps.json`), move to tacplus 2.7 (the
   pins, the CI image, `build.lock`), add `fleet.yaml`'s `launcher:` and re-lock, then build the gateway image from the
