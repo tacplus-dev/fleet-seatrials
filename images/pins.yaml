@@ -5,7 +5,7 @@
 # and were never provisioned). Not release/0.1's head yet: its generate refuses this fleet's configs (the consumers'
 # protos), which is its own issue.
 tacplus_commit: ef62327e2664a796543445b91829e3658dbdd448
-operator_commit: 370c7027d1140fe76a9a4357e864759f55e8e120
+operator_commit: e89c0d3c68638fa214cb9e77af7c70b205da1bd8
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708
 # The image of the operator chart's extract-config init container, which unpacks
 # the config bundle (deploy/apply.sh, #76): the chart says busybox:latest, and
