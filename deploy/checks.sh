@@ -32,7 +32,7 @@ good() { echo "ok   $*"; }
 # Ready for an hour, and the pipeline said only their names): its conditions and containers' states from the
 # pods already read, then its last events and its log's end, as far as the deploy account may read them.
 pods_why() { # PODS-JSON
-  local name restarts
+  local name restarts log
   while read -r name restarts; do
     [ -n "$name" ] || continue
     echo "       --- $name"
@@ -49,8 +49,13 @@ pods_why() { # PODS-JSON
     kubectl get events -n "$namespace" --field-selector "involvedObject.name=$name" -o json 2>/dev/null |
       jq -r '[.items[] | select(.type != "Normal")] | sort_by(.lastTimestamp // .eventTime // "") | .[-3:][]
         | "         event \(.reason): \(.message // "")"[0:400]' 2>/dev/null || true
+    # The log of the run that ended, or, when that gives nothing (a container that has not run twice makes
+    # --previous fail for the whole pod: stratum, 2026-11-27, crash-looped for a day with no line shown), the
+    # log of the run that is. Lines to 600: a refusal's reason is at the end of a long one.
     if [ "$restarts" -gt 0 ]; then
-      kubectl logs -n "$namespace" "$name" --all-containers --previous --tail=12 2>/dev/null | cut -c1-300 | sed 's/^/         log| /' || true
+      log=$(kubectl logs -n "$namespace" "$name" --all-containers --previous --tail=12 2>/dev/null || true)
+      [ -n "$log" ] || log=$(kubectl logs -n "$namespace" "$name" --all-containers --tail=12 2>/dev/null || true)
+      [ -z "$log" ] || cut -c1-600 <<<"$log" | sed 's/^/         log| /'
     fi
   done < <(jq -r '.items[] | select(.status.phase != "Succeeded")
     | select([.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length == 0)

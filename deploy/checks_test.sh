@@ -26,7 +26,9 @@ case "\$*" in
   "get pods -n $platform -o json") cat "\$STUB_PODS" ;;
   "get events -n $platform --field-selector involvedObject.name=gateway0-b -o json")
     echo '{"items":[{"type":"Warning","reason":"FailedMount","message":"MountVolume.SetUp failed for volume \"tls\": secret \"gateway-tls\" not found","lastTimestamp":"2026-11-26T23:00:00Z"},{"type":"Normal","reason":"Pulled","message":"pulled"}]}' ;;
-  "logs -n $platform gateway0-b --all-containers --previous --tail=12") echo "gateway: no certificate at /tls/tls.crt" ;;
+  "logs -n $platform gateway0-b --all-containers --previous --tail=12")
+    [ -n "\${STUB_NO_PREVIOUS:-}" ] && exit 1; echo "gateway: no certificate at /tls/tls.crt" ;;
+  "logs -n $platform gateway0-b --all-containers --tail=12") echo "gateway: the run that is" ;;
   *) echo "unexpected kubectl \$*" >&2; exit 3 ;;
 esac
 EOF
@@ -137,6 +139,7 @@ run "pods: a pod not Ready says its container's state and restarts" fail \
   "gateway: waiting, CrashLoopBackOff: back-off 5m0s restarting failed container, 13 restarts, the last ended Error (exit 1)" pods -- STUB_PODS="$work/pods-bad.json"
 run "pods: and its last warning event" fail 'event FailedMount: MountVolume.SetUp failed for volume "tls": secret "gateway-tls" not found' pods -- STUB_PODS="$work/pods-bad.json"
 run "pods: and its last log lines" fail "log| gateway: no certificate at /tls/tls.crt" pods -- STUB_PODS="$work/pods-bad.json"
+run "pods: the running log when the ended run's cannot be had" fail "log| gateway: the run that is" pods -- STUB_PODS="$work/pods-bad.json" STUB_NO_PREVIOUS=1
 run "pods: none at all" fail "none in $platform" pods -- STUB_PODS="$work/pods-none.json"
 run "cert: verifies, not expiring" pass "subject=CN=seatrials.tacplus.dev" cert
 run "cert: expiring" fail "expires within 14 days" cert -- STUB_EXPIRING=1
