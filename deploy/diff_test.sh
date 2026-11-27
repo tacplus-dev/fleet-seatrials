@@ -116,6 +116,13 @@ case "$*" in
     if grep -q 'namespace: tac-seatrials-' "$3"; then
       echo 'Error from server (Forbidden): networkpolicies.networking.k8s.io "platform-ingress" is forbidden' >&2; exit 2
     fi
+    # A StatefulSet named STUB_FORBIDDEN_SET in the file: the API refuses its dry run, as it does a changed
+    # volumeClaimTemplates; a file without it is diffed.
+    if [ -n "${STUB_FORBIDDEN_SET:-}" ] && grep -q "^  name: $STUB_FORBIDDEN_SET\$" "$3" && grep -q '^kind: StatefulSet$' "$3"; then
+      echo "The StatefulSet \"$STUB_FORBIDDEN_SET\" is invalid: spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'revisionHistoryLimit', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden" >&2
+      [ -z "${STUB_ALSO_FAILS:-}" ] || echo 'Error from server (Forbidden): secrets is forbidden' >&2
+      exit 2
+    fi
     [ -n "${STUB_DIFF_STATUS:-}" ] && exit "$STUB_DIFF_STATUS"
     "$KUBECTL_EXTERNAL_DIFF" "$STUB_FIXTURE/LIVE" "$STUB_FIXTURE/MERGED" ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
@@ -157,6 +164,16 @@ diffsh "another service's change passes" pass kernel "$work/with-le.yaml"
 diffsh "a change to letsencrypt passes: the guard is retired (#35)" pass deploy "$work/with-le.yaml"
 diffsh "a render without letsencrypt, while it runs, passes: its retirement (#35)" pass removed "$work/without-le.yaml"
 diffsh "kubectl diff failing fails" fail same "$work/with-le.yaml" STUB_DIFF_STATUS=2
+# A StatefulSet whose change Kubernetes forbids patching: named as a change, the rest diffed without it; any
+# other failure beside it still fails.
+{ cat "$work/with-le.yaml"; printf -- '---\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: kernel\n  namespace: schematic\nspec:\n  serviceName: kernel\n'; } > "$work/with-set.yaml"
+out=$(env PATH="$work/bin:$PATH" OPERATOR="$work/bin/schematic-operator" STUB_FIXTURE="$work/same" STUB_DIFFED="$work/diffed-set" \
+  STUB_MANIFEST="$work/with-set.yaml" STUB_FORBIDDEN_SET=kernel "$work/dtree/deploy/diff.sh" 2>&1); status=$?
+[ "$status" -eq 0 ] && [[ "$out" == *"changed: StatefulSet kernel: fields Kubernetes forbids patching"* ]] &&
+  [ "$(grep -c '^--- kubectl diff$' "$work/diffed-set")" -eq 2 ] && [ "$(grep -c '^kind: StatefulSet$' "$work/diffed-set")" -eq 1 ] &&
+  ok "diff.sh a StatefulSet Kubernetes will not patch is named as a change, and the rest is diffed without it" ||
+  fail "diff.sh forbidden StatefulSet: status $status; out=[$out]; diffed $(grep -c . "$work/diffed-set" 2>/dev/null) lines"
+diffsh "a forbidden StatefulSet beside another failure still fails" fail same "$work/with-set.yaml" STUB_FORBIDDEN_SET=kernel STUB_ALSO_FAILS=1
 diffsh "another kube context is refused" fail same "$work/with-le.yaml" STUB_CONTEXT=gke_prod
 diffsh "the old cluster (jody1's seatrials) is refused" fail same "$work/with-le.yaml" \
   STUB_CONTEXT=gke_old-project_us-central1-a_seatrials

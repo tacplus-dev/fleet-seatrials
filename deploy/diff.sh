@@ -60,7 +60,25 @@ if [ "$(yq ea '[select(.kind != null)] | length' "$tmp/platform.yaml")" -eq 0 ];
 fi
 
 status=0
-KUBECTL_EXTERNAL_DIFF="$here/deploy/diff-names.sh" kubectl diff -f "$tmp/platform.yaml" || status=$?
+KUBECTL_EXTERNAL_DIFF="$here/deploy/diff-names.sh" kubectl diff -f "$tmp/platform.yaml" 2> "$tmp/diff.err" || status=$?
+# A StatefulSet whose change Kubernetes forbids patching (a volumeClaimTemplates size, say) cannot be diffed: the
+# API refuses the dry run itself. The operator applies such a change by replacing the StatefulSet and keeping its
+# pods and claims (its reconciler, before Helm). So it is named as a change, and the rest is diffed without it
+# (deploy pipeline 3122546919: kernel's volume went from 2Gi to 4Gi, and this diff ended the deploy).
+forbidden='^The StatefulSet "\([^"]*\)" is invalid: spec: Forbidden: updates to statefulset spec for fields other than .*'
+if [ "$status" -gt 1 ] && grep -q "$forbidden" "$tmp/diff.err" && ! grep -v "$forbidden" "$tmp/diff.err" | grep -q .; then
+  export FORBIDDEN_SETS
+  FORBIDDEN_SETS=$(sed -n "s/$forbidden/\\1/p" "$tmp/diff.err" | sort -u | tr '\n' ' ')
+  for s in $FORBIDDEN_SETS; do
+    echo "changed: StatefulSet $s: fields Kubernetes forbids patching (a volume's size, say); the operator replaces the StatefulSet, keeping its pods and claims"
+  done
+  yq "select((.kind == \"StatefulSet\" and (.metadata.name as \$n | strenv(FORBIDDEN_SETS) | split(\" \") | any_c(. == \$n))) | not)" \
+    "$tmp/platform.yaml" > "$tmp/rest.yaml"
+  status=0
+  KUBECTL_EXTERNAL_DIFF="$here/deploy/diff-names.sh" kubectl diff -f "$tmp/rest.yaml" 2> "$tmp/diff.err" || status=$?
+  [ "$status" -gt 1 ] || status=1
+fi
+[ ! -s "$tmp/diff.err" ] || cat "$tmp/diff.err" >&2
 case "$status" in
   0) echo "no difference: the render matches the cluster" ;;
   1) ;;
