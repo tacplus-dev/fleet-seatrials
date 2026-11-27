@@ -97,6 +97,11 @@ namespace := "/tenants/alpha" if {
 	input.claims["email_domain"] == "$1"
 }
 
+namespace := "/tenants/alpha" if {
+	input.claims.provider_iss == "https://idp.test.tacplus.dev:8443/realms/google"
+	input.claims["email_domain"] == "alpha.test"
+}
+
 namespace := "/tenants/beta" if {
 	input.claims.provider_iss == "https://login.microsoftonline.com/common/v2.0"
 	input.claims["tid"] == "ec3604c3-01c7-4537-aa2b-c39874000664"
@@ -163,6 +168,7 @@ mkdir -p "$work/http5"; cp -a "$h/." "$work/http5/"
 echo '{"redirectUrl":"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=other&state=s"}' > "$work/http5/oauth_Auth_Authorize-1"
 run "signin: a provider with another client id" fail "Microsoft's Authorize does not send" signin -- STUB_HTTP="$work/http5"
 run "opa: the policy as text" pass "email_domain=thescottsweb.com -> /tenants/alpha" opa "$work/configs-text"
+run "opa: the test IdP's Google-like realm's domain claimed by alpha" pass "email_domain=alpha.test -> /tenants/alpha" opa "$work/configs-text"
 run "opa: the policy as base64" pass "tid=ec3604c3-01c7-4537-aa2b-c39874000664 -> /tenants/beta" opa "$work/configs-b64"
 run "opa: another claim value routes nowhere" pass "email_domain=other-thescottsweb.com -> no tenant" opa "$work/configs-text"
 run "opa: a policy routing the wrong domain" fail "want /tenants/alpha" opa "$work/configs-wrong"
