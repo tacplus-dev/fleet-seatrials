@@ -1,5 +1,8 @@
 # alpha's OAuth slice (oauth.OAuthTenantConfig). A Google sign-in with a
-# verified thescottsweb.com email is an org proof for /tenants/alpha; any other
+# verified thescottsweb.com email is an org proof for /tenants/alpha, and so is
+# a sign-in with a verified alpha.test email at the test IdP's Google-like realm
+# (#27, test-idp/README.md: ada@alpha.test is alpha.test's Workspace account;
+# with no matcher kernel refused her session, 2026-11-27); any other
 # sign-in is a personal proof. oauth mints email_domain only from a verified
 # email. The operator renders this into the OPA routing policy
 # (tenants/namespace.rego).
@@ -7,3 +10,6 @@ claim_matchers:
   - provider_issuer_url: https://accounts.google.com
     claim_key: email_domain
     claim_value: thescottsweb.com
+  - provider_issuer_url: https://idp.test.tacplus.dev:8443/realms/google
+    claim_key: email_domain
+    claim_value: alpha.test

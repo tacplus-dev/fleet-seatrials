@@ -250,23 +250,95 @@ def b64url(data):
 SHA256_DIGEST_INFO = bytes.fromhex("3031300d060960864801650304020105000420")
 
 
+# ---- Ed25519 (RFC 8032), verification only ---------------------------------
+ED_P = 2**255 - 19
+ED_L = 2**252 + 27742317777372353535851937790883648493
+ED_D = -121665 * pow(121666, ED_P - 2, ED_P) % ED_P
+ED_I = pow(2, (ED_P - 1) // 4, ED_P)
+
+
+def ed_add(a, b):
+    """The sum of two points in extended coordinates (X, Y, Z, T)."""
+    A, B = (a[1] - a[0]) * (b[1] - b[0]) % ED_P, (a[1] + a[0]) * (b[1] + b[0]) % ED_P
+    C, D = 2 * a[3] * b[3] * ED_D % ED_P, 2 * a[2] * b[2] % ED_P
+    E, F, G, H = B - A, D - C, D + C, B + A
+    return (E * F % ED_P, G * H % ED_P, F * G % ED_P, E * H % ED_P)
+
+
+def ed_mul(n, point):
+    out = (0, 1, 1, 0)
+    while n:
+        if n & 1:
+            out = ed_add(out, point)
+        point = ed_add(point, point)
+        n >>= 1
+    return out
+
+
+def ed_point(data):
+    """The point 32 bytes encode, or None when they encode none."""
+    if len(data) != 32:
+        return None
+    y = int.from_bytes(data, "little")
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    if y >= ED_P:
+        return None
+    x2 = (y * y - 1) * pow(ED_D * y * y + 1, ED_P - 2, ED_P) % ED_P
+    x = pow(x2, (ED_P + 3) // 8, ED_P)
+    if (x * x - x2) % ED_P:
+        x = x * ED_I % ED_P
+    if (x * x - x2) % ED_P or (x == 0 and sign):
+        return None
+    if x & 1 != sign:
+        x = ED_P - x
+    return (x, y, 1, x * y % ED_P)
+
+
+ED_B = ed_point((4 * pow(5, ED_P - 2, ED_P) % ED_P).to_bytes(32, "little"))
+
+
+def ed25519_verifies(public, message, signature):
+    """Whether signature is public's Ed25519 signature of message."""
+    A, R = ed_point(public), ed_point(signature[:32]) if len(signature) == 64 else None
+    if A is None or R is None:
+        return False
+    s = int.from_bytes(signature[32:], "little")
+    if s >= ED_L:
+        return False
+    h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % ED_L
+    left, right = ed_mul(s, ED_B), ed_add(R, ed_mul(h, A))
+    return (left[0] * right[2] - right[0] * left[2]) % ED_P == 0 and (left[1] * right[2] - right[1] * left[2]) % ED_P == 0
+
+
 def verify_jwt(token, jwks):
-    """The claims of an RS256 JWT whose signature verifies with a key of jwks."""
+    """The claims of a JWT whose signature verifies with a key of jwks: RS256, as
+    the realms sign their ID tokens, or EdDSA (Ed25519), as kernel signs its
+    sessions."""
     try:
         header_b64, payload_b64, sig_b64 = token.split(".")
         header = json.loads(b64url(header_b64))
     except ValueError:
         raise Failure("the token is not a JWT") from None
-    if header.get("alg") != "RS256":
-        raise Failure(f"the token is signed {header.get('alg')}, not RS256")
-    keys = [k for k in jwks.get("keys", []) if k.get("kid") == header.get("kid") and k.get("kty") == "RSA"]
+    alg, kid = header.get("alg"), header.get("kid")
+    signed = f"{header_b64}.{payload_b64}".encode()
+    if alg == "EdDSA":
+        keys = [k for k in jwks.get("keys", [])
+                if k.get("kid") == kid and k.get("kty") == "OKP" and k.get("crv") == "Ed25519"]
+        if not keys:
+            raise Failure(f"no Ed25519 key {kid} in the JWKS")
+        if not ed25519_verifies(b64url(keys[0]["x"]), signed, b64url(sig_b64)):
+            raise Failure("the token's signature does not verify")
+        return json.loads(b64url(payload_b64))
+    if alg != "RS256":
+        raise Failure(f"the token is signed {alg}, neither RS256 nor EdDSA")
+    keys = [k for k in jwks.get("keys", []) if k.get("kid") == kid and k.get("kty") == "RSA"]
     if not keys:
-        raise Failure(f"no RSA key {header.get('kid')} in the JWKS")
+        raise Failure(f"no RSA key {kid} in the JWKS")
     n = int.from_bytes(b64url(keys[0]["n"]), "big")
     e = int.from_bytes(b64url(keys[0]["e"]), "big")
     k = (n.bit_length() + 7) // 8
     em = pow(int.from_bytes(b64url(sig_b64), "big"), e, n).to_bytes(k, "big")
-    digest = hashlib.sha256(f"{header_b64}.{payload_b64}".encode()).digest()
+    digest = hashlib.sha256(signed).digest()
     want = b"\x00\x01" + b"\xff" * (k - 3 - len(SHA256_DIGEST_INFO) - len(digest)) + b"\x00" + SHA256_DIGEST_INFO + digest
     if not hmac.compare_digest(em, want):
         raise Failure("the token's signature does not verify")

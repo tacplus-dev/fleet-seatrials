@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests of test-idp/testidp.py that need no Keycloak: the secret derivation,
 the render (secrets in, nothing leaked, the shape hash), the claim shapes, the
-login form and the RS256 check. test-idp/local.sh runs the realms on a real
+login form and the RS256 and EdDSA checks. test-idp/local.sh runs the realms on a real
 Keycloak. Run by test-idp/testidp_test.sh; the realms come as JSON in
 TEST_IDP_REALMS_JSON (a directory), converted from the YAML with yq."""
 
@@ -214,6 +214,27 @@ class Jwt(unittest.TestCase):
             t.verify_jwt(self.sign({"sub": "a"}, kid="k2"), self.jwks)
         with self.assertRaises(t.Failure):
             t.verify_jwt(self.sign({"sub": "a"}, alg="none"), self.jwks)
+
+    # Kernel signs its sessions EdDSA (Ed25519): on seatrials (2026-11-27) the
+    # first kernel session a test user got was refused as "signed EdDSA, not
+    # RS256". A token signed with RFC 8032's first test key, and its public key.
+    ED_TOKEN = ("eyJhbGciOiJFZERTQSIsImtpZCI6ImVkLTEiLCJ0eXAiOiJKV1QifQ"
+                ".eyJpc3MiOiJodHRwczovL3NlYXRyaWFscy50YWNwbHVzLmRldiIsInN1YiI6InUxIn0"
+                ".TSlpYKQw9YOhwXil2FbHgpjoIn-q1af-KcpLM_juzJPOyivrK7qOysvAZQfOoDOjt4vw_PY3NywlXLoRqHzJBg")
+    ED_JWKS = {"keys": [{"kty": "OKP", "crv": "Ed25519", "kid": "ed-1", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}]}
+
+    def test_eddsa_verifies(self):
+        self.assertEqual(t.verify_jwt(self.ED_TOKEN, self.ED_JWKS), {"iss": "https://seatrials.tacplus.dev", "sub": "u1"})
+
+    def test_eddsa_tampered_or_another_key(self):
+        head, _, sig = self.ED_TOKEN.split(".")
+        with self.assertRaises(t.Failure):
+            t.verify_jwt(f"{head}.{b64(json.dumps({'sub': 'u2'}).encode())}.{sig}", self.ED_JWKS)
+        with self.assertRaises(t.Failure):  # RFC 8032's second key under the same kid
+            t.verify_jwt(self.ED_TOKEN, {"keys": [{"kty": "OKP", "crv": "Ed25519", "kid": "ed-1",
+                                                   "x": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"}]})
+        with self.assertRaises(t.Failure):  # no such key
+            t.verify_jwt(self.ED_TOKEN, self.jwks)
 
 
 class Commands(unittest.TestCase):
