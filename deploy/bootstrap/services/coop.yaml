@@ -1,15 +1,13 @@
-# coop: the fleet's one door to pigeons, in MODE_JOBS: one Kubernetes Job per
-# pigeon in the pigeons namespace the operator renders (<fleet>-pigeons), each
-# with an identity kernel mints for the run. The one kind is echo.ping, done
-# by the generic pigeon host (pigeonhost, github.com/tacplus-dev/pigeon): the result is
-# the request. mock_result is what MODE_MOCK would answer with; it is kept so
-# flipping the mode back is one line.
-mode: MODE_JOBS
-# The pigeons namespace of the one-namespace layout, which no longer exists:
-# with a deployment, the operator grants the coop its pigeons Role in each
-# tenant namespace instead, and this one field cannot name them all (#4;
-# tacplus-dev/coop#17, tacplus-dev/operator#47).
-pigeons_namespace: schematic-pigeons
+# coop: the fleet's one door to pigeons, in MODE_MOCK until the fleet can run
+# them as Jobs in its tenants' namespaces (#83: coop 0.2's pigeons_namespaces
+# and tacplus-dev/operator#47, which the operator this fleet can pin does not
+# have yet). In MODE_JOBS coop 0.1 lists the Jobs of the one pigeons_namespace
+# at its start, and there is no such namespace in a deployment: the operator
+# grants its pigeons Role in each tenant namespace, which one field cannot
+# name (2026-11-27: "jobs.batch is forbidden … in the namespace
+# schematic-pigeons", and coop never started). The one kind is echo.ping; its
+# mock_result is what coop answers with.
+mode: MODE_MOCK
 max_live_runs: 32
 max_live_runs_per_tenant: 8
 ready_timeout_ms: 60000

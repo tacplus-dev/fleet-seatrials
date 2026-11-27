@@ -1,11 +1,12 @@
 # The tacplus commit this fleet generates and builds with: v2.6.14, of fleet.yaml's
 # floor 2.6 (#1). ci/tools.sh and images/tacplus-build.cloudbuild.yaml stamp it with
-# the same line. operator_commit is operator v0.1.0 (a17d507) and two changes on it (branch
+# the same line. operator_commit is operator v0.1.0 (a17d507) and three changes on it (branch
 # hub/v0.1.0-volume-minimum): no volume below Hyperdisk Balanced's 4Gi minimum (kernel's and eventbus's were 2Gi
-# and were never provisioned), and a PVC's StorageClass read from the API server (the reconcile hung on it). Not release/0.1's head yet: its generate refuses this fleet's configs (the consumers'
+# and were never provisioned), a PVC's StorageClass read from the API server (the reconcile hung on it), and
+# stratum's grpcconfig.member_port, which its ServiceManager requires (every stratum pod ended on it). Not release/0.1's head yet: its generate refuses this fleet's configs (the consumers'
 # protos), which is its own issue.
 tacplus_commit: ef62327e2664a796543445b91829e3658dbdd448
-operator_commit: e89c0d3c68638fa214cb9e77af7c70b205da1bd8
+operator_commit: d213b893394cd8b038fb25604852f281ddff2e0e
 launcher_commit: c575e147eeb1b5fc7f242a41578831f61bbcf708
 # The image of the operator chart's extract-config init container, which unpacks
 # the config bundle (deploy/apply.sh, #76): the chart says busybox:latest, and
