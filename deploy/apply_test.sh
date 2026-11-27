@@ -97,7 +97,9 @@ case "$*" in
       jq -n --arg r "$(base64 -w0 < "$STUB_STATE")" --arg o "$(base64 -w0 < "$STUB_STATE.old")" \
         '{items: [{metadata: {labels: {version: "10"}}, data: {release: $r}}, {metadata: {labels: {version: "9"}}, data: {release: $o}}]}'
     else echo '{"items": []}'; fi ;;
-  "logs -n tac-seatrials deployment/schematic-operator "*) echo "waiting for tenant namespace tac-seatrials-741kqltx" ;;
+  "logs -n tac-seatrials deployment/schematic-operator "*) echo "waiting for tenant namespace tac-seatrials-741kqltx"
+    echo '{"level":"warn","msg":"IdentityManager: initial token exchange failed, retrying","attempt":7}'
+    echo '{"level":"warn","msg":"auto-upgrade: failed to get registry creds"}' ;;
   "get pods -n tac-seatrials") ;;
   *) echo "unexpected kubectl $*" >&2; exit 3 ;;
 esac
@@ -174,6 +176,8 @@ applysh "fails when the operator applies another render" refused "$work/render.y
 applysh "fails when the operator never applies" refused "$work/render.yaml" RENDER_DIGEST="$want" &&
   { [[ "$out" == *"has not applied render $want"*"not deployed"* ]] && ok "it says the release is not deployed" ||
       fail "never applied: [$out]"; }
+[[ "$out" == *"operator| waiting for tenant namespace"* && "$out" != *"token exchange failed"* && "$out" != *"registry creds"* ]] &&
+  ok "the operator's log is shown without the lines it repeats while it waits" || fail "the log's repeated lines: [$out]"
 applysh "an older revision of this render is not this apply" refused "$work/render.yaml" RENDER_DIGEST="$want" \
   STUB_APPLIED="$work/other.yaml" STUB_OLDER="$work/render.yaml"
 cp "$tree/deploy/bootstrap/operator.yaml" "$work/operator.yaml.keep"
