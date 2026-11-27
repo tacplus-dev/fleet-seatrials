@@ -300,6 +300,8 @@ diff:
 # digest (RENDER_DIGEST, diff's dotenv), with the certificate version cert
 # passed on: deploy/apply.sh installs the operator's chart (cloned from GitHub,
 # hence ci_github), and the operator applies the render (#76).
+# deploy/unattachable-volumes.sh then gives a new volume to a pod that never started because its disk type is one
+# its node cannot attach (a claim made before the cluster's default StorageClass was Hyperdisk).
 apply:
   stage: apply
   needs: [tools, cert, diff]
@@ -311,6 +313,7 @@ apply:
       deploy/diff.sh
       deploy/secrets.sh
       deploy/apply.sh
+      deploy/unattachable-volumes.sh
       ci_test_idp_seeds optional
       ci_google_signin
       deploy/signin-secrets.sh
