@@ -100,7 +100,7 @@ tests:
   # Members and streams.
   - name: members/two-tenants
     what: the member port serves two tenants' members, each seeing its own
-    waits_on: ["#3", "#14"]
+    waits_on: ["#14"]
   - name: streams/end-at-token-expiry
     what: a stream is ended by the server when its token expires
     waits_on: ["#14"]
@@ -108,7 +108,7 @@ tests:
   # Durability.
   - name: redo/durability-levels
     what: each redo durability level keeps what it promises
-    waits_on: ["#3", "#14"]
+    waits_on: ["#14"]
   - name: kernel/restart-keeps-data
     what: records written before a kernel restart read back after it
     waits_on: ["#14"]

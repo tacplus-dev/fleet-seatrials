@@ -15,7 +15,7 @@ What it proves:
 fleet runs with the repo implementing it and its release line (`version: MAJOR.MINOR`, its newest
 patch tag) — the smallest set the fleet build's dependency closure allows. `dependencies.yaml` holds
 the language and tool pins. They are the versions in the manifests tacplus writes for code generated from
-`build/proto`, in the operator build and in each service image. At v2.6.14 these are: every Rust pin, in the
+`build/proto`, in the operator build and in each service image. At v2.6.16 these are: every Rust pin, in the
 generated Cargo workspace; zap and grpc, in a generated Go server module; and the TypeScript and Python
 pins, in a generated package.json or pyproject. tacplus writes no Java versions: a Java pin only switches
 generated code on, as google-cloud-storage switches on stratum's GcsArchiveSink. A service's own
@@ -35,7 +35,9 @@ release workflow lands (tacplus#180's direction is unchanged), and deleting `ima
 the whole fleet to them. To relock (a new patch, a new line), run `tacplus fleet build` with the
 compiler `images/pins.yaml` pins, then rebuild the operator (`deploy/build-operator.sh`) and run
 `generate` against `deploy/bootstrap`, and commit `fleet.lock`, `build/proto` and any rewritten
-`deploy/bootstrap/services/*.yaml`.
+`deploy/bootstrap/services/*.yaml`. `generate` adds the kernel delegates a new render needs but removes none: when a
+service leaves a namespace (redo the restore tenant's, stratum the platform's, #3), delete its old delegate from
+`services/kernel.yaml` by hand (`deploy/stratum-redo_test.sh` checks the committed file is what `generate` writes).
 
 ## Where it runs
 
@@ -74,7 +76,7 @@ The cutover's order and the grants still to come are in
   (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI, and the root
   credential, generated once into Secret Manager), `client-steps.sh` (the tenants, as that root credential), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
   variables and Secret Manager), `google-client.sh` (Google's client, checked with Google), `diff.sh` (what an apply would change, by name), `apply.sh`
-  (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
+  (render and apply), `checks.sh` (the post-deploy checks), `stratum-cutover.md` (the deploy plan for each tenant's Stratum and the `/system` redo, #3), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
 - `ci/` — the deploy and test pipeline, run from the GitLab project tacplus-dev/fleet-seatrials, which holds the
   secrets: [docs/deploy-pipeline.md](docs/deploy-pipeline.md). `ci/checks.sh` runs the script tests and the secrets

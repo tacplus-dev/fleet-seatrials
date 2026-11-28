@@ -733,8 +733,8 @@ items, and `deploy/e2e_test.sh` tests the runner.
 | Tenants: creation, routing by route field, cross-tenant calls refused (users, services) | `tenants/*` | Wait on #14 (the fleet's client), #27, tacplus-dev/tacplus#258 |
 | Each service's public RPCs, through the gateway and S2S | `rpcs/through-gateway`, `rpcs/s2s` | Wait on #14 |
 | Records: Get, InsertIfAbsent, ReplaceIfUnchanged, Apply across maps, Watch resume | `records/*` | Wait on #14 |
-| The member port with two tenants' members; streams ended at token expiry | `members/two-tenants`, `streams/end-at-token-expiry` | Wait on #3 (per-tenant Stratum) and #14 |
-| Redo durability levels; a kernel restart without losing data | `redo/durability-levels`, `kernel/restart-keeps-data` | Wait on #3 and #14 |
+| The member port with two tenants' members; streams ended at token expiry | `members/two-tenants`, `streams/end-at-token-expiry` | Wait on #14 (each tenant's Stratum and redo are rendered since #3) |
+| Redo durability levels; a kernel restart without losing data | `redo/durability-levels`, `kernel/restart-keeps-data` | Wait on #14 |
 | The two-terminal event trace | `trace/two-terminal` | Waits on tacplus-dev/tacplus#265, #14, #27 |
 
 The sign-in items use the test IdP only: there is no Entra test tenant or Google Cloud Identity account (Jody,

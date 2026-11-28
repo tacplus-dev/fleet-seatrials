@@ -15,7 +15,7 @@ steps:
       - build
       - --file=tacplus-build.Dockerfile
       # The stamp ci/tools.sh gives bin/tacplus: the release tacplus_commit is.
-      - --build-arg=TACPLUS_VERSION=v2.6.14-seatrials
+      - --build-arg=TACPLUS_VERSION=v2.6.16-seatrials
       - --build-arg=TACPLUS_COMMIT=${_TACPLUS_COMMIT}
       - --tag=${_REGISTRY}/ci/tacplus-build:fp-${_FINGERPRINT}
       - --tag=${_REGISTRY}/ci/tacplus-build:seatrials

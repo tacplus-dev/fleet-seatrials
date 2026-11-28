@@ -5,6 +5,24 @@ the looper then marks it `promoted` or `declined` here with the date.
 
 ## Open
 - **<title>** (<date>, <issue/run link>): <what and why>
+- **The CI and build image on tacplus 2.6.16** (2026-11-28, #3): #3 moved the compiler to v2.6.16 (`images/pins.yaml`),
+  but `build.lock` and the build image's `BUILD_IMAGE` still pin `build:20261123-ef62327`, tacplus's 2.6 build image
+  of the v2.6.14 era. redo 0.2 and stratum 0.2.5 build on tacplus's `build:2.6.16` image themselves. Moving both pins
+  to a 2.6.16 build image by digest, with its Trivy run, keeps the fleet's toolchains the ones its services are
+  released on. The `images` job's next run is the first check of the current pairing.
+- **Pin the operator charts' `config-select` init image** (2026-11-28, #3): the kernel, redo and each
+  `stratum-<tenant>` StatefulSet the operator renders have a `config-select` init container on `busybox:1.36`,
+  by tag. `deploy/operator-post-render.sh` pins only the chart's `extract-config` init container
+  (`operator_init_image`). Pin this one the same way, or ask the operator to take it from config, and scan it with
+  Trivy. #3 adds three more of these (redo and two tenants' Stratum, plus people's).
+- **`generate` prunes the kernel delegates it no longer renders** (2026-11-28, #3): #3 removed the stale
+  `/tenants/restore` redo delegate and the platform `stratum` delegate from `services/kernel.yaml` by hand, because
+  `generate` adds delegates but never removes them (tacplus-dev/operator's PROPOSALS.md, delegate pruning).
+  `deploy/stratum-redo_test.sh` now fails when the committed file is not what `generate` writes, but only catches
+  an addition. A pruning `generate` removes this by-hand step.
+- **gateway 0.3 and eventbus 0.2** (2026-11-28, #3): `tacplus fleet build --check` reports newer minors of both
+  (gateway 0.3.1, eventbus 0.2.1). #3 didn't move them, since the per-tenant shape doesn't need them. Moving a line
+  is a `fleet.yaml` change of its own, with its relock and the `images` job's build.
 - **Dev rolls to each green main release by digest: the roll itself** (2026-11-26, #82; tacplus-dev/looper#252,
   tacplus-dev/roadmap `decisions/agentic-dev-flow-2026-11-25.md` step 8, item 12, D4). Built so far:
   - The `releases` job (`ci/releases.sh plan`) reads and checks every record, forward only by ancestry, and checks

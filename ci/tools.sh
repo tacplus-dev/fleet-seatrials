@@ -59,7 +59,7 @@ otel_fixes=(go.opentelemetry.io/otel@v1.47.0=h1:j7ALJ/zgkS7Z6aeJW09p8VC9804bC+Pp
 otel_sdk_fixes=(go.opentelemetry.io/otel/sdk@v1.47.0=h1:zWXEr4j2lFefG87TU6Yg8a7ngfohIKFZHKp0Hf5hC6I=
   go.opentelemetry.io/otel/sdk/metric@v1.47.0=h1:lfISg2j93VT6yqdk9OfUaZmw/GfcZqCCV3jdXtsPnKw=)
 websocket_fix=github.com/gorilla/websocket@v1.5.4-0.20250319132907-e064f32e3674=h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=   # GO-2026-6278 (#68), fixed in 1.5.4-0.20240701034025-d67f41855da4; no tag has it
-helm_version=v3.22.1 helm_h1=h1:uo2SouzAxMkKZTNzZ1lLP/c/Bu7xfUJKYDaYMxMHvk8=   # the operator v0.2.1's helm.sh/helm/v3 (a17d507's too)
+helm_version=v3.22.1 helm_h1=h1:uo2SouzAxMkKZTNzZ1lLP/c/Bu7xfUJKYDaYMxMHvk8=   # the pinned operator's helm.sh/helm/v3 (5e8e316's, as v0.2.1's)
 lego_version=v5.7.0 lego_h1=h1:HUi0KoW7SKGD5AXrcZ66IRSW8D0rXZg5Oma8yW0j1dw=
 mkdir -p "$here/bin"
 tmp=$(mktemp -d)
@@ -109,7 +109,7 @@ git clone -q https://github.com/tacplus-dev/tacplus.git "$src" && git -C "$src" 
 pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo
 ( cd "$src" && go generate ./pkg/internal/proto/spec/... \
   && CGO_ENABLED=0 go build -trimpath \
-     -ldflags="-w -s -X $pkg.Version=v2.6.14-seatrials -X $pkg.GitSha=$commit -X $pkg.BuildID=$commit -X $pkg.ProjectPath=tacplus-dev/tacplus" \
+     -ldflags="-w -s -X $pkg.Version=v2.6.16-seatrials -X $pkg.GitSha=$commit -X $pkg.BuildID=$commit -X $pkg.ProjectPath=tacplus-dev/tacplus" \
      -o "$here/bin/tacplus" . )
 rm -rf "$src"
 go_drop

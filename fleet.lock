@@ -3,19 +3,21 @@ tacplus: "2.6"
 images: source
 registries:
     - repo: https://github.com/tacplus-dev/registry.git
-      commit: 4412f6d4c691b309fdc89b3971fdd5d1ec7315b5
+      commit: 2518473e89c7de51a30909a6d4dbe2cf7563f4f8
 services:
     - name: kernel
       id: 8
-      version: 0.1.7
+      version: 0.2.0
       repo: https://github.com/tacplus-dev/kernel.git
-      commit: fa966c95401ec0a829a2848e2dcbec1024281bc5
+      commit: daaf59599371182e87af58e30089f95a659bdd0d
       contract: https://github.com/tacplus-dev/kernel.git
-      contract_commit: fa966c95401ec0a829a2848e2dcbec1024281bc5
+      contract_commit: daaf59599371182e87af58e30089f95a659bdd0d
       depends:
         - opa
         - oauth
-      inputs_digest: 2c3c1830c31812632997ee420fa55a168527e726cd7b02116eab448210c290d7
+        - stratum
+        - eventbus
+      inputs_digest: db8c07373889ac1aa53c395fe841f909544b3c935525e428fdc9a30a3e9a24fa
     - name: opa
       id: 29
       version: 0.3.1
@@ -25,7 +27,7 @@ services:
       contract_commit: ebc9f9fbd75809cf47501152c7dd6cbd36f4f644
       depends:
         - kernel
-      inputs_digest: 2c3c1830c31812632997ee420fa55a168527e726cd7b02116eab448210c290d7
+      inputs_digest: db8c07373889ac1aa53c395fe841f909544b3c935525e428fdc9a30a3e9a24fa
     - name: gateway
       id: 7
       version: 0.2.0
@@ -35,7 +37,7 @@ services:
       contract_commit: 203185181e3c56777ff62591b036ded599fffdd0
       depends:
         - kernel
-      inputs_digest: 2c3c1830c31812632997ee420fa55a168527e726cd7b02116eab448210c290d7
+      inputs_digest: db8c07373889ac1aa53c395fe841f909544b3c935525e428fdc9a30a3e9a24fa
     - name: eventbus
       id: 18
       version: 0.1.4
@@ -45,25 +47,25 @@ services:
       contract_commit: ad8cf67c2e140c2b7f7534531996fff3e80b08fb
       depends:
         - kernel
-      inputs_digest: 2c3c1830c31812632997ee420fa55a168527e726cd7b02116eab448210c290d7
+      inputs_digest: db8c07373889ac1aa53c395fe841f909544b3c935525e428fdc9a30a3e9a24fa
     - name: stratum
       id: 34
-      version: 0.2.4
+      version: 0.2.5
       repo: https://github.com/tacplus-dev/stratum.git
-      commit: 060fa424825e141dd9df036c9ea9c6e06bb5f6a8
+      commit: 1963a641c2052f9680f38e10d0bca9914a635113
       contract: https://github.com/tacplus-dev/stratum.git
-      contract_commit: 060fa424825e141dd9df036c9ea9c6e06bb5f6a8
-      inputs_digest: 2c3c1830c31812632997ee420fa55a168527e726cd7b02116eab448210c290d7
+      contract_commit: 1963a641c2052f9680f38e10d0bca9914a635113
+      inputs_digest: db8c07373889ac1aa53c395fe841f909544b3c935525e428fdc9a30a3e9a24fa
     - name: oauth
       id: 21
-      version: 0.1.10
+      version: 0.1.11
       repo: https://github.com/tacplus-dev/oauth.git
-      commit: 87857dce836670381a08d9496ec03d989f345f4a
+      commit: 01709f102509f09dddfd31b2d0631b75fec8aba3
       contract: https://github.com/tacplus-dev/oauth.git
-      contract_commit: 87857dce836670381a08d9496ec03d989f345f4a
+      contract_commit: 01709f102509f09dddfd31b2d0631b75fec8aba3
       depends:
         - kernel
-      inputs_digest: 5102caccfa4853ff1e74e53a26f67887a0dd85bc747503bcb7f337395f8cdb3d
+      inputs_digest: eba1e43369e8d5a0f9d7866ac3d491707364d12b87b7ca45d4c46cf6eecb5d0c
     - name: kmaker
       id: 49
       version: 0.1.3
@@ -71,43 +73,43 @@ services:
       commit: da605b822bfa292cf4cb17b268a501d6b1254b20
       contract: https://github.com/tacplus-dev/kmaker.git
       contract_commit: da605b822bfa292cf4cb17b268a501d6b1254b20
-      inputs_digest: 0689a1ccf78b88ee4f75f5bff7609a28abe20008247fc11d21edcecb4f1f5e12
+      inputs_digest: 75011a8fca2d79d9019242f21a267b2b3930bffb6f5b60ac872cc0fd048a2e31
     - name: llmproxy
       id: 75
-      version: 0.2.1
+      version: 0.2.2
       repo: https://github.com/tacplus-dev/llmproxy.git
-      commit: fccc853119d701710de05a641c4d8e68c542197f
+      commit: 371201966e226426c4a0a99f00ffd9e8a1d996e0
       contract: https://github.com/tacplus-dev/llmproxy.git
-      contract_commit: fccc853119d701710de05a641c4d8e68c542197f
-      inputs_digest: 76262f48ac0cd9956a88cdece8d1150d84c80394eac70e942780019e86ed13a0
+      contract_commit: 371201966e226426c4a0a99f00ffd9e8a1d996e0
+      inputs_digest: 0c51d6b2e0bf2c489a4531a436d06f0bfff7e41ae266b946ca30ad2fb3a905b0
     - name: doppelganger
       id: 101
-      version: 0.2.3
+      version: 0.2.4
       repo: https://github.com/tacplus-dev/doppelganger.git
-      commit: 632af9865139dc5edeaf838dcee14c57f239e9f0
+      commit: 0ab89acec3b324ba35a0c21b47d06374c68f5d0f
       contract: https://github.com/tacplus-dev/doppelganger.git
-      contract_commit: 632af9865139dc5edeaf838dcee14c57f239e9f0
+      contract_commit: 0ab89acec3b324ba35a0c21b47d06374c68f5d0f
       depends:
         - llmproxy
         - eventbus
         - stratum
-      inputs_digest: 52132460367706441babc37981dc068478f52bbe1dfa2e27f23f56bbbab670e4
+      inputs_digest: 917d8b199f2440fac46255f81a75e4f5d9a6d38248730c26da1c239f1c6f21ce
     - name: tenantecho
       id: 103
-      version: 0.2.4
+      version: 0.2.5
       repo: https://github.com/tacplus-dev/tenantecho.git
-      commit: 1ade8ffdb59b1b895ee34bfaa82bf59cdf034a87
+      commit: a0b6e65e5e802ff39875bd43f9f9b763b039bed4
       contract: https://github.com/tacplus-dev/tenantecho.git
-      contract_commit: 1ade8ffdb59b1b895ee34bfaa82bf59cdf034a87
+      contract_commit: a0b6e65e5e802ff39875bd43f9f9b763b039bed4
       depends:
         - coop
         - eventbus
-      inputs_digest: d2e50b69a8f87dadf79c3c9bc0c7ecdcdb7138c58b1c95feca8f4c666405edee
+      inputs_digest: 1057da8780ce35b628649bcc46174dfbea863cb595f959f3d5bc209ab4df1c2b
       contribute:
         webapp:
             dir: web
             title: Echo
-            tree: 62ff109121eae7a6fa756b855ac7fe1903eaf2bd
+            tree: 92529a8aabd880687a2faf5a93c280e2c59e9a39
             path: /-/apps/tenantecho/
     - name: coop
       id: 106
@@ -120,25 +122,25 @@ services:
         - kernel
         - eventbus
         - stratum
-      inputs_digest: fc4890b42b84f26db750860af26838f675c988500a9843e2a7dd085ec1a4d8e5
+      inputs_digest: 63c977145d14f9b767d4a6e895141b56301284dcb433cd0d2edceabc62ce485d
     - name: pigeonhost
       id: 107
-      version: 0.1.9
+      version: 0.1.10
       repo: https://github.com/tacplus-dev/pigeon.git
-      commit: da013a7dbd56cbd295e1d7d38143d2939dcbc9e6
+      commit: 6aa363b4a850f5b6425dc56dad1307d6c0f4842f
       contract: https://github.com/tacplus-dev/pigeon.git
-      contract_commit: da013a7dbd56cbd295e1d7d38143d2939dcbc9e6
+      contract_commit: 6aa363b4a850f5b6425dc56dad1307d6c0f4842f
       depends:
         - coop
         - eventbus
-      inputs_digest: e74922730d81521071f1153830241a966d10ebb658cf57abe9dd51e7b3ddc0ba
+      inputs_digest: e6bfc417d69b6358db8932d8e7d4f8cbda3de214bfbea0f707043714e3b99606
     - name: redo
       id: 108
-      version: 0.1.8
+      version: 0.2.0
       repo: https://github.com/tacplus-dev/redo.git
-      commit: 15c23950a12b42f0b940f4241f2d30cc471e46ec
+      commit: 9df44883c543ff416cc606e2b38a0ba423fe321a
       contract: https://github.com/tacplus-dev/redo.git
-      contract_commit: 15c23950a12b42f0b940f4241f2d30cc471e46ec
+      contract_commit: 9df44883c543ff416cc606e2b38a0ba423fe321a
       depends:
         - kernel
-      inputs_digest: dd37d2f786d29c47e8c7d5d71379dba7611e0092996a35f9161e3bc668c1c670
+      inputs_digest: 728662e5970074ad12a3ef962a0f8d30facc9c5322ef33e1c14197e7f3f23d6d

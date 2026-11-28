@@ -18,7 +18,7 @@ header: |
 # so naming the whole closure here pins the transitive ones too; a line moved in
 # fleet.yaml moves here with it (ci/client_test.sh).
 depends:
-  - kernel@0.1
+  - kernel@0.2
   - tenantecho@0.2
   - doppelganger@0.2
   - opa@0.3

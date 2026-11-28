@@ -39,11 +39,10 @@ topology:
     kmaker_nodes: 1
     oauth_nodes: 1
     opa_nodes: 1
-    # No stratum for now (Jody, 2026-11-27: "deployed without the record store"): stratum runs only as a
-    # tenant's ("not a tenant's Stratum identity … /system/services/stratum"), and the operator this fleet pins
-    # renders one for the platform. It comes back per tenant with #3 (tacplus-dev/operator#2, stratum#26,
-    # kernel#34); 3 members then: a node restoring from peers needs two durable copies besides itself.
-    stratum_nodes: 0
+    # Each tenant's Stratum, in memory, in its own namespace, restoring from redo (#3; tacplus-dev/roadmap
+    # decisions/stratum-per-tenant-2026-10-25.md): 1 member a tenant on seatrials. redo, its durability, is
+    # one /system instance in tac-seatrials, which the operator always renders (tacplus-dev/operator#57).
+    stratum_members: 1
     app_services:
         # llmproxy is an app service to the operator (the library knows the
         # kernel-side platform set; everything else is named here).

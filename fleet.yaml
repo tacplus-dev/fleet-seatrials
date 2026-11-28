@@ -18,8 +18,9 @@ tacplus: "2.6"
 # publishes one, and deleting this line returns the fleet to them (#1).
 images: source
 services:
+  # kernel: 0.2 seeds each tenant's Stratum (kernel#34).
   - name: kernel
-    version: "0.1"
+    version: "0.2"
     repo: https://github.com/tacplus-dev/kernel.git
   - name: opa
     version: "0.3"
@@ -30,8 +31,9 @@ services:
   - name: eventbus
     version: "0.1"
     repo: https://github.com/tacplus-dev/eventbus.git
-  # stratum: no members run here (operator.yaml's stratum_nodes: 0, until #3); 0.2's
-  # Config has no seed_members, which the operator (v0.2.1) no longer renders (#83).
+  # stratum: each tenant's, in memory, in its own namespace (operator.yaml's
+  # stratum_members), restoring from redo (#3). 0.2.5 calls redo as the /system
+  # service, with no tenant route (stratum#54).
   - name: stratum
     version: "0.2"
     repo: https://github.com/tacplus-dev/stratum.git
@@ -63,8 +65,9 @@ services:
   - name: pigeonhost
     version: "0.1"
     repo: https://github.com/tacplus-dev/pigeon.git
-  # redo: the durability of every tenant's Stratum (stratum appends to it),
-  # in the reserved restore tenant; the operator renders its Config (#3).
+  # redo: the durability of every tenant's Stratum (stratum appends to it), one
+  # /system instance in the platform namespace, not in the restore tenant (#3;
+  # redo#19, operator#57: Jody, 2026-11-07); the operator renders its Config.
   - name: redo
-    version: "0.1"
+    version: "0.2"
     repo: https://github.com/tacplus-dev/redo.git
