@@ -580,11 +580,12 @@ certificate and no account key is carried over.
   matchers but never drops one, so #4 removed the operator's old `schematic/schematic-operator` and the
   platform `doppelganger` delegate of before doppelganger was per tenant, which a service account of that name
   in a namespace `schematic` of the shared cluster could otherwise have used.
-- **Pigeons.** The operator grants the coop its pigeons Role in each tenant namespace and renders no pigeons
-  namespace (cluster-scoped), but coop's contract has one `pigeons_namespace` for every run, and
-  `services/coop.yaml` still names `schematic-pigeons`, which nothing creates. No single value is right for a
-  shared coop, so pigeon runs wait on tacplus-dev/coop#17 and tacplus-dev/operator#47 (each tenant's pigeons in
-  its own namespace); the rest of the render does not.
+- **Pigeons.** The operator grants the coop its pigeons Role in each tenant namespace and renders those
+  namespaces into the coop's `pigeons_namespaces` (coop 0.2, tacplus-dev/coop#17; operator v0.2.1,
+  tacplus-dev/operator#47): `/tenants/alpha` to `tac-seatrials-741kqltx`, `/tenants/beta` to
+  `tac-seatrials-ewqybj38`, so each tenant's pigeons run as Jobs in its own namespace (`MODE_JOBS`).
+  `services/coop.yaml` names no pigeons namespace: beside a deployment `generate` refuses one
+  (`deploy/pigeons-namespaces_test.sh` checks the render and the refusal, #83).
 - **RBAC.** Above: `seatrials-deploy` has its Role in `tac-seatrials` only. So `deploy/checks.sh pods` reads
   the platform namespace's pods, not every namespace's; the tenant namespaces' pods are read by nobody in the
   pipeline yet (PROPOSALS.md).

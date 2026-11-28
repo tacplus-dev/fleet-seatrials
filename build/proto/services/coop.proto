@@ -41,7 +41,8 @@ option (spec.record_read) = {record: "coop.PigeonRun"};
 
 enum Mode {
   MODE_UNSPECIFIED = 0;
-  // JOBS: one Kubernetes Job per pigeon, in pigeons_namespace.
+  // JOBS: one Kubernetes Job per pigeon, in its tenant's pigeons_namespaces
+  // entry (pigeons_namespace while that map is empty).
   MODE_JOBS = 1;
   // MOCK: no Job and no identity; an in-process mock pigeon answers every
   // task on the thread with the kind's mock_result.
@@ -87,13 +88,21 @@ message Config {
   bool paused = 3;
   // paused_tenants does the same for the named tenants (/tenants/<t>).
   repeated string paused_tenants = 4 [(spec.assert_max_size) = 256, (spec.assert_element_max_size) = 512];
-  // pigeons_namespace holds every Job; nothing else runs there.
+  // pigeons_namespace holds every Job while pigeons_namespaces is empty (the
+  // one-namespace layout); it is not used once the map has entries.
   string pigeons_namespace = 5 [(spec.default_string) = "pigeons", (spec.assert_max_size) = 63];
   int32 max_live_runs = 6 [(spec.default_int) = 32, (spec.assert_ge) = 0];
   int32 max_live_runs_per_tenant = 7 [(spec.default_int) = 8, (spec.assert_ge) = 0];
   // ready_timeout_ms: a run the pigeon has not reported Ready on by then ends
   // FAILED.
   int64 ready_timeout_ms = 8 [(spec.default_int) = 60000, (spec.assert_ge) = 0];
+  // pigeons_namespaces maps a tenant (/tenants/<t>, the dog's token namespace,
+  // as paused_tenants names it) to the Kubernetes namespace its pigeons run
+  // in: a shared coop runs each tenant's pigeons in that tenant's own
+  // namespace (the operator renders it, tac-<deployment>-<tid>). Once it has
+  // entries, a tenant with none is refused; nothing falls back to
+  // pigeons_namespace (#17).
+  map<string, string> pigeons_namespaces = 9 [(spec.assert_max_size) = 256];
 }
 
 // ============================================================================
@@ -326,6 +335,10 @@ message LiveRun {
   string job_name = 12;
   // seq is the last PigeonRun transition written.
   int32 seq = 13;
+  // job_namespace is where the run's Job and Secret are, pinned at start so a
+  // config change never moves a live run; empty on a run started before #17,
+  // whose Job is in pigeons_namespace.
+  string job_namespace = 14;
 }
 
 message CoopState {

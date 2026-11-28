@@ -51,6 +51,7 @@ services:
       visibility: public
     - name: stratum
       id: 34
+      tenant_slice_field: 4
       contract: https://github.com/tacplus-dev/stratum.git
       visibility: public
     - name: tenantecho

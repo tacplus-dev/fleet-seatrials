@@ -29,17 +29,6 @@ the looper then marks it `promoted` or `declined` here with the date.
     fails red.
   - **Compiler.** The fleet's own compiler (`images/pins.yaml`) could follow tacplus's main release instead of
     v2.6.14.
-- **Drop coop.yaml's `pigeons_namespace` with the move to the operator that renders `pigeons_namespaces`**
-  (2026-11-27, #83; tacplus-dev/operator#47, tacplus-dev/coop#17): in one change, remove `pigeons_namespace:
-  schematic-pigeons` (and its comment; the header's `<fleet>-pigeons` too) from `services/coop.yaml`, move coop to
-  `"0.2"` (v0.2.0, released 2026-11-26; an older coop refuses the key) and relock, move `operator_commit` to the
-  release carrying operator#47, regenerate `services/kernel.yaml`, and check in `ci/target_test.sh` that the
-  rendered coop config maps `/tenants/alpha` and `/tenants/beta` to their `tac-seatrials-<tid>`. Why: that
-  operator fills the map from the tenants it grants the pigeons Role to and refuses a coop.yaml naming a namespace
-  beside a deployment; `schematic-pigeons` is a namespace nothing creates, so pigeon runs cannot work until then.
-  Blocked on operator#47's release and on the operator move past v0.1.0, which waits on stratum#26's release (above).
-  Open (design on #83): order (with the move, or the line now); waiting for stratum or an operator v0.1.x backport;
-  the map's key form (tenant names or tids, operator#47's question 1); fixing `fleet.yaml`'s stale "MODE_MOCK here".
 - **Build the fleet's gateway with `tacplus fleet gateway`** (2026-11-24, #73; tacplus-dev/tacplus#195): pin gateway
   `"0.3"` (v0.3.0, released 2026-11-23; it serves `/-/apps/<service>/` and `/-/apps.json`), move to tacplus 2.7 (the
   pins, the CI image, `build.lock`), add `fleet.yaml`'s `launcher:` and re-lock, then build the gateway image from the
@@ -435,13 +424,6 @@ the looper then marks it `promoted` or `declined` here with the date.
   on it. #31 made `ci_kube` do so (dry run 2 ran `test-idp/signin.sh` with no kube context). `ci_gcp` still
   ignores a failed `create-cred-config` or `gcloud auth login` and goes on as no one: it should return on each,
   with gcloud's error, as `ci_kube` now does, with a stub test in `ci/lib_test.sh`.
-- **Move the operator past v0.1.0 once stratum releases its tenant-scope seeds** (2026-11-23, #1): the operator
-  pin stays at v0.1.0 (a17d507), the newest that renders this fleet. stratum's only release, v0.1.0, still has
-  `seed_members` in its `Config`, `assert_required`; operator v0.1.1 and later (operator#25) no longer write it,
-  since stratum#26 moved it to the tenant-scope `StratumTenantConfig` on stratum's main, so their `generate` fails:
-  `kernel.Config: ... StratumConfig ... SeedMembers is required`. Once stratum tags a release with stratum#26
-  (and kernel#34 delivers the tenant's seeds), relock stratum to it and move the operator pin to its newest
-  v0.1.x (v0.1.5 now, with its own security fixes), then regenerate `services/kernel.yaml`.
 - **Each service back on its published image** (2026-11-23, #1): `fleet.yaml`'s `images: source` builds every
   service from its release tag, for the first deploy (eventbus, stratum, oauth, redo and gateway have no published
   image; kmaker neither). When every release the fleet runs publishes its image (looper#17, the release issues),

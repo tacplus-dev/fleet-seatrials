@@ -30,8 +30,10 @@ services:
   - name: eventbus
     version: "0.1"
     repo: https://github.com/tacplus-dev/eventbus.git
+  # stratum: no members run here (operator.yaml's stratum_nodes: 0, until #3); 0.2's
+  # Config has no seed_members, which the operator (v0.2.1) no longer renders (#83).
   - name: stratum
-    version: "0.1"
+    version: "0.2"
     repo: https://github.com/tacplus-dev/stratum.git
   # oauth: users log in through it to get the token the gateway checks; kernel's
   # people/tenant code and the gateway reference its contract directly.
@@ -51,17 +53,17 @@ services:
   - name: tenantecho
     version: "0.2"
     repo: https://github.com/tacplus-dev/tenantecho.git
-  # coop: the pigeon protocol and the one door to pigeons; in MODE_MOCK here so
-  # the fleet proves a dog's round trip on the thread before Jobs exist.
+  # coop: the pigeon protocol and the one door to pigeons; it runs each tenant's
+  # pigeons as Jobs in that tenant's namespace (0.2's pigeons_namespaces, #83).
   - name: coop
-    version: "0.1"
+    version: "0.2"
     repo: https://github.com/tacplus-dev/coop.git
   # pigeonhost: the generic pigeon host. Never a Deployment: the coop runs it
   # as a Job per pigeon; it is in the fleet for its contract and its image.
   - name: pigeonhost
     version: "0.1"
     repo: https://github.com/tacplus-dev/pigeon.git
-  # redo: the durability of every tenant's Stratum (stratum 0.1 appends to it),
+  # redo: the durability of every tenant's Stratum (stratum appends to it),
   # in the reserved restore tenant; the operator renders its Config (#3).
   - name: redo
     version: "0.1"

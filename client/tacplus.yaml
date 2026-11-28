@@ -23,7 +23,7 @@ depends:
   - doppelganger@0.2
   - opa@0.3
   - oauth@0.1
-  - coop@0.1
+  - coop@0.2
   - eventbus@0.1
   - llmproxy@0.2
-  - stratum@0.1
+  - stratum@0.2

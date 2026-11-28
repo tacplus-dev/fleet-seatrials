@@ -84,6 +84,12 @@ want "images/service.cloudbuild.yaml's _TACPLUS_IMAGE" \
   "$(yq '.substitutions._TACPLUS_IMAGE' "$here/images/service.cloudbuild.yaml")" "$registry/ci/tacplus-build:seatrials"
 want "coop's pigeonhost image" "$(yq '.kinds[] | select(.name == "echo.ping") | .image' "$here/deploy/bootstrap/services/coop.yaml")" \
   "$registry/schematic/pigeonhost:local"
+# The coop's pigeons run in the tenant namespaces, which the operator renders
+# into its pigeons_namespaces (#83; deploy/pigeons-namespaces_test.sh checks the
+# render): coop.yaml names none, and runs them as Jobs.
+want "coop.yaml's own pigeons namespaces" \
+  "$(yq '[.pigeons_namespace, .pigeons_namespaces] | map(select(. != null)) | length' "$here/deploy/bootstrap/services/coop.yaml")" 0
+want "coop.yaml's mode" "$(yq '.mode' "$here/deploy/bootstrap/services/coop.yaml")" MODE_JOBS
 
 # The test IdP (#27): the namespace tacplus-dev/cluster gives the deployment test-idp,
 # and the contract with tacplus-dev/cloud's listener test-idp, port 8443 of the
