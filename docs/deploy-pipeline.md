@@ -63,10 +63,14 @@ this repository deploys (an image that is a CI image too is shipped); `tooling` 
 the CI images, listed in the report and in the summary's "CI tooling (reported, never failing)" section, never
 failing. It fails on any shipped secret, and on any shipped HIGH or CRITICAL finding with a fixed version, unless an
 unexpired entry of [`security-exceptions.yaml`](../security-exceptions.yaml) accepts it, by its id or an alias (an
-entry accepts a tooling finding too). It also fails on a tool that cannot run, on a tooling target too, and on an entry that has expired or has any field other than `id`, `reason`,
+entry accepts a tooling finding too). It also fails on a tool that cannot run, on a tooling target too, except Trivy
+on a CI image: a scan of it that errors out (the CI image is large, and Trivy has 20 minutes for an image) is
+reported in the summary, the report's `reported` and the verdict, and the job still passes (#79); an image this
+repository deploys that cannot be scanned still fails. It also fails on an entry that has expired or has any field other than `id`, `reason`,
 `decided_by` and `expires` (YYYY-MM-DD), the form looper-scan reads. Its tests are
 [`ci/security_test.sh`](../ci/security_test.sh), run by `checks`: a planted secret fails, an expired exception
-fails, a clean tree passes, a finding in a deployed image or a lock file fails, and one in a pinned binary or the CI image is reported and passes.
+fails, a clean tree passes, a finding in a deployed image or a lock file fails, one in a pinned binary or the CI image
+is reported and passes, and a Trivy error on the CI image passes, naming it, where on a deployed image it fails.
 
 It runs on every pipeline here, a scheduled one included. Pushes and pull requests happen on GitHub, so the
 same job runs there too, on every push to main, every pull request and nightly

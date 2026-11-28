@@ -8,7 +8,8 @@
 # repository deploys, #41, scanned for its nodes' platform) fails unless an
 # unexpired exception accepts it, one with no fix does not; one in CI tooling (a
 # pinned binary, the CI image) is reported, never failing (#72); a malformed
-# exception and a tool that cannot run fail; the JSON report is written either way. gitleaks is the real one, with
+# exception and a tool that cannot run fail, except Trivy on the CI image, whose
+# error is reported and passes (#79), while on a deployed image it fails; the JSON report is written either way. gitleaks is the real one, with
 # this repository's configuration. OSV-Scanner, govulncheck and Trivy are
 # stand-ins on PATH that answer what each case sets in $stub (their real runs
 # need the network and change with each day's databases). Needs git, gitleaks,
@@ -24,13 +25,19 @@ fail() { echo "FAIL $*"; failed=1; }
 
 # The stand-ins: each writes $stub/<tool>.json (or nothing found) where the
 # real tool writes its JSON report, and exits $stub/<tool>.rc (default 0);
-# each call's arguments are a line of $stub/<tool>.args.
+# each call's arguments are a line of $stub/<tool>.args. A call whose
+# arguments end in what $stub/<tool>.fail-on holds fails instead, as Trivy
+# does when its scan of a large image runs out of time.
 stub=$work/stub
 mkdir -p "$work/path" "$stub"
 for tool in osv-scanner govulncheck trivy; do
   cat > "$work/path/$tool" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$stub/$tool.args"
+if [ -f "$stub/$tool.fail-on" ] && [[ "\$*" == *" \$(cat "$stub/$tool.fail-on")" ]]; then
+  echo "FATAL Fatal error: run error: image scan error: scan error: unable to initialize a scan service: failed to analyze usr/bin/swift-package: semaphore acquire: context deadline exceeded" >&2
+  exit 1
+fi
 out=
 while [ \$# -gt 0 ]; do case \$1 in --output-file|-o) out=\$2; shift ;; esac; shift; done
 rc=\$(cat "$stub/$tool.rc" 2>/dev/null || echo 0)
@@ -192,6 +199,21 @@ grep -q -- "--platform linux/s390x .*registry.example.invalid/idp:1@sha256:0000"
   fail "the deployed image's platform: $(cat "$stub/trivy.args")"
 exceptions "$r" CVE-2026-0002 2999-01-01
 scan "an exception accepts it in the deployed image too" pass "$r"
+grep -q -- "--timeout 20m" "$stub/trivy.args" &&
+  echo "ok   Trivy has 20 minutes for an image" ||
+  fail "Trivy's timeout: $(cat "$stub/trivy.args")"
+
+# A Trivy scan that errors out (#79): on the CI image, CI tooling, it is
+# reported and the verdict passes, naming it; on a deployed image it fails.
+stubs
+echo registry.example.invalid/ci:1 > "$stub/trivy.fail-on"
+scan "a Trivy error on the CI image passes, naming it" pass "$r" "reporting: trivy: the CI image registry.example.invalid/ci:1 could not be scanned: exited 1: .*context deadline exceeded"
+jq -e '.problems == [] and (.reported | length == 1) and (.verdict | test("^pass, reporting: trivy: the CI image .*context deadline exceeded"))' \
+  "$work/out/report.json" >/dev/null &&
+  echo "ok   the report lists the CI image's scan error as reported, not a problem" ||
+  fail "the CI image's scan error in the report: $(jq -c '{verdict, problems, reported}' "$work/out/report.json")"
+echo registry.example.invalid/idp:1@sha256:0000 > "$stub/trivy.fail-on"
+scan "a Trivy error on a deployed image fails" fail "$r" "trivy: the deployed image registry.example.invalid/idp:1@sha256:0000 could not be scanned: exited 1: .*context deadline exceeded"
 
 stubs
 r=$(repo operator-init)
@@ -214,6 +236,8 @@ git -C "$r" add -A && git -C "$r" commit -qm both
 trivy_critical > "$stub/trivy.json"
 scan "an image both the CI image and deployed is shipped: it fails" fail "$r" "FAIL CRITICAL trivy CVE-2026-0002"
 report "it is scanned once, its finding shipped" '.images == ["registry.example.invalid/ci:1"] and ([.findings[] | .scope] == ["shipped"])'
+echo registry.example.invalid/ci:1 > "$stub/trivy.fail-on"
+scan "a Trivy error on an image both the CI image and deployed fails" fail "$r" "trivy: the deployed image registry.example.invalid/ci:1 could not be scanned"
 
 stubs
 r=$(repo binary)
@@ -223,8 +247,8 @@ report "the binary's finding is tooling, not blocking" '.findings | length == 1 
 
 stubs
 r=$(repo broken)
-echo 2 > "$stub/trivy.rc"
-scan "a tool that cannot run fails" fail "$r" "trivy"
+echo 2 > "$stub/osv-scanner.rc"
+scan "a tool that cannot run fails" fail "$r" "osv-scanner exited 2"
 
 stubs
 [ "$failed" = 0 ] && echo "security tests passed" || { echo "security tests failed"; exit 1; }

@@ -26,8 +26,10 @@
 # (by its id or an alias; an entry accepts a tooling finding too). An entry has
 # exactly id, reason, decided_by and expires (YYYY-MM-DD); one that has expired,
 # or says less or more, fails, and so does a tool that cannot run, on a tooling
-# target too. The JSON report, every finding with its scope and whether it fails
-# or is accepted, is $SECURITY_OUT/report.json (the job's artifact; raw/ has each tool's own).
+# target too, except Trivy on a CI image: a scan of it that errors out (#79) is
+# reported, never failing, while an image this repository deploys that cannot be
+# scanned still fails. The JSON report, every finding with its scope and whether
+# it fails or is accepted, is $SECURITY_OUT/report.json (the job's artifact; raw/ has each tool's own).
 #
 #   ci/security.sh [REPO]   # needs git, jq, yq and the pinned scanners (ci/tools.sh builds them into bin/)
 #
@@ -46,6 +48,9 @@ today=${started%%T*}
 commit=$(git -C "$repo" rev-parse HEAD) || exit 1
 problems=()
 problem() { problems+=("$1"); echo "security: $1" >&2; }
+# A problem in CI tooling: reported (the summary, the report and the verdict name it), never failing.
+reported=()
+report() { reported+=("$1"); echo "security: $1 (CI tooling: reported, never failing)" >&2; }
 need() { command -v "$1" >/dev/null || { problem "$1: not installed (ci/tools.sh)"; return 1; }; }
 for t in git jq yq; do command -v "$t" >/dev/null || { echo "security: $t is not installed" >&2; exit 1; }; done
 
@@ -178,9 +183,14 @@ if need trivy; then
   n=0
   for i in "${images[@]}"; do
     n=$((n + 1)); rc=0
-    trivy image -q --scanners vuln --platform "${platforms[n - 1]}" --format json -o "$out/raw/trivy-$n.json" "$i" \
+    # --timeout: the CI image is large (Swift, JDK, .NET); Trivy's default 5m ran out on it (#79).
+    trivy image -q --scanners vuln --timeout 20m --platform "${platforms[n - 1]}" --format json -o "$out/raw/trivy-$n.json" "$i" \
       2>"$out/raw/trivy-$n.log" || rc=$?
-    [ "$rc" = 0 ] || { problem "trivy: $i exited $rc: $(tail -1 "$out/raw/trivy-$n.log")"; continue; }
+    if [ "$rc" != 0 ]; then
+      if [ "${scopes[n - 1]}" = tooling ]; then report "trivy: the CI image $i could not be scanned: exited $rc: $(tail -1 "$out/raw/trivy-$n.log")"
+      else problem "trivy: the deployed image $i could not be scanned: exited $rc: $(tail -1 "$out/raw/trivy-$n.log")"; fi
+      continue
+    fi
     norm "trivy-$n" "${scopes[n - 1]}" '
       [.[0].Results[]? | .Target as $t | (.Vulnerabilities // [])[]
        | finding("trivy"; "sca"; .VulnerabilityID; []; (.Severity // "UNKNOWN"); ((.FixedVersion // "") != "");
@@ -226,17 +236,19 @@ jq -s --argjson exc "$exceptions" --arg today "$today" '
 blocking=$(jq '[.[] | select(.blocking)] | length' "$work/findings.json")
 if ((${#problems[@]})); then verdict="fail: ${problems[0]}$( ((${#problems[@]} > 1)) && echo " (and $((${#problems[@]} - 1)) more)")"
 elif ((blocking)); then verdict="fail: $blocking finding(s) the policy fails: $(jq -r '[.[] | select(.blocking) | .id][0:3] | join(", ")' "$work/findings.json")"
+elif ((${#reported[@]})); then verdict="pass, reporting: ${reported[0]}$( ((${#reported[@]} > 1)) && echo " (and $((${#reported[@]} - 1)) more)")"
 else verdict=pass; fi
 
 version() { "$@" 2>/dev/null | grep -m1 . || true; }
 jq -n --arg commit "$commit" --arg started "$started" --arg verdict "$verdict" --arg platform "$platform" \
   --slurpfile findings "$work/findings.json" \
   --argjson problems "$(printf '%s\n' "${problems[@]+"${problems[@]}"}" | jq -R . | jq -sc 'map(select(. != ""))')" \
+  --argjson reported "$(printf '%s\n' "${reported[@]+"${reported[@]}"}" | jq -R . | jq -sc 'map(select(. != ""))')" \
   --argjson images "$(printf '%s\n' "${images[@]+"${images[@]}"}" | jq -R . | jq -sc 'map(select(. != ""))')" \
   --argjson binaries "$(for b in "${binaries[@]+"${binaries[@]}"}"; do echo "${b#"$repo"/}"; done | jq -R . | jq -sc .)" \
   --arg osv "$(version osv-scanner --version)" --arg govulncheck "$(version govulncheck -version)" \
   --arg gitleaks "$(version gitleaks version)" --arg trivy "$(version trivy version)" '
-  {commit: $commit, started: $started, verdict: $verdict, problems: $problems,
+  {commit: $commit, started: $started, verdict: $verdict, problems: $problems, reported: $reported,
    tools: {"osv-scanner": $osv, govulncheck: $govulncheck, gitleaks: $gitleaks, trivy: $trivy},
    images: $images, platform: $platform, binaries: $binaries, findings: $findings[0]}' > "$out/report.json"
 
@@ -244,10 +256,12 @@ jq -n --arg commit "$commit" --arg started "$started" --arg verdict "$verdict" -
 jq -r '[.findings[] | select(.scope == "tooling" and .excepted == null)] as $tooling
   | "\(.findings | length) finding(s): \([.findings[] | select(.blocking)] | length) failing the policy, \($tooling | length) CI tooling (reported, never failing), \([.findings[] | select(.excepted)] | length) accepted by security-exceptions.yaml; checked \(.binaries | length) binaries and \(.images | join(", ")) (\(.platform))",
        (.problems[] | "problem: \(.)"),
+       (.reported[] | "reported, never failing (CI tooling): \(.)"),
        (.findings[] | select(.blocking) | "FAIL \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)"),
        (if $tooling != [] then "CI tooling (reported, never failing):" else empty end),
        ($tooling[] | "tooling \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)"),
        (.findings[] | select(.excepted) | "accepted \(.excepted): \(.tool) \(.id) \(.where)")' "$out/report.json"
 if [ "$verdict" = pass ]; then echo "security verdict: pass ($commit)"; exit 0; fi
+if [ "${verdict%%,*}" = pass ]; then echo "security verdict: pass ($commit), reporting: ${verdict#pass, reporting: }"; exit 0; fi
 echo "security verdict: FAIL: ${verdict#fail: } (${out#"$repo"/}/report.json)"
 exit 1
