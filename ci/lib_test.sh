@@ -21,7 +21,8 @@
 # ci_gcp hands its credential to Application Default Credentials (lego).
 # ci_crypto places the fleet's key material from Secret Manager, and it and the
 # init-secrets job refuse a job that still holds a GitLab variable of the old
-# way (#44). Needs
+# way (#44); `ci_crypto root` places the root credential alone, in the job's
+# SEATRIALS_HOME, for the client-steps job (#77). Needs
 # bash, yq and openssl.
 #
 #   ci/lib_test.sh
@@ -52,6 +53,9 @@ case "\$1 \$2" in
     *" --secret=google-signin-seatrials "*)
       [ -z "\${GOOGLE_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/google-signin-seatrials] not found or has no versions." >&2; exit 1; }
       payload=$work/google-signin ;;
+    *" --secret=fleet-root-cred-seatrials "*)
+      [ -z "\${ROOT_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/fleet-root-cred-seatrials] not found or has no versions." >&2; exit 1; }
+      payload=$work/root-cred ;;
     *" --secret=fleet-crypto-seatrials "*|*" --secret=fleet-ca-seatrials "*)
       [ -z "\${FLEET_NONE:-}" ] || { echo "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: Secret [projects/1/secrets/fleet-crypto-seatrials] not found or has no versions." >&2; exit 1; }
       case " \$* " in *fleet-crypto-*) payload=$work/fleet-crypto ;; *) payload=$work/fleet-ca ;; esac ;;
@@ -330,6 +334,44 @@ for v in FLEET_CRYPTO_YAML FLEET_CRYPTO_YAML_2 FLEET_CA_PEM FLEET_INIT_TOKEN; do
       ok "ci_crypto refuses a job that holds the GitLab variable $v" || fail "ci_crypto, $v: $(cat "$work/out")"
   fi
 done
+
+# ci_crypto root (#77): the root credential, the latest version of
+# fleet-root-cred-seatrials, as root.cred.json in the job's SEATRIALS_HOME
+# (mode 600, outside the checkout), and nothing else; printed nowhere; with no
+# version yet it fails, naming the init-secrets job.
+printf '{"key":{"d":"THE-ROOT-PRIVATE-KEY"},"pair":{"id":"root-1"},"pair_id":"root-1","tenant":"/"}\n' > "$work/root-cred"
+root_job='cd src && source ci/lib.sh && ci_gcp && ci_crypto root && cp "$SEATRIALS_HOME/root.cred.json" ../placed-root &&
+  stat -c %a "$SEATRIALS_HOME/root.cred.json" > ../placed-mode && echo "home $SEATRIALS_HOME" &&
+  ls deploy/bootstrap > ../placed-bootstrap && echo "next ran"'
+rm -f "$work/job/placed-"*
+if job GCP_DEPLOY_SA=seatrials-deploy@tacplus-dev.iam.gserviceaccount.com -- "$root_job"; then
+  grep -q 'next ran' "$work/out" && cmp -s "$work/job/placed-root" "$work/root-cred" &&
+    [ "$(cat "$work/job/placed-mode")" = 600 ] &&
+    ok "ci_crypto root places the root credential in SEATRIALS_HOME, mode 600" || fail "ci_crypto root: $(cat "$work/out")"
+  home=$(sed -n 's/^home //p' "$work/out")
+  [ -n "$home" ] && [[ "$home" != "$work/job/"* ]] &&
+    ok "ci_crypto root's SEATRIALS_HOME is the job's own, outside the checkout" || fail "ci_crypto root's home: $home"
+  grep -q '^gcloud secrets versions access latest --secret=fleet-root-cred-seatrials --project=tacplus-dev ' "$work/log/gcloud" &&
+    ! grep -q 'fleet-crypto-seatrials\|fleet-ca-seatrials' "$work/log/gcloud" && [ ! -s "$work/job/placed-bootstrap" ] &&
+    ok "ci_crypto root reads the latest version of fleet-root-cred-seatrials, and nothing else" ||
+    fail "ci_crypto root read: $(cat "$work/log/gcloud")"
+  ! grep -q 'THE-ROOT-PRIVATE-KEY' "$work/out" && ok "ci_crypto root prints nothing secret" || fail "ci_crypto root printed the key"
+else
+  fail "ci_crypto root: $(cat "$work/out")"
+fi
+if job ROOT_NONE=1 -- "$root_job"; then
+  fail "ci_crypto root succeeded with no version: $(cat "$work/out")"
+else
+  ! grep -q 'next ran' "$work/out" && grep -q 'fleet-root-cred-seatrials has no version yet: run the manual init-secrets job' "$work/out" &&
+    ok "ci_crypto root fails, naming the init-secrets job, when the root credential has no version yet" ||
+    fail "ci_crypto root, no version: $(cat "$work/out")"
+fi
+if job FLEET_CA_PEM=/builds/tmp/x -- "$root_job"; then
+  fail "ci_crypto root succeeded with the GitLab variable FLEET_CA_PEM set: $(cat "$work/out")"
+else
+  grep -q 'the job holds the GitLab variable FLEET_CA_PEM' "$work/out" &&
+    ok "ci_crypto root refuses a job that holds a GitLab variable of the old way" || fail "ci_crypto root, FLEET_CA_PEM: $(cat "$work/out")"
+fi
 
 # The init-secrets job: GCP through WIF (its account is the job's GCP_DEPLOY_SA,
 # ci/pipeline_test.sh), then deploy/init-secrets.sh; refused while a GitLab

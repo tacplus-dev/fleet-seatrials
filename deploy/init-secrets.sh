@@ -12,28 +12,36 @@
 #                            cluster for operator.yaml's fqdn, as deploy/init.sh)
 #   fleet-ca-seatrials       deploy/bootstrap/ca.pem, the root CA's certificate
 #   (FLEET_CA_SECRET)
+#   fleet-root-cred-seatrials  the fleet's root credential, root.cred.json as
+#   (FLEET_ROOT_CRED_SECRET)   `seatrials keygen root` writes it: the private key
+#                              the client-steps job administers the tenants with,
+#                              and its public pair (#77)
 #
-# Both in GCP_PROJECT (tacplus-dev), made with no version by tacplus-dev/cloud.
-# The job runs as seatrials-init-secrets, through Workload Identity Federation
-# (ci_gcp): it may add a version to these two and list their versions, nothing
-# else, and no token is stored anywhere. The deploy jobs read them as
-# seatrials-deploy (ci_crypto in ci/lib.sh).
+# All three in GCP_PROJECT (tacplus-dev), made with no version by
+# tacplus-dev/cloud (#28, #105). The job runs as seatrials-init-secrets, through
+# Workload Identity Federation (ci_gcp): it may add a version to these and list
+# their versions, nothing else, and no token is stored anywhere. The deploy jobs
+# read them as seatrials-deploy (ci_crypto in ci/lib.sh).
 #
-# Both have an enabled version at the generation deploy/key-generation names, or
-# later: nothing is generated or added. Both behind it: generated again, a new
-# version of each (the trust domain changed, say: kernel's certificates carry
-# it). One only:
-# refused, since a CA and its crypto.yaml are a pair, and the hub disables the
-# one that is there (or restores the other). Neither: generated in a scratch
-# directory, and one version added to each, the crypto file first. Nothing here
-# prints a generated value; the account may not read one.
+# The crypto file and the CA: both have an enabled version at the generation
+# deploy/key-generation names, or later: nothing is generated or added. Both
+# behind it: generated again, a new version of each (the trust domain changed,
+# say: kernel's certificates carry it). One only: refused, since a CA and its
+# crypto.yaml are a pair, and the hub disables the one that is there (or
+# restores the other). Neither: generated in a scratch directory, and one
+# version added to each, the crypto file first. The root credential, on its
+# own: an enabled version, nothing is generated; none, a pair is made and
+# added, and its public half is printed as the root_cred_pairs entry to commit
+# in operator.yaml in place of the one there (the next apply registers it).
+# Nothing here prints a private or generated value; the account may not read one.
 #
-#   deploy/init-secrets.sh    # needs bin/schematic-operator, yq and gcloud logged in (ci_gcp)
+#   deploy/init-secrets.sh    # needs bin/schematic-operator, bin/seatrials, yq, jq and gcloud logged in (ci_gcp)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 project=${GCP_PROJECT:-tacplus-dev}
 crypto_secret=${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials}
 ca_secret=${FLEET_CA_SECRET:-fleet-ca-seatrials}
+root_secret=${FLEET_ROOT_CRED_SECRET:-fleet-root-cred-seatrials}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 umask 077
@@ -65,9 +73,33 @@ generation=${FLEET_KEY_GENERATION:-$(grep -v '^[[:space:]]*\(#\|$\)' "$here/depl
 
 crypto=$(version "$crypto_secret")
 ca=$(version "$ca_secret")
+root=$(version "$root_secret")
+
+# The root credential (#77): `seatrials keygen root` in a scratch home, its
+# file (the private key and the public pair) the secret's version; only the
+# public pair is printed, checked to hold no private part.
+root_cred() {
+  local pair
+  if [ -n "$root" ]; then
+    echo "init-secrets: $root_secret (version $root) exists (project $project): no root credential to generate"
+    return
+  fi
+  SEATRIALS_HOME=$tmp/seatrials seatrials keygen root > "$tmp/keygen.json" 2>&1 ||
+    die "seatrials keygen root failed: $(jq -r '.error // empty' "$tmp/keygen.json" 2>/dev/null || echo 'no error')"
+  jq -e '.key and .pair and .pair_id' "$tmp/seatrials/root.cred.json" >/dev/null 2>&1 ||
+    die "seatrials keygen root wrote no credential file with a key and its pair"
+  pair=$(jq -cS '.cred_pair | select(.public_key.kty and (.public_key | has("d") | not))' "$tmp/keygen.json") &&
+    [ -n "$pair" ] || die "seatrials keygen root printed no public pair, or one with a private part"
+  add "$root_secret" "$tmp/seatrials/root.cred.json"
+  echo "init-secrets: the root credential $(jq -r .id <<<"$pair"): commit this entry in deploy/bootstrap/operator.yaml in place of the one in its root_cred_pairs; the next apply registers it"
+  echo "root_cred_pairs:"
+  echo "    - $pair"
+}
+
 if [ -n "$crypto" ] && [ -n "$ca" ]; then
   if [ "$crypto" -ge "$generation" ] && [ "$ca" -ge "$generation" ]; then
-    echo "init-secrets: $crypto_secret (version $crypto) and $ca_secret (version $ca) exist (project $project), at generation $generation or later: nothing to generate"; exit 0
+    echo "init-secrets: $crypto_secret (version $crypto) and $ca_secret (version $ca) exist (project $project), at generation $generation or later: nothing to generate"
+    root_cred; exit 0
   fi
   [ "$crypto" = "$ca" ] ||
     die "$crypto_secret is at version $crypto and $ca_secret at version $ca, not both behind generation $generation (project $project): they are a pair; disable the newer one's versions past the other's, and run this job again"
@@ -112,3 +144,4 @@ added=
 add "$crypto_secret" "$tmp/bootstrap/crypto.yaml"
 add "$ca_secret" "$tmp/bootstrap/ca.pem" \
   "; $crypto_secret has version $added without its CA: disable it (gcloud secrets versions disable $added --secret=$crypto_secret --project=$project) and run this job again"
+root_cred

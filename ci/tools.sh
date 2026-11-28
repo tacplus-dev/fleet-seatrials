@@ -7,6 +7,9 @@
 #
 #   bin/tacplus              the fleet's tacplus, images/pins.yaml tacplus_commit
 #   bin/schematic-operator   deploy/build-operator.sh with that tacplus
+#   bin/seatrials            the client (client/), generated with that tacplus from the contracts of the
+#                            fleet's release lines and built: the init-secrets job makes the root pair with
+#                            it, the client-steps job administers the tenants with it (#77)
 #   bin/yq, bin/govulncheck  built from pinned module versions, each refused unless its module's hash
 #                            (h1:, a SHA-256 of its content) is the pinned one
 #   bin/opa, bin/gitleaks,   the same, each in a module of its own that raises the dependencies whose
@@ -113,6 +116,16 @@ go_drop
 "$here/bin/tacplus" version
 
 TACPLUS="$here/bin/tacplus" "$here/deploy/build-operator.sh"
+go_drop
+
+# The client, as ci/client_test.sh builds it, from a copy: tacplus build writes into the tree it builds.
+src=$(mktemp -d)
+cp -R "$here/client" "$src/"
+# No CI job token: tacplus would send it to github.com as a GitLab credential (#14).
+( cd "$src/client" && env -u CI_JOB_TOKEN "$here/bin/tacplus" build &&
+  CGO_ENABLED=0 go build -trimpath -o "$here/bin/seatrials" ./cmd/seatrials ) > "$tmp/client.log" 2>&1 ||
+  { tail -40 "$tmp/client.log" >&2; die "cannot build the client"; }
+chmod -R u+w "$src"; rm -rf "$src"
 go_drop
 
 go_install github.com/mikefarah/yq/v4 github.com/mikefarah/yq/v4 "$yq_version" "$yq_h1"

@@ -10,7 +10,8 @@
 # whole closure in client/tacplus.yaml pins the transitive contracts too. Then
 # the README's client step, on a clean copy of client/ with the compiler
 # ci/tools.sh builds: `tacplus build && go build -o seatrials ./cmd/seatrials`,
-# and govulncheck over the generated client, with ci/tools.sh's Go toolchain.
+# its Go tests, and govulncheck over the generated client, with ci/tools.sh's Go
+# toolchain.
 # Needs bash, git (it reads the contracts from GitHub), yq, go, and tacplus and
 # govulncheck (bin/, by ci/tools.sh).
 #
@@ -89,6 +90,11 @@ else
       ok "the client builds with $go_toolchain"
     else
       fail "the client builds with $go_toolchain:"; sed 's/^/  /' "$tmp/build.log" | tail -40
+    fi
+    if (cd "$tmp/client" && go test ./cmd/seatrials > "$tmp/test.log" 2>&1); then
+      ok "the client's tests pass: $(tail -1 "$tmp/test.log")"
+    else
+      fail "the client's tests (go test ./cmd/seatrials):"; sed 's/^/  /' "$tmp/test.log" | tail -40
     fi
     if (cd "$tmp/client" && govulncheck ./... > "$tmp/vuln.log" 2>&1); then
       ok "govulncheck ./... in client/: $(tail -1 "$tmp/vuln.log")"

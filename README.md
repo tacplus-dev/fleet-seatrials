@@ -71,8 +71,8 @@ The cutover's order and the grants still to come are in
   published none since 2.4 (tacplus-dev/tacplus#193), so the build image builds tacplus from source at the
   pinned commit, stamped as `ci/tools.sh` stamps `bin/tacplus` (#65).
 - `deploy/` — `build-operator.sh` (this fleet's operator from the library against build/proto), `init.sh`
-  (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI generated once
-  into Secret Manager), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
+  (CA and cluster PKI, once, by hand), `init-secrets.sh` (the pipeline's: the CA and cluster PKI, and the root
+  credential, generated once into Secret Manager), `client-steps.sh` (the tenants, as that root credential), `secrets.sh`, `signin-secrets.sh` (the sign-in secrets, from the pipeline's
   variables and Secret Manager), `google-client.sh` (Google's client, checked with Google), `diff.sh` (what an apply would change, by name), `apply.sh`
   (render and apply), `checks.sh` (the post-deploy checks), `bootstrap/` (operator.yaml and services/*.yaml are
   committed; crypto.yaml, ca.pem and configs/ are not).
@@ -112,7 +112,10 @@ jobs stay manual, because none approves the fleet:
 - `signin-secrets`: re-installs the sign-in secrets after one is rotated in the GitLab variables or Secret
   Manager. `apply` installs them anyway.
 - `test-idp`: the test IdP's one-time setup, which generates and stores its seeds.
-- `init-secrets`: a deployment's first run, which generates the fleet's CA and crypto file into Secret Manager.
+- `init-secrets`: a deployment's first run, which generates the fleet's CA and crypto file, and its root
+  credential, into Secret Manager.
+- `client-steps`: after an apply, the first-time client steps, as that root credential: the tenants and a
+  ping of each (#77).
 
 **Where each secret lives** ([docs/deploy-pipeline.md](docs/deploy-pipeline.md#secrets)):
 
@@ -120,6 +123,7 @@ jobs stay manual, because none approves the fleet:
 | --- | --- | --- | --- |
 | The fleet's CA and cluster PKI (`crypto.yaml`) | Secret Manager `fleet-crypto-seatrials` (tacplus-dev) | `init-secrets`, as `seatrials-init-secrets` through WIF | `generate`, `diff`, `apply`, `test`, as `seatrials-deploy` |
 | The root CA's certificate (`ca.pem`) | Secret Manager `fleet-ca-seatrials` (tacplus-dev) | the same | the same |
+| The fleet's root credential (`root.cred.json`: its private key and public pair) | Secret Manager `fleet-root-cred-seatrials` (tacplus-dev) | `init-secrets`, the same | `client-steps`, as `seatrials-deploy` |
 | The public certificate and the ACME account | Secret Manager `tls-seatrials`, `acme-account-seatrials` | `cert` | every job that renders |
 | The test IdP's seeds | Secret Manager `test-idp-seeds` | `test-idp` | the test IdP's jobs, seatrials' (optional) |
 | Google's client secret | Secret Manager `google-signin-seatrials` | Jody, in the Console | `apply`, `signin-secrets`, as `seatrials-deploy` |
@@ -136,17 +140,18 @@ secret `tls-seatrials`, and the gateway serves that version (`CERT_CHAIN`) and h
 restart. A daily schedule runs the pipeline, so a renewal deploys by itself. The old rule that letsencrypt is
 never restarted no longer applies: there is nothing left to restart. The first time, on a new cluster:
 
-```
-images/build.sh build-image   # then the manual init-secrets job: the CA and crypto file into Secret Manager
-# the pipeline: images, generate, diff, apply (by itself), test
-cd client && tacplus build && go build -o seatrials ./cmd/seatrials   # generate, then build; public TLS: no SEATRIALS_CA needed
-./seatrials keygen root            # paste cred_pair into deploy/bootstrap/operator.yaml root_cred_pairs; apply again
-./seatrials keygen --tenant /tenants/alpha alpha; ./seatrials keygen --tenant /tenants/beta beta
-./seatrials login --as root
-./seatrials tenant create /tenants/alpha; ./seatrials tenant cred /tenants/alpha alpha   # same for beta
-./seatrials login --as alpha; ./seatrials ping --as alpha hello      # served_by names tenants/alpha
-./seatrials login --as beta;  ./seatrials ping --as beta hello       # served_by names tenants/beta
-./seatrials context push --as alpha --tenant ~/workspace/jody        # the tenant's shared doppelganger context
-./seatrials context push --as alpha ~/my-notes                       # the caller's own context
-./seatrials ask --as alpha "what matters?"                           # alpha's doppelganger, through llmproxy
-```
+1. `images/build.sh build-image`, then the manual `init-secrets` job: the CA and crypto file, and the root
+   credential, into Secret Manager. Nobody holds the root key: the job adds it to `fleet-root-cred-seatrials`
+   and prints only its public pair, the `root_cred_pairs` entry (`root_cred_pairs:` and one `- {...}` line).
+2. A commit puts that entry in `deploy/bootstrap/operator.yaml` in place of the one in `root_cred_pairs`.
+3. The pipeline: images, generate, diff, apply (by itself, registering the root pair), test.
+4. The manual `client-steps` job (`deploy/client-steps.sh`), as the root credential: for each of
+   `operator.yaml`'s tenants, `tenant create --if-missing /tenants/<t>`, a fresh pair `ci-<t>` made and
+   installed in place of its earlier one (`tenant cred --replace`), then `login` and `ping` with it, which the
+   tenant's own instance must serve (`served_by` names `tenants/<t>`). It is idempotent: run it again at will.
+
+Nothing here runs on a laptop. `client/` builds as `ci/tools.sh` builds it, into `bin/seatrials`
+(`cd client && tacplus build && go build -o seatrials ./cmd/seatrials`; public TLS, so no `SEATRIALS_CA`), and
+`SEATRIALS_HOME` is where it keeps keys and tokens (`~/.seatrials` otherwise). The doppelganger proof
+(`context push`, `ask`) needs a tenant credential of its caller's, which only the root credential installs: it
+is the functional suite's, with its RPC items (PROPOSALS.md).

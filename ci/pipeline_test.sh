@@ -9,10 +9,11 @@
 # `diff` succeeds: it is not manual, and a failure fails the pipeline. It takes
 # the render digest `diff` recorded (a dotenv artifact, RENDER_DIGEST), so the
 # render `diff` showed is the one applied. The jobs that stay manual are the
-# ones that are not approval of the fleet: `test-idp`, `signin-secrets` and
+# ones that are not approval of the fleet: `test-idp`, `signin-secrets`,
 # `init-secrets` (#17: a deployment's generated key material, in its own
 # environment, written to Secret Manager as seatrials-init-secrets through WIF,
-# #44). No GitLab variable holds the CA or the crypto file: every job that
+# #44; and its root credential, #77) and `client-steps` (#77: the tenants, after
+# apply, as that root credential, read as seatrials-deploy). No GitLab variable holds the CA or the crypto file: every job that
 # renders reads them from Secret Manager (ci_crypto, after ci_gcp), and no
 # script reads FLEET_CRYPTO_YAML, FLEET_CA_PEM or FLEET_INIT_TOKEN.
 # The pipeline owns the certificate (#35): `cert` (ci/cert.sh) runs before
@@ -94,11 +95,11 @@ apply_at=$(grep -nx 'deploy/apply.sh' <<<"$apply_lines" | cut -d: -f1)
   ok "apply records the set it applied once applied (ci/releases.sh record)" ||
   fail "apply does not run ci/releases.sh record after deploy/apply.sh"
 
-for j in test-idp signin-secrets init-secrets; do
+for j in test-idp signin-secrets init-secrets client-steps; do
   check "$j stays manual" ".[\"$j\"].when == \"manual\""
 done
 check "no other job is manual" \
-  '[to_entries[] | select(.value.when == "manual") | .key] | sort == ["init-secrets", "signin-secrets", "test-idp"]'
+  '[to_entries[] | select(.value.when == "manual") | .key] | sort == ["client-steps", "init-secrets", "signin-secrets", "test-idp"]'
 check "init-secrets is the only job of the environment init-secrets, whose jobs alone become seatrials-init-secrets" \
   '[to_entries[] | select(.value.environment.name == "init-secrets") | .key] == ["init-secrets"]'
 check "init-secrets needs only the tools, so it runs before the first generate" '."init-secrets".needs == ["tools"]'
@@ -111,6 +112,20 @@ check "init-secrets reaches Secret Manager as seatrials-init-secrets, through WI
   "fleet-crypto-seatrials fleet-ca-seatrials" ] &&
   ok "the fleet's key material is the secrets fleet-crypto-seatrials and fleet-ca-seatrials (tacplus-dev/cloud#28)" ||
   fail "the pipeline's FLEET_CRYPTO_SECRET and FLEET_CA_SECRET are not fleet-crypto-seatrials and fleet-ca-seatrials"
+[ "$(yq '.variables.FLEET_ROOT_CRED_SECRET' "$here/ci/deploy.gitlab-ci.yml")" = fleet-root-cred-seatrials ] &&
+  ok "the root credential is the secret fleet-root-cred-seatrials (tacplus-dev/cloud#105)" ||
+  fail "the pipeline's FLEET_ROOT_CRED_SECRET is not fleet-root-cred-seatrials"
+# The client steps (#77): after apply, as the root credential the pipeline
+# holds, read as seatrials-deploy (the job's default account), never made here.
+check "client-steps follows apply, with the tools (bin/seatrials)" \
+  '."client-steps".needs | (index("apply") != null) and (index("tools") != null)'
+check "client-steps reads the root credential as seatrials-deploy (ci_gcp && ci_crypto root), then deploy/client-steps.sh" \
+  '(."client-steps".script | join("\n") | test("ci_gcp && ci_crypto root && deploy/client-steps.sh")) and
+   ((."client-steps".variables.GCP_DEPLOY_SA // "seatrials-deploy@tacplus-dev.iam.gserviceaccount.com") == "seatrials-deploy@tacplus-dev.iam.gserviceaccount.com")'
+check "client-steps runs in the environment seatrials, one at a time with apply" \
+  '."client-steps".environment.name == "seatrials" and ."client-steps".resource_group == "seatrials"'
+check "no job but client-steps reads the root credential" \
+  '[to_entries[] | select(.value.script | join("\n") | test("ci_crypto root")) | .key] == ["client-steps"]'
 # No GitLab variable holds the CA or the crypto file (#44): nothing reads one,
 # save ci_no_gitlab_key_material, which refuses a job that still holds one.
 readers=$(grep -rlE 'FLEET_(CRYPTO_YAML|CA_PEM|INIT_TOKEN)' "$here/ci" "$here/deploy" "$here/images" "$here/test-idp" |

@@ -51,7 +51,11 @@ topology:
         doppelganger: 1
         tenantecho: 1
         coop: 1
-# The root credential pair the local client (client/) authenticates with; its
-# private key is in ~/.seatrials/root.cred.json on the operator's machine.
+# The root credential pair the client (client/) authenticates with. Its private
+# key is the pipeline's: the init-secrets job makes the pair into the Secret
+# Manager secret fleet-root-cred-seatrials and prints this entry, and the
+# client-steps job reads it (#77). The pair below is the old one, whose key was
+# deleted with ~/.seatrials: the entry the first init-secrets on dev prints
+# replaces it.
 root_cred_pairs:
     - {"description": "seatrials client root", "entitlements": {"grants": ["KERNEL_ANY"]}, "id": "root-feb39e0fd6b526ff", "namespaces": ["*"], "public_key": {"alg": "ES256", "created": "1792824696", "crv": "P-256", "kid": "root-feb39e0fd6b526ff", "kty": "KEY_TYPE_EC", "use": "JWK_USE_TYPE_SIG", "x": "AG-Dtk99_lhExP89vIdGaUwXNx6ghYrusTd67hk5Oq0", "y": "F2HNuBJUIzMSNZZkkhI8hVl3byJMb3r3qpShFDF_-SU"}, "tenant_name": "/"}

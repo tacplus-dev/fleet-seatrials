@@ -147,18 +147,28 @@ ci_no_gitlab_key_material() {
 # schematic-operator reads it, after ci_gcp: the latest versions of the Secret
 # Manager secrets FLEET_CRYPTO_SECRET (crypto.yaml) and FLEET_CA_SECRET (ca.pem)
 # in GCP_PROJECT, which the init-secrets job adds (#44, deploy/init-secrets.sh).
-# Both paths are in .gitignore and in no job's artifacts. Every job calls it in
-# an && list, so it returns on its own failures: no version yet (run
-# init-secrets), or a refusal, with Secret Manager's error.
+# Both paths are in .gitignore and in no job's artifacts. With `root` (the
+# client-steps job, #77) it places the root credential instead, and only it:
+# the latest version of FLEET_ROOT_CRED_SECRET (root.cred.json, which
+# init-secrets makes), as root.cred.json in the job's own SEATRIALS_HOME, where
+# bin/seatrials reads it. Every job calls it in an && list, so it returns on its
+# own failures: no version yet (run init-secrets), or a refusal, with Secret
+# Manager's error.
 ci_crypto() {
-  local secret file
+  local secret file dir=$fleet/deploy/bootstrap secrets
   ci_no_gitlab_key_material || return 1
-  for secret in "${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials}:crypto.yaml" "${FLEET_CA_SECRET:-fleet-ca-seatrials}:ca.pem"; do
+  secrets=("${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials}:crypto.yaml" "${FLEET_CA_SECRET:-fleet-ca-seatrials}:ca.pem")
+  if [ "${1:-}" = root ]; then
+    export SEATRIALS_HOME=$ci_tmp/seatrials
+    dir=$SEATRIALS_HOME secrets=("${FLEET_ROOT_CRED_SECRET:-fleet-root-cred-seatrials}:root.cred.json")
+    ( umask 077; mkdir -p "$dir" )
+  fi
+  for secret in "${secrets[@]}"; do
     file=${secret#*:} secret=${secret%%:*}
     if ! ( umask 077
            gcloud secrets versions access latest --secret="$secret" --project="${GCP_PROJECT:-tacplus-dev}" \
-             --out-file="$fleet/deploy/bootstrap/$file" 2>"$ci_tmp/crypto-err" ); then
-      rm -f "$fleet/deploy/bootstrap/$file"
+             --out-file="$dir/$file" 2>"$ci_tmp/crypto-err" ); then
+      rm -f "$dir/$file"
       if grep -q NOT_FOUND "$ci_tmp/crypto-err"; then
         echo "crypto: the secret $secret has no version yet: run the manual init-secrets job, then this pipeline again (docs/deploy-pipeline.md)" >&2
       else
@@ -167,7 +177,11 @@ ci_crypto() {
       return 1
     fi
   done
-  echo "crypto: the fleet's key material from the secrets ${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials} and ${FLEET_CA_SECRET:-fleet-ca-seatrials}"
+  if [ "${1:-}" = root ]; then
+    echo "crypto: the fleet's root credential from the secret ${FLEET_ROOT_CRED_SECRET:-fleet-root-cred-seatrials}"
+  else
+    echo "crypto: the fleet's key material from the secrets ${FLEET_CRYPTO_SECRET:-fleet-crypto-seatrials} and ${FLEET_CA_SECRET:-fleet-ca-seatrials}"
+  fi
 }
 
 # ci_cert: the fleet's public certificate into crypto.yaml, after ci_crypto and

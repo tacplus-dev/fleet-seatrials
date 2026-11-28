@@ -10,12 +10,13 @@
 //	seatrials login  [--as NAME]                                          # proof → token (~/.seatrials/NAME.token)
 //	seatrials context push DIR [--as NAME] [--tenant]                     # replace a doppelganger context with DIR's Markdown
 //	seatrials ask QUESTION [--as NAME] [--session ID] [--context TEXT]... # ask; --session continues an earlier one
-//	seatrials tenant create NAMESPACE [--as root]
-//	seatrials tenant cred NAMESPACE CREDNAME [--as root]                  # installs CREDNAME's pair under the tenant
+//	seatrials tenant create [--as root] [--if-missing] NAMESPACE           # --if-missing: a tenant that exists is no error
+//	seatrials tenant cred [--as root] [--replace] NAMESPACE CREDNAME       # installs CREDNAME's pair under the tenant
 //	seatrials ping MESSAGE [--as NAME]
 //	seatrials ask QUESTION [--as NAME] [--context TEXT]...
 //
-// Every command prints JSON. Keys and tokens live in ~/.seatrials (0600).
+// Every command prints JSON. Keys and tokens live in ~/.seatrials (0600), or
+// in SEATRIALS_HOME when it is set (the pipeline's client-steps job, #77).
 package main
 
 import (
@@ -127,11 +128,14 @@ func run(args []string) error {
 // ---------------------------------------------------------------- credentials
 
 func home() (string, error) {
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	d := os.Getenv("SEATRIALS_HOME")
+	if d == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		d = filepath.Join(h, ".seatrials")
 	}
-	d := filepath.Join(h, ".seatrials")
 	return d, os.MkdirAll(d, 0o700)
 }
 
@@ -402,11 +406,12 @@ func login(args []string) error {
 func tenantCreate(args []string) error {
 	fs := flag.NewFlagSet("tenant create", flag.ContinueOnError)
 	as := fs.String("as", "root", "credential name (a root pair)")
+	ifMissing := fs.Bool("if-missing", false, "a tenant that exists already is no error")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: seatrials tenant create /tenants/NAME [--as root]")
+		return errors.New("usage: seatrials tenant create [--as root] [--if-missing] /tenants/NAME")
 	}
 	m, done, err := manager(*as)
 	if err != nil {
@@ -421,6 +426,10 @@ func tenantCreate(args []string) error {
 			EntitlementsCeiling: &entitlements_pb.TokenEntitlements{Grants: tenantAdminGrants},
 		},
 	})
+	if *ifMissing && status.Code(err) == codes.AlreadyExists {
+		printJSON(map[string]any{"tenant": fs.Arg(0), "exists": true})
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -451,15 +460,18 @@ func tenantDelete(args []string) error {
 }
 
 // tenantCred installs a credential pair (made by keygen --tenant NS) under the
-// tenant: the pair's owner decides the namespace its tokens carry.
+// tenant: the pair's owner decides the namespace its tokens carry. With
+// --replace, the tenant's earlier pairs of the same name (keygen's ids,
+// CREDNAME-<hex>) go, so a job that makes a fresh pair each run keeps one.
 func tenantCred(args []string) error {
 	fs := flag.NewFlagSet("tenant cred", flag.ContinueOnError)
 	as := fs.String("as", "root", "credential name (a root pair)")
+	replace := fs.Bool("replace", false, "drop the tenant's earlier pairs of CREDNAME")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return errors.New("usage: seatrials tenant cred /tenants/NAME CREDNAME [--as root]")
+		return errors.New("usage: seatrials tenant cred [--as root] [--replace] /tenants/NAME CREDNAME")
 	}
 	ns, credName := fs.Arg(0), fs.Arg(1)
 	cf, _, err := loadCred(credName)
@@ -490,13 +502,11 @@ func tenantCred(args []string) error {
 	if cfg.Kernel == nil {
 		cfg.Kernel = &credentials_pb.KernelTenantConfig{}
 	}
-	kept := cfg.Kernel.CredPairs[:0]
-	for _, cp := range cfg.Kernel.CredPairs {
-		if cp.GetId() != pair.GetId() {
-			kept = append(kept, cp)
-		}
+	replaced := ""
+	if *replace {
+		replaced = credName
 	}
-	cfg.Kernel.CredPairs = append(kept, &pair)
+	cfg.Kernel.CredPairs = withPair(cfg.Kernel.CredPairs, &pair, replaced)
 	out, err := admin.UpdateTenantConfig(ctx, &kernel_pb.SetTenantConfigRequest{TenantNamespace: ns, Config: cfg})
 	if err != nil {
 		return fmt.Errorf("UpdateTenantConfig: %w", err)
@@ -504,6 +514,20 @@ func tenantCred(args []string) error {
 	_ = out
 	printJSON(map[string]any{"tenant": ns, "cred_pair": pair.GetId(), "cred_pairs": len(cfg.Kernel.CredPairs)})
 	return nil
+}
+
+// withPair is pairs with pair in place of any pair of the same id and, when
+// replaced is a credential name, of any of that name's (keygen's ids,
+// NAME-<hex>).
+func withPair(pairs []*credentials_pb.CredPair, pair *credentials_pb.CredPair, replaced string) []*credentials_pb.CredPair {
+	kept := make([]*credentials_pb.CredPair, 0, len(pairs)+1)
+	for _, cp := range pairs {
+		if cp.GetId() == pair.GetId() || (replaced != "" && strings.HasPrefix(cp.GetId(), replaced+"-")) {
+			continue
+		}
+		kept = append(kept, cp)
+	}
+	return append(kept, pair)
 }
 
 // ---------------------------------------------------------------- the proofs

@@ -356,15 +356,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   generates now, so each needs a run script calling the fleet through `client/` (`seatrials`), and its
   `waits_on` moved to what it still waits on (the first deploy on `dev`, #4; #27, tacplus#258, #265 where
   named). Their runs can only be proved against a deployed fleet, so this is #17's follow-up, not #14's.
-- **A new root credential for the first deploy, its key kept by the pipeline** (2026-11-23, #4; hub note on #4,
-  2026-10-30): `operator.yaml`'s `root_cred_pairs` registers `root-feb39e0fd6b526ff`, whose private key was
-  deleted with `~/.seatrials`, and the README's first-time steps make the next one with `./seatrials keygen
-  root` on a laptop. Proposal: the manual `init-secrets` job (deploy/init-secrets.sh) also makes the root pair,
-  adds its private key as a version of a Secret Manager secret of its own (say `fleet-root-cred-seatrials`, as
-  the CA and crypto file are, #44; the hub's note said a protected GitLab variable, which #44 since ruled out
-  for key material) and prints the public `cred_pair`, which a commit puts in `root_cred_pairs` in place of the
-  orphaned one. Revoking the old pairs (`root`, `alpha`, `beta`) is optional: the fresh deploy has none of their
-  state. Needs Jody's word on where the key lives and on the client reading it from there.
+- **A person's tenant credential, installed by the pipeline** (2026-11-24, #77): the root credential is the
+  pipeline's now, and `client-steps` installs only its own fresh `ci-<tenant>` pairs, so nobody can run the
+  doppelganger proof (`context push`, `ask`) as a tenant user from a laptop. Proposal: committed public pairs
+  (say `deploy/bootstrap/tenants/<tenant>/cred_pairs.yaml`, made by `seatrials keygen --tenant` where their
+  holder is) that `client-steps` installs with `tenant cred`, idempotently, beside its own. Needs Jody's word on
+  whether a person's tenant key on a laptop is acceptable under secrets-by-pipeline.
+- **`tenant cred` writes the whole tenant config** (2026-11-24, #77): it reads the config, replaces the pairs and
+  writes it back (`UpdateTenantConfig`), so a concurrent change to the same tenant's config between the two is
+  lost. `client-steps` runs in the `seatrials` resource group, one at a time with `apply`; a kernel RPC that adds
+  or removes one pair would close it.
 - **Apply the tenant namespaces' objects through the in-cluster operator** (2026-11-24, #75, #76): `diff` now
   names the objects in `tac-seatrials-<tid>` and leaves them out of `kubectl diff`. But `deploy/apply.sh`'s
   `schematic-operator apply` (the CLI, operator a17d507) still helm-installs them as `seatrials-deploy`, and it

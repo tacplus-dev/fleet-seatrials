@@ -35,7 +35,8 @@
 #
 # Manual, because none of them is approval of the fleet: signin-secrets (a rotated secret),
 # test-idp (the test IdP's one-time setup), init-secrets (a deployment's first run: its key
-# material generated into Secret Manager).
+# material and root credential generated into Secret Manager), client-steps (after apply:
+# the tenants, as that root credential, #77).
 #
 # A daily pipeline schedule on main runs all of it (docs/deploy-pipeline.md, the
 # schedule): when cert renews the certificate, the new version is rendered,
@@ -97,6 +98,9 @@ variables:
   # the secrets init-secrets adds a version to and ci_crypto reads, in GCP_PROJECT.
   FLEET_CRYPTO_SECRET: fleet-crypto-seatrials
   FLEET_CA_SECRET: fleet-ca-seatrials
+  # The fleet's root credential (#77; tacplus-dev/cloud#105): root.cred.json, the
+  # secret init-secrets adds its first version to and ci_crypto root reads.
+  FLEET_ROOT_CRED_SECRET: fleet-root-cred-seatrials
   # The commit being deployed: the parent pipeline writes it here (pipeline
   # variables are forbidden in the group).
   FLEET_COMMIT: ""
@@ -369,12 +373,15 @@ signin-secrets:
 # A deployment's first run (#17, #44): generates its key material and adds a
 # version to each of the Secret Manager secrets FLEET_CRYPTO_SECRET and
 # FLEET_CA_SECRET, never printing it (deploy/init-secrets.sh). It skips both
-# when they have a version, and refuses when only one does. Manual, in the
-# protected environment init-secrets, the only one whose jobs WIF lets become
-# seatrials-init-secrets, which may add versions to these two secrets and
-# nothing else (tacplus-dev/cloud#28): no token is stored. It needs only the
-# tools, so it runs while generate, with nothing to generate from yet, has
-# failed; then run the pipeline again.
+# when they have a version, and refuses when only one does. It also makes the
+# root credential (bin/seatrials keygen root) into FLEET_ROOT_CRED_SECRET when
+# that has no version, and prints its public pair, the root_cred_pairs entry to
+# commit in operator.yaml (#77). Manual, in the protected environment
+# init-secrets, the only one whose jobs WIF lets become seatrials-init-secrets,
+# which may add versions to these secrets and nothing else
+# (tacplus-dev/cloud#28, #105): no token is stored. It needs only the tools, so
+# it runs while generate, with nothing to generate from yet, has failed; then
+# run the pipeline again.
 init-secrets:
   stage: generate
   needs: [tools]
@@ -385,6 +392,23 @@ init-secrets:
     GCP_DEPLOY_SA: seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com
   script:
     - cd src && source ci/lib.sh && ci_no_gitlab_key_material && ci_gcp && deploy/init-secrets.sh
+
+# The README's first-time client steps (#77), after an apply: as the fleet's
+# root credential (ci_crypto root, as seatrials-deploy), operator.yaml's tenants
+# made once each, a fresh pair of each installed in place of the pipeline's
+# earlier one, and each tenant's ping served by that tenant
+# (deploy/client-steps.sh, idempotent). Manual: it changes the kernel's
+# tenants, not the fleet, and it needs the root credential's public pair
+# committed and applied first.
+client-steps:
+  stage: test
+  needs: [tools, apply]
+  environment: { name: seatrials, action: verify }
+  resource_group: seatrials
+  when: manual
+  allow_failure: true
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_crypto root && deploy/client-steps.sh
 
 test:
   stage: test

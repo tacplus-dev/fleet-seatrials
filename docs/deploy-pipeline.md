@@ -17,7 +17,7 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 
 | Stage | Job | What it does |
 | --- | --- | --- |
-| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), yq, opa, gitleaks, the security job's scanners and `lego` ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
+| tools | `tools` | Builds `bin/`: tacplus at `images/pins.yaml`'s `tacplus_commit`, `schematic-operator` (`deploy/build-operator.sh`), the client `seatrials` (`client/`), yq, opa, gitleaks, the security job's scanners and `lego` ([`ci/tools.sh`](../ci/tools.sh)). `bin/` is the pipeline's only artifact, and it holds no secret. |
 | checks | `checks` | Runs the script tests ([`ci/checks.sh`](../ci/checks.sh)) and the secrets scan ([`ci/secrets.sh`](../ci/secrets.sh)): gitleaks over the history and the tree at HEAD. |
 | checks | `security` | [`ci/security.sh`](../ci/security.sh): OSV-Scanner, govulncheck on the pinned binaries, gitleaks on the history and the tree, Trivy on the CI image and the images this repository deploys ([below](#the-security-job)). It fails only on what ships; CI tooling's findings are reported, never failing (#72). `images` and `generate` wait for it, so nothing is built or applied until it passes. Its JSON report, `security/report.json`, is its artifact, failed or not. |
 | releases | `releases` | [`ci/releases.sh plan`](../ci/releases.sh), as the deploy account: reads every service's main release record, `release-<repo>/main/record`, and checks it against the set deployed ([below](#dev-rolls-to-each-green-main-release-never-back)). A record it can't read, a malformed one, one older than what is deployed, or one built with another tacplus than tacplus's own main release fails it. `generate` waits for it, so dev stays where it is. |
@@ -27,9 +27,10 @@ deployed from a laptop or held on one (Jody, 2026-10-29; #17; tacplus-dev/roadma
 | diff | `diff` | [`deploy/diff.sh`](../deploy/diff.sh): `kubectl diff` of the render (`schematic-operator apply --dry-run`) against seatrials, of the objects outside the tenant namespaces: those in `tac-seatrials-<tid>` are deploymentproxy's, where the deploy account cannot read, so it names them instead (#75). It prints object **names** only, and the digest of the whole render, which it hands to `apply` ([below](#the-render-diff-showed-is-the-one-applied)). |
 | apply | `apply` | **Automatic** once `diff` succeeds, in the protected environment `seatrials` ([below](#apply-is-automatic-seatrials-isnt-production)). Refuses a set older than the one deployed (`ci/releases.sh guard`), checks the render's digest, with the same certificate version, then `deploy/secrets.sh`, `deploy/apply.sh`, `ci/releases.sh record` (this set becomes the deployed one) and `deploy/signin-secrets.sh`. |
 | apply | `signin-secrets` | Manual, environment `seatrials`. Re-installs the sign-in secrets from the variables and Secret Manager and nothing else, after a secret is rotated. |
-| generate | `init-secrets` | Manual, in the protected environment `init-secrets`. A deployment's first run: generates the fleet's crypto file and CA and adds a version to `fleet-crypto-seatrials` and `fleet-ca-seatrials` in Secret Manager, as `seatrials-init-secrets` through WIF ([below](#generated-secrets-the-init-secrets-job)). |
+| generate | `init-secrets` | Manual, in the protected environment `init-secrets`. A deployment's first run: generates the fleet's crypto file and CA and adds a version to `fleet-crypto-seatrials` and `fleet-ca-seatrials` in Secret Manager, and the root credential into `fleet-root-cred-seatrials`, printing its public pair, as `seatrials-init-secrets` through WIF ([below](#generated-secrets-the-init-secrets-job)). |
 | apply | `test-idp` | Manual, in the protected environment `test-idp`: the test IdP's seeds (the first time), its certificate, and Keycloak with its realms on the `dev` cluster ([`test-idp/apply.sh`](../test-idp/apply.sh); [below](#the-test-idp)). |
 | test | `test-idp-signin` | The same apply first (main's realms; the certificate renewed when due), then [`test-idp/signin.sh`](../test-idp/signin.sh): each realm's discovery and every test user's claim shape. One user per emulated provider signs in at tacplus.dev and gets a kernel session. The removed user is refused. Until the `test-idp` job has set the test IdP up (the environment `test-idp` has no `TEST_IDP_SEED`), it skips, saying so, without asking GCP or the cluster for anything. |
+| test | `client-steps` | Manual, after `apply`, environment `seatrials`: the README's first-time client steps as the root credential (`ci_crypto root`, as `seatrials-deploy`), [`deploy/client-steps.sh`](../deploy/client-steps.sh): each tenant made once, a fresh pipeline pair `ci-<tenant>` in place of its earlier one, and a ping that tenant's instance serves ([below](#the-root-credential-and-the-client-steps)). |
 | test | `test` | After `apply`: the functional end-to-end suite, [`deploy/e2e.sh`](../deploy/e2e.sh) on [`deploy/e2e.yaml`](../deploy/e2e.yaml) ([below](#the-functional-suite)). Each item is a named test that passes, fails, or waits on the open issues it names. The report is the job's JUnit test report. |
 
 Every pipeline deploys: tools, checks, releases, cert, images, generate, diff, then `apply` and `test`, and `test-idp-signin` once the test IdP is set up. A `diff` that fails stops it before `apply`. A daily schedule runs the same pipeline ([below](#the-daily-schedule)).
@@ -285,6 +286,7 @@ number, the suite's report and the security report (gitleaks' findings redacted)
 | --- | --- | --- | --- |
 | `crypto.yaml`: the fleet's root CA and cluster PKI | Secret Manager `fleet-crypto-seatrials` | `init-secrets`, once, as `seatrials-init-secrets` ([below](#generated-secrets-the-init-secrets-job)) | `generate`, `diff`, `apply`, `test` (`ci_crypto`), as `seatrials-deploy` |
 | `ca.pem`: the root CA's certificate | Secret Manager `fleet-ca-seatrials` | the same | the same |
+| `root.cred.json`: the fleet's root credential, its private key and public pair | Secret Manager `fleet-root-cred-seatrials` | `init-secrets`, once, as `seatrials-init-secrets` | `client-steps` (`ci_crypto root`), as `seatrials-deploy` |
 | The public certificate and its key | Secret Manager `tls-seatrials` | `cert` ([the certificate](#the-certificate)) | every job that renders (`ci_cert`) |
 | The ACME account | Secret Manager `acme-account-seatrials` | `cert` | `cert` |
 | The test IdP's seeds | Secret Manager `test-idp-seeds` | `test-idp` ([the test IdP](#the-test-idp)) | the test IdP's jobs; seatrials' own, optional |
@@ -323,7 +325,9 @@ Secret Manager, written through Workload Identity Federation: no stored token, n
 adds one version to each of the secrets tacplus-dev/cloud made for them in `tacplus-dev`:
 
 - `fleet-crypto-seatrials` (`FLEET_CRYPTO_SECRET`): crypto.yaml as it is, the root CA and the cluster PKI;
-- `fleet-ca-seatrials` (`FLEET_CA_SECRET`): ca.pem, the root CA's certificate.
+- `fleet-ca-seatrials` (`FLEET_CA_SECRET`): ca.pem, the root CA's certificate;
+- `fleet-root-cred-seatrials` (`FLEET_ROOT_CRED_SECRET`, tacplus-dev/cloud#105): the fleet's root credential,
+  `root.cred.json` as `bin/seatrials keygen root` writes it in a scratch `SEATRIALS_HOME` (#77).
 
 The job runs as `seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com` (its `GCP_DEPLOY_SA`): through
 WIF, only this project's jobs in the protected environment `init-secrets` on protected `main` can become it,
@@ -338,6 +342,11 @@ one. `seatrials-deploy` reads them (`secretAccessor`): `ci_crypto` places the la
   twice. If the CA's add fails, it names the crypto file's version to disable before running it again
   (`gcloud secrets versions disable N --secret=fleet-crypto-seatrials --project=tacplus-dev`, by the hub: the
   job's account may not);
+- makes the root credential on its own: skipped when `fleet-root-cred-seatrials` has an enabled version, made
+  and added when it has none, whatever the CA pair's state (a half CA pair is still refused first). It prints
+  the credential's public pair, never its key, as the `root_cred_pairs` entry to commit
+  ([below](#the-root-credential-and-the-client-steps)), and refuses a keygen whose printed pair has a private
+  part;
 - fails, with Secret Manager's error, when a secret doesn't exist or refuses it.
 
 On a new deployment's first pipeline, `generate` fails, saying the secret has no version yet. Run
@@ -348,6 +357,28 @@ split into `FLEET_CRYPTO_YAML_2`, ... to fit GitLab's 10,000 characters) and `FL
 token, `FLEET_INIT_TOKEN`. Nothing reads them now, and a job that still holds one fails, naming it. The hub
 deletes those variables and the bot user. seatrials' old CA served only the deleted clusters, so the first
 `init-secrets` on `dev` generates the new pair.
+
+### The root credential and the client steps
+
+The fleet's root credential administers its tenants. Its key is the pipeline's, kept like the CA, and never on a
+laptop (#77; tacplus-dev/roadmap `decisions/secrets-by-pipeline-2026-11-05.md`). The first `init-secrets` makes it
+into `fleet-root-cred-seatrials` and prints its public pair:
+
+```
+init-secrets: the root credential root-<hex>: commit this entry in deploy/bootstrap/operator.yaml in place of the one in its root_cred_pairs; the next apply registers it
+root_cred_pairs:
+    - {"description":"seatrials client root",...,"id":"root-<hex>",...}
+```
+
+A commit replaces `operator.yaml`'s `root_cred_pairs` with it, and the next apply registers it. Then the manual
+`client-steps` job (after `apply`) reads the credential as `seatrials-deploy` (`ci_crypto root`: into the job's
+own `SEATRIALS_HOME`, mode 600, gone with the job) and runs `deploy/client-steps.sh`. It refuses a credential
+`operator.yaml` doesn't register, or registers with another key, before it asks the fleet anything. For each
+tenant in `operator.yaml` it creates `/tenants/<tenant>` unless it exists, installs a fresh pair `ci-<tenant>`
+in place of the pipeline's earlier one (other pairs of the tenant's are kept), signs in with it and pings
+tenantecho, and the tenant's own instance must answer. Any number of runs leaves the same state. A new root
+credential (a rotation) is: the hub disables the secret's versions, `init-secrets` runs, and the printed entry
+is committed in place of the old.
 
 **Third-party secrets** are entered once per deployment, keyless where the provider allows. Apple's `.p8` is
 entered once (`FLEET_APPLE_KEY_P8`), and oauth mints the client-secret JWT from it for each request, so no Apple
@@ -567,9 +598,9 @@ certificate and no account key is carried over.
   changes, every SPIFFE id changes, every outstanding token and session credential stops working and people
   sign in again; the Anthropic federation rule `llmproxy-seatrials` must name the new llmproxy subject by then.
 - **The root credential.** `operator.yaml`'s `root_cred_pairs` registers `root-feb39e0fd6b526ff`, whose private
-  key was deleted with `~/.seatrials` (hub, 2026-10-30), so on the first deploy nobody holds a root key. A new
-  root pair, its private key kept by the pipeline and never on a laptop, replaces it before the client steps of
-  the README run (PROPOSALS.md).
+  key was deleted with `~/.seatrials` (hub, 2026-10-30). The first `init-secrets` on `dev` makes its successor,
+  the pipeline's, and the public pair it prints replaces that entry in a commit before `client-steps` runs
+  ([above](#the-root-credential-and-the-client-steps), #77).
 
 ## The runner
 
