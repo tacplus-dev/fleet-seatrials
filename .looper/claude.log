@@ -1,0 +1,263 @@
+= init
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; /usr/local/bin/repo-looper --repo fleet-seatrials --issue-text 3 | tail -40; for i in redo#19 stratum#54 operator#57; do r=${i%#*}; n=${i#*#}; gh issue view $n --repo tacplus-dev/$r --json state,closedAt,title; done; git log --oneline -3 origin...
+<   - **The cut-over order:** redo, then each tenant's Stratum, then the writers, then the checks and the cleanup.   - **The rollback.**  ## Left, once those three land and redo and stratum tag releases  - Relock (`fleet.lock`, `build/proto`) and move `operator_commit` to operator#57's commit. - Build...
+All three blockers closed. Let me survey the repo and the upstream releases.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; ls; cat fleet.yaml; cat images/pins.yaml; ls deploy deploy/bootstrap; cat deploy/bootstrap/operator.yaml; cat gates.yaml 2>/dev/null; cat client/tacplus.yaml | head -50
+< HISTORY.md LICENSE PROPOSALS.md README.md ROADMAP.md STATE.md build build.lock ci client dependencies.yaml deploy docs fleet.lock fleet.yaml gates.yaml images security-exceptions.yaml test-idp # Sea trials: the proof fleet. It exists to show one thing — doppelganger runs # as an ordinary tacplus ser...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cat STATE.md; ls ci build build/* | head -60; cat README.md | head -80
+< <persisted-output> Output too large (36.5KB). Full output saved to: /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/.claude/projects/-var-lib-looper-cache-work-fleet-seatrials-issues-3/4972b539-b390-4a25-bdef-a7623c157621/tool-results/bakjfar8a.txt  Preview (first 2KB): # State: fleet-seat...
+> Read /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/.claude/projects/-var-lib-looper-cache-work-fleet-seatrials-issues-3/4972b539-b390-4a25-bdef-a7623c157621/tool-results/bakjfar8a.txt
+< 1	# State: fleet-seatrials 2	 3	Overwritten to stay current (loopers and agents). Last updated: 2026-11-28 by the looper (#77). 4	 5	- **Version / line:** no releases or tags; tacplus floor 2.6, the compiler v2.6.14 (`images/pins.yaml`, stamped `v2.6.14-seatrials`); every service pinned by release l...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git show --stat 913a493 | head -60; which go tacplus java cargo; ls bin 2>&1 | head
+< commit 913a493b1ca9f20401387b3d48fbad5ce08c66a7 Author: tacplus-looper[bot] <tacplus-looper[bot]@users.noreply.github.com> Date:   Sat Nov 28 10:39:53 2026 +0000      coop 0.2 and operator v0.2.1: each tenant's pigeons in its own namespace (#83)          coop.yaml's single pigeons_namespace named a ...
+= thinking_tokens
+= thinking_tokens
+> Bash ls /var/lib/looper-cache/work/fleet-seatrials/runs/ | grep issue-3; tacplus --version 2>&1 | head -3
+< 20261128T125408Z-issue-3 docker: fleet-seatrials builds locally on this looper VM, through --build (looper#238): a report has no container runtime. Build with: /usr/local/bin/repo-looper --repo fleet-seatrials --issue 3 --build docker: fleet-seatrials builds locally on this looper VM, through --buil...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cat ci/tools.sh | head -120; cat ci/checks.sh
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # The deploy pipeline's tools, built natively on the runner from pinned # sources, into bin/ (the tools job's artifact; none holds a secret): # #   bin/tacplus              the fleet's tacplus, images/pins.ya...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Blockers are all closed, so I'm now picking up the relock: I'm checking the upstream release tags and the tools before I change anything.
+> Bash for r in tacplus redo stratum kernel operator; do echo "== $r"; git ls-remote --tags https://github.com/tacplus-dev/$r.git 2>&1 | grep -v '\^{}' | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -4; done; git ls-remote https://github.com/tacplus-dev/operator.git HEAD; which protoc jq yq
+< Exit code 1 == tacplus v2.6.14 v2.6.15 v2.6.16 v2.7.0 == redo v0.1.6 v0.1.7 v0.1.8 v0.2.0 == stratum v0.2.2 v0.2.3 v0.2.4 v0.2.5 == kernel v0.1.5 v0.1.6 v0.1.7 v0.2.0 == operator v0.1.4 v0.1.5 v0.2.0 v0.2.1 c1ec526ae88b094b483485db1dc436d6743b1386	HEAD /usr/local/bin/protoc /usr/bin/jq
+> Bash cd /tmp; for i in redo#19 stratum#54 operator#57; do /usr/local/bin/repo-looper --repo fleet-seatrials --issue-text tacplus-dev/$i | tail -30; echo ======; done
+= task_started
+= task_notification
+< - `9df4488` Cargo.lock follows tacplus 2.6.16's generated chassis. - `63c52a9` STATE.md: v0.2.0. - Tag `v0.2.0` (annotated, at `9df4488`). It is a minor: the SPIFFE identity and the `RedoSite` contract changed.  **Gates** - Local `--build`, full gates on `9df4488`: green. 42 + 7 tests pass. - Manage...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp && rm -rf tp && git clone -q https://github.com/tacplus-dev/tacplus.git tp && cd tp && git rev-parse v2.6.16^{commit} && git checkout -q v2.6.16 && go generate ./pkg/internal/proto/spec/... && c=$(git rev-parse HEAD) && pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo && CGO_ENABLED=0 go bui...
+< Exit code 1 rm: cannot remove 'tp/src/go.sum': Permission denied rm: cannot remove 'tp/src/justfile': Permission denied rm: cannot remove 'tp/src/security-exceptions.yaml': Permission denied rm: cannot remove 'tp/src/build.lock': Permission denied rm: cannot remove 'tp/src/.dockerignore': Permission...
+/tmp/tp belongs to another run; I'll use a private directory instead.
+> Bash W=$HOME/w3; mkdir -p $W && cd $W && rm -rf tp && git clone -q https://github.com/tacplus-dev/tacplus.git tp && cd tp && git checkout -q v2.6.16 && c=$(git rev-parse HEAD) && echo $c && go generate ./pkg/internal/proto/spec/... && pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo && CGO_ENABLED=0 go b...
+= task_started
+= task_notification
+< 7319ce589915ef90a22feee80a13670f68a0d50b go: downloading github.com/spf13/cobra v1.10.2 go: downloading go.uber.org/zap v1.27.1 go: downloading gopkg.in/yaml.v3 v3.0.1 go: downloading google.golang.org/protobuf v1.36.11 go: downloading github.com/BurntSushi/toml v1.6.0 go: downloading golang.org/x/m...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -rn --exclude-dir=build --exclude=STATE.md --exclude=HISTORY.md --exclude=fleet.lock -e 'v2\.6\.14' -e ef62327e -e d05acf1 -e stratum_nodes -e stratum_members -e 'redo' -e 'restore' . | grep -v '^./client/tacplus/' | cut -c1-220
+< grep: ./.git/index: binary file matches ./deploy/namespaces_test.sh:9:# restore when operator.yaml names a deployment, else its namespace, else ./deploy/namespaces_test.sh:36:run "a deployment: its platform namespace first, then each tenant's and people's and restore's" pass \ ./deploy/init-secrets....
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cat ci/fleet_lock_test.sh deploy/build-operator.sh; cat fleet.lock | head -40
+< #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # Tests the fleet's lock against its manifest (#1): the fleet builds its own # images from source (`images: source`, tacplus#950), so fleet.lock records # every fleet.yaml service in its stated line, at its r...
+Now edit fleet.yaml (kernel 0.2, redo 0.2) and try the relock.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; $HOME/w3/tacplus fleet --help 2>&1 | head -30; $HOME/w3/tacplus fleet build --help 2>&1 | head -40
+< Build a fleet from a deployment repo's fleet.yaml  Usage:   tacplus fleet [command]  Available Commands:   build       Resolve, check and merge every service the fleet runs; write fleet.lock  Flags:   -h, --help   help for fleet  Use "tacplus fleet [command] --help" for more information about a comm...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; $HOME/w3/tacplus fleet build --check 2>&1 | tail -30
+<   kernel               0.1          locked 0.1.7        newer minor 0.2.0   opa                  0.3          locked 0.3.1        up to date   gateway              0.2          locked 0.2.0        newer minor 0.3.1   eventbus             0.1          locked 0.1.4        newer minor 0.2.1   stratum  ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' import re p='fleet.yaml'; s=open(p).read() s=s.replace('''  - name: kernel     version: "0.1"''','''  - name: kernel     version: "0.2"''') s=s.replace('''  - name: redo     version: "0.1"''','''  - name: redo     version: "0....
+= task_started
+= task_notification
+<  fleet.yaml | 4 ++--  1 file changed, 2 insertions(+), 2 deletions(-)  Or undo this operation with:    git switch -  Turn off this advice by setting config variable advice.detachedHead to false  HEAD is now at 9df4488 Cargo.lock: follow tacplus 2.6.16's generated chassis (#19) 2026-11-28T12:56:18.66...
+The relock succeeds. Now the pins, then build the operator at 5e8e316.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git status --short | head -30; git ls-remote https://github.com/tacplus-dev/operator.git refs/heads/main; cd $HOME/w3 && rm -rf op && git clone -q https://github.com/tacplus-dev/operator.git op && cd op && git log --oneline -6 && git rev-parse ...
+<  M build/proto/fleet.lock  M build/proto/services/kernel.proto  M build/proto/services/redo.proto  M build/proto/vservices/proxy-policy.proto  M fleet.lock  M fleet.yaml c1ec526ae88b094b483485db1dc436d6743b1386	refs/heads/main c1ec526 HISTORY.md: #57 (looper) 5e8e316 STATE.md: redo as one /system in...
+= thinking_tokens
+= thinking_tokens
+> Bash cd $HOME/w3/op; git checkout -q 5e8e316; grep -n 'helm.sh/helm' go.mod; grep -rn -i 'stratum_members\|stratum_nodes\|StratumMembers\|redo_storage_class\|redo_nodes' --include=*.go --include=*.proto --include=*.md . | grep -v _test | head -30
+< 18:	helm.sh/helm/v3 v3.22.1 ./pkg/helm/generator.go:182:	if err := ValidateStratumMembers(cfg); err != nil { ./pkg/helm/generator.go:395:// maxStratumMembers is the most members a tenant's Stratum may have: the ./pkg/helm/generator.go:398:const maxStratumMembers = 64 ./pkg/helm/generator.go:400:// V...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -n 1,30p images/tacplus-build.cloudbuild.yaml; grep -n 'seatrials\|2\.6' ci/closure_test.sh ci/client_test.sh | head -20
+< # Builds the fleet's tacplus into tacplus's full build image. Source is the # images/ directory (the Dockerfile and the tacplus and launcher sources). substitutions:   _REGISTRY: us-central1-docker.pkg.dev/tacplus-dev/seatrials   # images/pins.yaml's tacplus_commit, the source in tacplus/ (images/bu...
+Now the pins file and stamps.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -i 's/v2\.6\.14-seatrials/v2.6.16-seatrials/' ci/tools.sh images/tacplus-build.cloudbuild.yaml; python3 - <<'EOF' p='images/pins.yaml'; s=open(p).read() old=s[:s.index('launcher_commit:')] new='''# The tacplus commit this fleet generates an...
+< diff --git a/ci/tools.sh b/ci/tools.sh index a7b31ed..e9f84d0 100755 --- a/ci/tools.sh +++ b/ci/tools.sh @@ -109,7 +109,7 @@ git clone -q https://github.com/tacplus-dev/tacplus.git "$src" && git -C "$src"  pkg=github.com/tacplus-dev/tacplus/pkg/buildinfo  ( cd "$src" && go generate ./pkg/internal/pr...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='deploy/bootstrap/operator.yaml'; s=open(p).read() i=s.index('    # No stratum for now'); j=s.index('    stratum_nodes: 0\n')+len('    stratum_nodes: 0\n') s=s[:i]+'''    # Each tenant's Stratum, in memory, in its own namesp...
+< 20:#             it is; generate waits for it 27:#   generate  schematic-operator generate with the fleet's key material and that certificate 38:# material and root credential generated into Secret Manager), client-steps (after apply: 69:stages: [tools, checks, releases, cert, images, generate, diff...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -n 290,310p ci/deploy.gitlab-ci.yml; cat deploy/pigeons-namespaces_test.sh | sed -n 1,60p
+<   timeout: 2h  # A job's setup is an && list; one followed by more lines ends with `|| exit`: # set -e does not stop at a failure inside an && list, save its last command, # so without it the job runs on without the setup and fails later, behind a # misleading error (#62; ci/pipeline_test.sh). gener...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; export PATH=$HOME/w3/bin:$PATH; (GOBIN=$HOME/w3/bin go install github.com/mikefarah/yq/v4@v4.54.1 >/dev/null 2>&1 &) ; TACPLUS=$HOME/w3/tacplus deploy/build-operator.sh 2>&1 | tail -15; ls -la bin/
+= task_started
+= task_notification
+< go: downloading github.com/go-openapi/swag/mangling v0.27.1 go: downloading github.com/go-openapi/swag/netutils v0.27.1 go: downloading github.com/go-openapi/swag/stringutils v0.27.1 go: downloading github.com/go-openapi/swag/typeutils v0.27.1 go: downloading github.com/go-openapi/swag/yamlutils v0....
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cat .gitignore; cd deploy/bootstrap && export SCHEMATIC_OPERATOR_DIR=$PWD SCHEMATIC_LOCAL_IMAGES=registry.invalid/seatrials && ../../bin/schematic-operator init ca > /tmp/../$HOME/w3/init.log 2>&1; ../../bin/schematic-operator generate --output...
+< build/* !build/proto/ bin/ charts/ deploy/bootstrap/crypto.yaml deploy/bootstrap/ca.pem deploy/bootstrap/configs/ images/launcher/ images/tacplus/ __pycache__/ security/ rc=0 Generated 73 chart files → /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/charts/schematic/  M build/proto/flee...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git diff deploy/bootstrap/services/kernel.yaml; ls $HOME/w3/charts/schematic/templates | grep -i -e stratum -e redo; ls deploy/bootstrap/configs | head -30
+< diff --git a/deploy/bootstrap/services/kernel.yaml b/deploy/bootstrap/services/kernel.yaml index 87b8a3d..e770f6d 100644 --- a/deploy/bootstrap/services/kernel.yaml +++ b/deploy/bootstrap/services/kernel.yaml @@ -10,6 +10,7 @@ delegates:            kubernetes_service_account: eventbus      - name: g...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+The relock, the operator build and `generate` all work. `generate` added the per-tenant Stratum and `/system` redo delegates. Now I'm checking the stale restore-tenant redo delegate it left behind.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cat generated.yaml 2>/dev/null; sed -n 100,125p deploy/bootstrap/services/kernel.yaml; head -5 deploy/bootstrap/services/kernel.yaml; git log --oneline -5 -- deploy/bootstrap/services/kernel.yaml
+<       kubernetes_service_accounts:         - kubernetes_namespace: tac-seatrials-ewqybj38           kubernetes_service_account: doppelganger-beta     - name: coop       authorized_services:         - coop         - eventbus         - kernel         - stratum       kubernetes_service_accounts:       ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='deploy/bootstrap/services/kernel.yaml'; s=open(p).read() old='''    - name: redo       tenant_namespace: /tenants/restore       authorized_services:         - kernel         - redo       kubernetes_service_accounts:        ...
+< rc=0 Generated 73 chart files → /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/charts/schematic/  deploy/bootstrap/services/kernel.yaml | 40 ++++++++++++++++++++++++++++++++---  1 file changed, 37 insertions(+), 3 deletions(-) 0
+= thinking_tokens
+= thinking_tokens
+> Bash cd $HOME/w3/charts/schematic/templates; ls stratum-alpha redo; grep -n 'namespace:\|replicas:\|serviceAccountName' stratum-alpha/*.yaml redo/*.yaml | head -20; cat /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/bootstrap/configs/stratum-alpha.yaml | head -40
+< redo: configmap-0.yaml service-0.yaml service-headless.yaml serviceaccount.yaml statefulset.yaml  stratum-alpha: configmap-0.yaml service-0.yaml service-headless.yaml serviceaccount.yaml statefulset.yaml stratum-alpha/configmap-0.yaml:5:  namespace: tac-seatrials-741kqltx stratum-alpha/service-0.yam...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -n 60,200p deploy/pigeons-namespaces_test.sh; sed -n 1,60p $HOME/w3/charts/schematic/templates/redo/statefulset.yaml; ls $HOME/w3/charts/schematic/templates/
+<   else     got=$(jq -cS '.pigeons_namespaces // .pigeonsNamespaces // {}' <<<"$cfg")     [ "$got" = "$want" ] && ok "the coop's pigeons_namespaces: $got" \       || fail "the coop's pigeons_namespaces: [$got], want [$want]"     # pigeons_namespace is unused once the map has entries; the holder's    ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -rl 'busybox:1.36' $HOME/w3/charts | wc -l; grep -n busybox deploy/operator-post-render.sh | head
+< 5 7:#   - its extract-config init container's image, busybox:latest in the chart, set to images/pins.yaml's
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -rl 'busybox:1.36' $HOME/w3/charts; git stash -q; git log -1 --format=%h; git stash pop -q; git status --short | wc -l
+< /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/charts/schematic/templates/stratum-alpha/statefulset.yaml /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/charts/schematic/templates/stratum-people/statefulset.yaml /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Writing the render test for the per-tenant shape now.
+> Write /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/stratum-redo_test.sh
+< File created successfully at: /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/stratum-redo_test.sh (file state is current in your context — no need to Read it back)
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; chmod +x deploy/stratum-redo_test.sh; rm -rf deploy/bootstrap/configs deploy/bootstrap/crypto.yaml deploy/bootstrap/ca.pem; export PATH=$HOME/w3/bin:$PATH; which yq; deploy/stratum-redo_test.sh; echo "--- against main's bootstrap:"; git stash p...
+< /var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/w3/bin/yq ok   operator.yaml runs 1 Stratum member a tenant on seatrials ok   operator.yaml has no retired topology.stratum_nodes Error: bad file '/var/lib/looper-cache/work/fleet-seatrials/homes/looper-3/tmp/tmp.y49aWlXzG4/bootstrap/charts/s...
+= thinking_tokens
+= thinking_tokens
+The chart templates aren't plain YAML, so I'll read them with grep. There's also a stratum delegate with no tenant namespace to look at:
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -n -B2 -A10 'name: stratum$' deploy/bootstrap/services/kernel.yaml | head -30; git show main:deploy/bootstrap/services/kernel.yaml | grep -n -A8 'name: stratum$'
+< 43-        - kubernetes_namespace: tac-seatrials 44-          kubernetes_service_account: operator 45:    - name: stratum 46-      authorized_services: 47-        - kernel 48-        - stratum 49-      kubernetes_service_accounts: 50-        - kubernetes_namespace: tac-seatrials 51-          kuberne...
+= thinking_tokens
+= thinking_tokens
+That's the stale system-scope stratum delegate from main, and `generate` doesn't prune it either. I'll remove it and fix the test's template parsing.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='deploy/bootstrap/services/kernel.yaml'; s=open(p).read() old='''    - name: stratum       authorized_services:         - kernel         - stratum       kubernetes_service_accounts:         - kubernetes_namespace: tac-seatri...
+< ok   operator.yaml runs 1 Stratum member a tenant on seatrials ok   operator.yaml has no retired topology.stratum_nodes ok   alpha's Stratum runs in its own namespace tac-seatrials-741kqltx ok   alpha's Stratum has 1 member(s) ok   alpha's Stratum runs as stratum-alpha ok   alpha's Stratum has its c...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+The render test passes. Next I'll run the related script tests locally against my builds: the lock, pins, closure, client and render tests.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; cp $HOME/w3/tacplus bin/tacplus; export PATH=$PWD/bin:$HOME/w3/bin:$PATH; for t in ci/fleet_lock_test.sh ci/pins_test.sh deploy/pigeons-namespaces_test.sh deploy/trust-domain_test.sh deploy/namespaces_test.sh ci/target_test.sh deploy/e2e_test.s...
+= task_started
+= task_notification
+< == ci/fleet_lock_test.sh fleet lock tests passed == ci/pins_test.sh pins: all passed == deploy/pigeons-namespaces_test.sh pigeons namespaces tests passed == deploy/trust-domain_test.sh all trust-domain tests passed == deploy/namespaces_test.sh all passed == ci/target_test.sh target tests passed == d...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; export PATH=$PWD/bin:$HOME/w3/bin:$PATH; (GOBIN=$HOME/w3/bin go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 >/dev/null 2>&1); for t in ci/closure_test.sh ci/client_test.sh; do echo "== $t"; $t > $HOME/w3/$(basename $t).log 2>&1; echo rc=$?...
+= task_started
+= task_notification
+< == ci/closure_test.sh rc=0 closure: all passed == ci/client_test.sh rc=0 client: all passed
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git ls-files client | head -20; git status --short
+< client/.gitignore client/cmd/seatrials/main.go client/cmd/seatrials/main_test.go client/go.mod client/go.sum client/proto/clients/seatrials.proto client/proto/dependencies.yaml client/proto/registry.yaml client/tacplus.yaml  M build/proto/fleet.lock  M build/proto/services/kernel.proto  M build/prot...
+= thinking_tokens
+= thinking_tokens
+Local tests pass. I'll checkpoint, then do the docs and the cut-over plan.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; /usr/local/bin/repo-looper --repo fleet-seatrials --issue 3 --checkpoint "Relocked on tacplus 2.6.16 (kernel 0.2.0, stratum 0.2.5, redo 0.2.0 + patches), operator pin 5e8e316, operator.yaml stratum_members: 1, generate run (kernel.yaml delegate...
+< Use '--' to separate paths from revisions, like this: 'git <command> [<revision>...] -- [<file>...]' [2026-11-28T13:03:35Z] checkpoint of #3 (a step) pushed to looper/fleet-seatrials-3:      waits_on: ["#14"]   - name: records/watch-resume     what: a Watch resumed from its last version misses no ch...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -n 125,150p deploy/e2e_test.sh; grep -n 'stratum\|redo' docs/deploy-pipeline.md | head -40
+< # The repository's manifest: well formed (--list checks it and runs nothing), # and every capability the SeaBeam gate names is an item (#17, Jody 2026-10-31 # and 2026-11-01). out=$("$here/e2e.sh" --list 2>&1); status=$? if [ "$status" != 0 ]; then echo "FAIL deploy/e2e.yaml is not well formed: $out...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='deploy/e2e.yaml'; s=open(p).read() for n in ['members/two-tenants','redo/durability-levels']:     i=s.index('  - name: '+n); j=s.index('waits_on: ["#3", "#14"]',i)     s=s[:j]+'waits_on: ["#14"]'+s[j+len('waits_on: ["#3", "...
+<  deploy/e2e.yaml         | 4 ++--  docs/deploy-pipeline.md | 4 ++--  2 files changed, 4 insertions(+), 4 deletions(-) 5:# the `tacplus` cluster it replaced, #39).    client-facing through the gateway, answering through llmproxy, holding no model credential. 2. **A tenant-owned service in two tenant ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='README.md'; s=open(p).read() s=s.replace("`build/proto`, in the operator build and in each service image. At v2.6.14 these are:","`build/proto`, in the operator build and in each service image. At v2.6.16 these are:") old="...
+< diff --git a/fleet.yaml b/fleet.yaml index f65b1d5..4fe3f26 100644 --- a/fleet.yaml +++ b/fleet.yaml @@ -18,8 +18,9 @@ tacplus: "2.6"  # publishes one, and deleting this line returns the fleet to them (#1).  images: source  services: +  # kernel: 0.2 seeds each tenant's Stratum (kernel#34).    - nam...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Now the cut-over plan. First I'll list every record type the fleet's contracts store in Stratum.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3/build/proto; grep -rn -i 'record_map\|(spec.record\|stratum_map\|persisted\|state_map\|(spec.state' --include=*.proto . | grep -v '^./shared\|^./common' | cut -c1-200 | head -40
+< ./services/kernel.proto:50:option (spec.record_read) = {record: "kernel.TenantRegistryEntry"}; ./services/kernel.proto:210:  // (OT) — the long-lived, identity-only tokens persisted on disk by the ./services/kernel.proto:401:// (spec.state_imports) of kernel.Identity. Enforced at run time by the ./s...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3/build/proto; sed -n 2120,2145p services/kernel.proto; for f in coop doppelganger; do grep -n -B3 -A8 'option (spec.record) = {' services/$f.proto | grep -n 'message\|tenant\|residency\|mutab' ; done; grep -rn 'record) = {' --include=*.proto . | ...
+< // at a higher version than it holds. A tenant's workloads get their identity // from the entry, so kernel serves a tenant before it has any of its settings. // // The registry is the only source of top-level tenants: TenantAdmin.CreateTenant // refuses one (sub-tenants and projects stay TenantAdmin...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -n -i 'TenantRegistry\|tenants kernel record\|registry entr' PROPOSALS.md STATE.md docs/*.md | cut -c1-400; grep -rn 'TenantRegistryEntry' $HOME/w3/op --include=*.go -l | head; grep -n -i 'durability' build/proto/services/coop.proto build/...
+< PROPOSALS.md:134:  - **Ask for letsencrypt's registry entry's removal.** #1 moved the fleet to gateway 0.2 and operator v0.1.0 PROPOSALS.md:394:- **`diff` renders the tenants kernel records too** (2026-11-24, #76): `apply` now hands the render to the operator PROPOSALS.md:396:  digest). The operator...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git diff build/proto/services/kernel.proto | grep '^[+-]' | grep -v '^[+-] *//' | head -60; git diff --stat build/proto
+< --- a/build/proto/services/kernel.proto +++ b/build/proto/services/kernel.proto +option (spec.record_read) = {record: "kernel.TenantRegistryEntry"}; + + +  string tenant_registry_tid = 43 [(spec.assert_max_size) = 8]; +  repeated string stratum_seed_members = 3 [(spec.assert_max_size) = 64]; +messag...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -n -B12 'string tenant_registry_tid = 43\|repeated TenantRegistryEntry tenant_registry = 15\|repeated string stratum_seed_members = 3' build/proto/services/kernel.proto | grep '//' | cut -c1-200; grep -rn 'tenant_registry\|stratum_seed' de...
+< 308-  // (Person.last_signed_in_at_ms) kernel cannot read is left. A period below 309-  // one day is taken as one day. Default: 31536000 (365 days). 315-  // tenant_registry_tid is the tid of the Stratum instance that holds the 316-  // tenant registry (TenantRegistryEntry): the system tenant's. Ev...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd $HOME/w3/charts/schematic/templates; grep -n -A12 'volumeClaimTemplates\|persistentVolumeClaimRetentionPolicy' redo/statefulset.yaml stratum-alpha/statefulset.yaml | head -40; grep -n -A3 'redo\|archive' /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/bootstrap/configs/stratum-alpha.ya...
+< redo/statefulset.yaml:103:  volumeClaimTemplates: redo/statefulset.yaml-104-  - metadata: redo/statefulset.yaml-105-      name: data redo/statefulset.yaml-106-    spec: redo/statefulset.yaml-107-      accessModes: [ReadWriteOnce] redo/statefulset.yaml-108-      resources: redo/statefulset.yaml-109- ...
+= thinking_tokens
+= thinking_tokens
+I've confirmed redo's volume is kept by default and Stratum has none (it's in memory). Now I'm writing `deploy/stratum-cutover.md`.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; ls deploy/bootstrap/tenants; grep -n 'stratum' deploy/checks.sh | head; grep -n '^## \|^### ' docs/deploy-pipeline.md | head -40
+< alpha beta 53:    # --previous fail for the whole pod: stratum, 2026-11-27, crash-looped for a day with no line shown), the 16:## Stages 38:### The security job 89:### Apply is automatic: seatrials isn't production 105:### The render diff showed is the one applied 116:### Dev rolls to each green mai...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -n 30,80p deploy/checks.sh
+< # Why each pod that is not Ready is not (2026-11-26: the first deploy through the operator left ten pods not # Ready for an hour, and the pipeline said only their names): its conditions and containers' states from the # pods already read, then its last events and its log's end, as far as the deploy ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Write /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/stratum-cutover.md
+< File created successfully at: /var/lib/looper-cache/work/fleet-seatrials/issues/3/deploy/stratum-cutover.md (file state is current in your context — no need to Read it back)
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Fixing one point in step 3: kernel writes the seeds into its own state at boot, so it doesn't need a restart.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='deploy/stratum-cutover.md'; s=open(p).read() old=s[s.index('3. **The services that write records.**'):s.index('4. **The checks.**')] new='''3. **The services that write records.** The coop, doppelganger-alpha and doppelgang...
+<   coop                 0.2          locked 0.2.1        up to date   pigeonhost           0.1          locked 0.1.10       up to date   redo                 0.2          locked 0.2.0        up to date
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -i "s/so kernel must be Ready too; it is one of the platform's pods \`checks.sh\` reads./so kernel must be Ready too (in \`tac-seatrials\`, which \`checks.sh pods\` reads)./" deploy/stratum-cutover.md; grep -n 'Ready too' deploy/stratum-cut...
+< 67:   - It reads its seeds from kernel, so kernel must be Ready too (in `tac-seatrials`, which `checks.sh pods` reads). # Proposals: fleet-seatrials  Written by loopers. Each proposal: what, why, links. Jody promotes accepted ones into ROADMAP.md (via an agent); the looper then marks it `promoted` o...
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; python3 - <<'EOF' p='PROPOSALS.md'; s=open(p).read() anchor='- **<title>** (<date>, <issue/run link>): <what and why>\n' new=anchor+'''- **The CI and build image on tacplus 2.6.16** (2026-11-28, #3): #3 moved the compiler to v2.6.16 (`images/pi...
+<  M PROPOSALS.md  M README.md  M build/proto/fleet.lock  M build/proto/services/kernel.proto  M build/proto/services/redo.proto  M build/proto/vservices/proxy-policy.proto  M ci/tools.sh  M client/tacplus.yaml  M deploy/bootstrap/operator.yaml  M deploy/bootstrap/services/kernel.yaml  M deploy/e2e.ya...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; grep -rn -e 'v0\.2\.1' -e '2\.6\.14' -e 'stratum_nodes' -e 'redo-restore' -e 'd05acf1' docs README.md ci deploy images --include=* | grep -v '_test.sh:.*#' | cut -c1-220
+< docs/deploy-pipeline.md:584:  namespaces into the coop's `pigeons_namespaces` (coop 0.2, tacplus-dev/coop#17; operator v0.2.1, ci/tools.sh:62:helm_version=v3.22.1 helm_h1=h1:uo2SouzAxMkKZTNzZ1lLP/c/Bu7xfUJKYDaYMxMHvk8=   # the operator v0.2.1's helm.sh/helm/v3 (a17d507's too) deploy/stratum-redo_tes...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; sed -i "s|# the operator v0.2.1's helm.sh/helm/v3 (a17d507's too)|# the pinned operator's helm.sh/helm/v3 (5e8e316's, as v0.2.1's)|" ci/tools.sh; grep -n helm_version ci/tools.sh; export PATH=$PWD/bin:$HOME/w3/bin:$PATH; deploy/stratum-redo_tes...
+< 62:helm_version=v3.22.1 helm_h1=h1:uo2SouzAxMkKZTNzZ1lLP/c/Bu7xfUJKYDaYMxMHvk8=   # the pinned operator's helm.sh/helm/v3 (5e8e316's, as v0.2.1's) 136:go_install helm.sh/helm/v3/cmd/helm helm.sh/helm/v3 "$helm_version" "$helm_h1" stratum and redo tests passed  PROPOSALS.md                           ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git commit -q -F - <<'EOF' Per-tenant Stratum and the /system redo: relock on tacplus 2.6.16, operator 5e8e316 (#3)  The fleet ran no Stratum: stratum 0.2 runs only as a tenant's, and the operator it pinned rendered one for the platform. Kernel...
+< Author identity unknown  *** Please tell me who you are.  Run    git config --global user.email "you@example.com"   git config --global user.name "Your Name"  to set your account's default identity. Omit --global to set the identity only in this repository.  fatal: empty ident name (for <looper-3@lo...
+The commit failed because there's no git identity, so I'm stopping the build that started on the old HEAD and setting the identity the bot commits use.
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; kill 2604281; sleep 2; cat $HOME/w3/build.log | tail -5; git config user.name 'tacplus-looper[bot]'; git config user.email 'tacplus-looper[bot]@users.noreply.github.com'
+< /bin/bash: line 1: kill: (2604281) - No such process [2026-11-28T13:06:16Z] FATAL uncommitted changes: commit them first; --build builds your HEAD as committed
+> Bash cd /var/lib/looper-cache/work/fleet-seatrials/issues/3; git commit -q -F - <<'EOF' Per-tenant Stratum and the /system redo: relock on tacplus 2.6.16, operator 5e8e316 (#3)  The fleet ran no Stratum: stratum 0.2 runs only as a tenant's, and the operator it pinned rendered one for the platform. Kernel...
+< 0395bab Per-tenant Stratum and the /system redo: relock on tacplus 2.6.16, operator 5e8e316 (#3) pid=2605253
