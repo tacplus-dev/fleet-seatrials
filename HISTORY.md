@@ -54,3 +54,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-26 looper issue ci/security.sh: fail only on findings in what ships; report CI tooling (bin/ binaries, the CI image), never blocking (looper#225) (#72)
 - 2026-11-27 looper issue seatrials runs with SPIFFE trust domain local.dev: every subject reads spiffe://local.dev/… (#16)
 - 2026-11-28 looper issue security: a Trivy scan error on the CI image (tooling) is reported, never a failing verdict; give Trivy a 20m timeout (blocks #76) (#79)
+- 2026-11-28 looper issue Root credential by pipeline: init-secrets makes the root pair into fleet-root-cred-seatrials; a client-steps job makes the tenants; no laptop (#77)
